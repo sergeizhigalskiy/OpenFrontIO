@@ -28,6 +28,11 @@ import {
   TouchEvent,
 } from "../../InputHandler";
 import { Platform } from "../../Platform";
+import {
+  nextReadySeconds,
+  reloadSpec,
+  reloadState,
+} from "../../render/frame/derive/ReloadBars";
 import { themeProvider } from "../../theme/ThemeProvider";
 import { TransformHandler } from "../../TransformHandler";
 import { UIState } from "../../UIState";
@@ -1102,6 +1107,7 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
       : unit.type() === UnitType.CoastalBattery
         ? `${unit.health()} / ${this.game.config().unitInfo(UnitType.CoastalBattery).maxHealth}`
         : `${unit.health()}`;
+    const reload = this.reloadText(unit);
 
     return html`
       <div class="p-2">
@@ -1121,6 +1127,7 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
               ? html` <div class="text-sm">Health: ${health}</div> `
               : ""
           }
+          ${reload !== "" ? html`<div class="text-sm">${reload}</div>` : ""}
           ${
             unit.type() === UnitType.TransportShip ||
             unit.type() === UnitType.Convoy
@@ -1134,6 +1141,30 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
         </div>
       </div>
     `;
+  }
+
+  /**
+   * "Rounds 1/2, next in 2.1 s" for a unit that reloads (the same numbers as
+   * its reload bar, shown to every player like the bar), else "".
+   */
+  private reloadText(unit: UnitView): string {
+    const config = this.game.config();
+    const spec = reloadSpec(unit.type(), unit.level(), config);
+    if (spec === null || spec.rounds <= 0 || unit.isUnderConstruction()) {
+      return "";
+    }
+    const s = reloadState(unit.missileTimerQueue(), spec, this.game.ticks());
+    if (s.ready >= s.rounds) {
+      return translateText("player_panel.rounds_ready", {
+        ready: s.ready,
+        rounds: s.rounds,
+      });
+    }
+    return translateText("player_panel.rounds_reloading", {
+      ready: s.ready,
+      rounds: s.rounds,
+      seconds: nextReadySeconds(s, config.msPerTick()),
+    });
   }
 
   render() {

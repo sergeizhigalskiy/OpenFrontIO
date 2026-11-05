@@ -141,6 +141,50 @@ describe("coastal battery fire", () => {
     expect(max - target.health()).toBeGreaterThan(600);
   });
 
+  test("each shell sits on the unit's timer queue until it reloads", async () => {
+    // The queue only tells the client about the reload (its reload bar).
+    const { game, defender, attacker } = await navalGame();
+    const b = battery(game, defender);
+    expect(b.missileTimerQueue()).toEqual([]);
+    warship(game, attacker, game.ref(12, 8));
+    let ticks = 0;
+    while (b.missileTimerQueue().length === 0 && ticks++ < 60) {
+      game.executeNextTick();
+    }
+    expect(b.missileTimerQueue()).toHaveLength(1);
+    expect(b.isInCooldown()).toBe(true);
+    const firedAt = b.missileTimerQueue()[0];
+    // Reloading for exactly the reload time, one shell at a time.
+    let reloading = 0;
+    while (b.missileTimerQueue()[0] === firedAt && reloading < 100) {
+      expect(b.missileTimerQueue()).toHaveLength(1);
+      game.executeNextTick();
+      reloading++;
+    }
+    // The warship is still in range, so the battery fires again at once.
+    expect(b.missileTimerQueue()).toEqual([
+      firedAt + COASTAL_BATTERY_RELOAD_TICKS,
+    ]);
+    expect(reloading).toBe(COASTAL_BATTERY_RELOAD_TICKS);
+  });
+
+  test("its timer queue empties once nothing is left to shell", async () => {
+    const { game, defender, attacker } = await navalGame();
+    const b = battery(game, defender);
+    const boat = attacker.buildUnit(UnitType.TransportShip, game.ref(12, 8), {
+      troops: 500,
+    });
+    let ticks = 0;
+    while (b.missileTimerQueue().length === 0 && ticks++ < 60) {
+      game.executeNextTick();
+    }
+    expect(b.missileTimerQueue()).toHaveLength(1);
+    executeTicks(game, COASTAL_BATTERY_RELOAD_TICKS + 5);
+    expect(boat.isActive()).toBe(false);
+    expect(b.missileTimerQueue()).toEqual([]);
+    expect(b.isInCooldown()).toBe(false);
+  });
+
   test("ignores allied and own warships", async () => {
     const { game, defender, ally } = await navalGame();
     battery(game, defender);
