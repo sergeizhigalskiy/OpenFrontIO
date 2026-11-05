@@ -219,7 +219,7 @@ describe("PlayerInfoOverlay attack forecast", () => {
     expect(free).toContain('attack_forecast.loss{"troops":"12"}');
   });
 
-    it("keeps one decimal on small losses", async () => {
+  it("keeps one decimal on small losses", async () => {
     forecastMock.result = { ...forecastMock.result, lossPerTile: 45 };
     expect(await hover(game(enemy, me()))).toContain(
       'attack_forecast.loss{"troops":"4.5"}',

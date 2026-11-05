@@ -13,18 +13,18 @@ import { zRandom } from "@openfront/engine-lib/snapshot/SnapshotType";
 import { simpleHash } from "@openfront/engine-lib/Util";
 import { z } from "zod";
 import { Execution, Game } from "../game/Game";
-import { execSnapshotType } from "../snapshot/ExecutionSnapshot";
-import type {
-  ExecRecord,
-  SnapshotReader,
-  SnapshotWriter,
-} from "../snapshot/SnapshotContext";
 import {
   cityStateZones,
   mineZones,
   overlapsZone,
   volcanoZones,
 } from "../game/StartPlacements";
+import { execSnapshotType } from "../snapshot/ExecutionSnapshot";
+import type {
+  ExecRecord,
+  SnapshotReader,
+  SnapshotWriter,
+} from "../snapshot/SnapshotContext";
 import { resourceSitesOf } from "./ResourceSiteExecution";
 import { volcanoSitesOf } from "./VolcanoExecution";
 

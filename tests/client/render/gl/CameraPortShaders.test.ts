@@ -1,3 +1,4 @@
+import { Config } from "@openfront/engine-lib/configuration/Config";
 /**
  * Every pass added or changed since the shared camera block arrived compiles,
  * links and draws in a real WebGL2 context (headless Chrome), with the camera
@@ -11,7 +12,6 @@
  */
 import fs from "fs";
 import path from "path";
-import { Config } from "@openfront/engine-lib/configuration/Config";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { CAMERA_INCLUDE } from "../../../../src/client/render/gl/camera/CameraBlock";
 import { BlockadePass } from "../../../../src/client/render/gl/passes/BlockadePass";
@@ -116,7 +116,13 @@ const PASSES: PassCase[] = [
   {
     name: "TerrainFeaturePass",
     build: (gl) =>
-      new TerrainFeaturePass(gl, tex, new Uint8Array(MAP_W * MAP_H), MAP_W, MAP_H),
+      new TerrainFeaturePass(
+        gl,
+        tex,
+        new Uint8Array(MAP_W * MAP_H),
+        MAP_W,
+        MAP_H,
+      ),
     camera: true,
   },
   // resources-canals: mine icons and canal digs

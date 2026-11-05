@@ -9,7 +9,6 @@ import {
 import { PlayerLike } from "@openfront/engine-api/game/ReadViews";
 import { GameConfig } from "@openfront/engine-api/Schemas";
 import { pow } from "../DetMath";
-import { CANAL_CONSTRUCTION_TICKS } from "../game/Canal";
 import {
   attackLogic,
   AttackLogicInput,
@@ -22,6 +21,7 @@ import {
   isBossRaidBoss,
   withBossRaidDefaults,
 } from "../game/BossRaid";
+import { CANAL_CONSTRUCTION_TICKS } from "../game/Canal";
 import {
   AIRBASE_CONSTRUCTION_TICKS,
   CONVENTIONAL_WAR_UNIT_TYPES,

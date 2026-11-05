@@ -66,35 +66,35 @@ describe("start features keep out of each other", () => {
   test.each(Array.from({ length: 24 }, (_, i) => `placement_${i}`))(
     "on the world map, in order: city-states, volcanoes, mines, ruins (%s)",
     async (gameID) => {
-    const { game, p } = await placeAll(gameID);
-    // Every kind is there to check.
-    for (const [kind, tiles] of Object.entries(p)) {
-      expect(tiles.length, kind).toBeGreaterThan(0);
-    }
-    for (const cs of p.cityStates) {
-      // No volcano's warning ring reaches a city-state's disc.
+      const { game, p } = await placeAll(gameID);
+      // Every kind is there to check.
+      for (const [kind, tiles] of Object.entries(p)) {
+        expect(tiles.length, kind).toBeGreaterThan(0);
+      }
+      for (const cs of p.cityStates) {
+        // No volcano's warning ring reaches a city-state's disc.
+        for (const v of p.volcanoes) {
+          expect(dist(game, cs, v)).toBeGreaterThan(
+            VOLCANO_WARNING_RADIUS + CITY_STATE_RADIUS,
+          );
+        }
+        // No mine or ruin inside its disc.
+        for (const t of [...p.mines, ...p.ruins]) {
+          expect(dist(game, cs, t)).toBeGreaterThan(CITY_STATE_RADIUS);
+        }
+      }
+      // No mine or ruin inside a volcano's warning ring.
       for (const v of p.volcanoes) {
-        expect(dist(game, cs, v)).toBeGreaterThan(
-          VOLCANO_WARNING_RADIUS + CITY_STATE_RADIUS,
-        );
+        for (const t of [...p.mines, ...p.ruins]) {
+          expect(dist(game, v, t)).toBeGreaterThan(VOLCANO_WARNING_RADIUS);
+        }
       }
-      // No mine or ruin inside its disc.
-      for (const t of [...p.mines, ...p.ruins]) {
-        expect(dist(game, cs, t)).toBeGreaterThan(CITY_STATE_RADIUS);
+      // No ruin on or next to a mine.
+      for (const m of p.mines) {
+        for (const r of p.ruins) {
+          expect(dist(game, m, r)).toBeGreaterThan(MINE_KEEP_OUT_RADIUS);
+        }
       }
-    }
-    // No mine or ruin inside a volcano's warning ring.
-    for (const v of p.volcanoes) {
-      for (const t of [...p.mines, ...p.ruins]) {
-        expect(dist(game, v, t)).toBeGreaterThan(VOLCANO_WARNING_RADIUS);
-      }
-    }
-    // No ruin on or next to a mine.
-    for (const m of p.mines) {
-      for (const r of p.ruins) {
-        expect(dist(game, m, r)).toBeGreaterThan(MINE_KEEP_OUT_RADIUS);
-      }
-    }
     },
     120_000,
   );

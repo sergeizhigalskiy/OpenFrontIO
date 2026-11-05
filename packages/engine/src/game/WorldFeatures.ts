@@ -6,13 +6,13 @@ import {
 } from "@openfront/engine-api/game/GameTypes";
 import { GameUpdateType } from "@openfront/engine-api/game/GameUpdates";
 import { renderNumber, renderTroops } from "@openfront/engine-lib/Format";
+import { terrainFeatureAllowsStructures } from "@openfront/engine-lib/game/TerrainFeatures";
 import {
   CITY_STATE_CONQUEST_GOLD,
   RUIN_GOLD_REWARD,
   RuinReward,
   ruinTroopReward,
 } from "@openfront/engine-lib/game/WorldFeatures";
-import { terrainFeatureAllowsStructures } from "@openfront/engine-lib/game/TerrainFeatures";
 import { DefensePostExecution } from "../execution/DefensePostExecution";
 import { Game, Player } from "./Game";
 

@@ -148,7 +148,7 @@ describe("airstrike effects", () => {
     expect(camp.isActive()).toBe(false);
   });
 
-    test("15% of a nearby attack, never land", async () => {
+  test("15% of a nearby attack, never land", async () => {
     const { game, a, b } = await twoSides();
     structure(game, a, UnitType.Airbase, game.ref(60, 100));
     b.setTroops(100_000);

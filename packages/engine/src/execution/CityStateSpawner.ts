@@ -8,6 +8,7 @@ import {
 import { type CustomTribe } from "@openfront/engine-api/game/Maps.gen";
 import { GameID } from "@openfront/engine-api/Schemas";
 import { resolveTribeNameData } from "@openfront/engine-lib/execution/utils/TribeNames";
+import { terrainFeatureAllowsStructures } from "@openfront/engine-lib/game/TerrainFeatures";
 import {
   CITY_STATE_MIN_DISTANCE,
   CITY_STATE_MIN_LAND_PERCENT,
@@ -18,7 +19,6 @@ import {
 } from "@openfront/engine-lib/game/WorldFeatures";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import { simpleHash } from "@openfront/engine-lib/Util";
-import { terrainFeatureAllowsStructures } from "@openfront/engine-lib/game/TerrainFeatures";
 import { Game } from "../game/Game";
 import { cityStateDisc, CityStateExecution } from "./CityStateExecution";
 

@@ -1,11 +1,11 @@
 import { TileRef } from "@openfront/engine-api/game/GameMap";
 import { PlayerInfo, UnitType } from "@openfront/engine-api/game/GameTypes";
+import { terrainFeatureAllowsStructures } from "@openfront/engine-lib/game/TerrainFeatures";
 import {
   CITY_STATE_CITY_LEVEL,
   CITY_STATE_RADIUS,
 } from "@openfront/engine-lib/game/WorldFeatures";
 import { zTile } from "@openfront/engine-lib/snapshot/SnapshotType";
-import { terrainFeatureAllowsStructures } from "@openfront/engine-lib/game/TerrainFeatures";
 import { z } from "zod";
 import { Execution, Game, Player } from "../game/Game";
 import {

@@ -25,9 +25,9 @@ describe("exclusive lobby modes", () => {
       exclusiveModesOn({ gameMode: GameMode.Team, bossRaid: BOSS }),
     ).toEqual(["bossRaid"]);
     // A Boss pick left over in an FFA lobby isn't a Boss Raid.
-    expect(exclusiveModesOn({ gameMode: GameMode.FFA, bossRaid: BOSS })).toEqual(
-      [],
-    );
+    expect(
+      exclusiveModesOn({ gameMode: GameMode.FFA, bossRaid: BOSS }),
+    ).toEqual([]);
     expect(exclusiveModesOn({ hordeNight: { enabled: false } })).toEqual([]);
     expect(
       exclusiveModesOn({ hordeNight: { enabled: true }, plague: true }),
@@ -128,7 +128,12 @@ describe("the server refuses exclusive modes together", () => {
       gameInfo: () => ({ gameID: "x" }),
     }));
     const log: any = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-    registerAdminBotRoutes({ app, gm: { createGame } as any, workerId: 0, log });
+    registerAdminBotRoutes({
+      app,
+      gm: { createGame } as any,
+      workerId: 0,
+      log,
+    });
     const res: any = {
       statusCode: 200,
       body: undefined,

@@ -60,7 +60,10 @@ export function volcanoZones(sites: readonly TileRef[]): PlacementZone[] {
 export function mineZones(
   sites: readonly { tile: TileRef }[],
 ): PlacementZone[] {
-  return sites.map((site) => ({ tile: site.tile, radius: MINE_KEEP_OUT_RADIUS }));
+  return sites.map((site) => ({
+    tile: site.tile,
+    radius: MINE_KEEP_OUT_RADIUS,
+  }));
 }
 
 /**

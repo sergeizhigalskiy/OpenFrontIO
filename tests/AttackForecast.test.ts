@@ -406,21 +406,25 @@ describe("attack forecast matches the engine", () => {
     expect([...cost].sort()).toEqual([1, MUD_TILE_COST_MULTIPLIER]);
   });
 
-    test("over forest, river and ford, stacked with winter", async () => {
+  test("over forest, river and ford, stacked with winter", async () => {
     const { game, attacker, defender } = await plainsGame(true);
     vi.spyOn(game, "ticksSinceStart").mockReturnValue(SEASON_CYCLE_TICKS + 5);
     // Columns of forest, river and ford on the defender's side of x = 50.
     const feature = (tile: number): TerrainFeature => {
       const x = game.x(tile);
       if (x === 50 || x === 51) return TerrainFeature.Forest;
-      if (x === 52) return game.y(tile) % 10 === 0 ? TerrainFeature.Ford : TerrainFeature.River;
+      if (x === 52)
+        return game.y(tile) % 10 === 0
+          ? TerrainFeature.Ford
+          : TerrainFeature.River;
       return TerrainFeature.None;
     };
     // The map reads it for the engine and, through the game, for the forecast.
     vi.spyOn(game.map(), "terrainFeature").mockImplementation(feature);
     const checks = recordAttack(game, attacker, defender, 60_000, 30);
     expectForecastMatches(checks);
-    const by = (f: TerrainFeature) => checks.filter((c) => feature(c.tile) === f);
+    const by = (f: TerrainFeature) =>
+      checks.filter((c) => feature(c.tile) === f);
     expect(by(TerrainFeature.Forest).length).toBeGreaterThan(0);
     expect(by(TerrainFeature.River).length).toBeGreaterThan(0);
     // The forest's 1.3x loss on top of winter's 1.5x on snow land.
@@ -434,12 +438,13 @@ describe("attack forecast matches the engine", () => {
     );
     const river = by(TerrainFeature.River)[0];
     expect(10 / river.forecast.tilesPerSecond!).toBeCloseTo(
-      game.config().attackLogic(river.input).tickFraction * RIVER_TIME_MULTIPLIER,
+      game.config().attackLogic(river.input).tickFraction *
+        RIVER_TIME_MULTIPLIER,
       9,
     );
   });
 
-    test("into unclaimed land", async () => {
+  test("into unclaimed land", async () => {
     const { game, attacker } = await plainsGame(false);
     const checks = recordAttack(game, attacker, null, 60_000, 10);
     expectForecastMatches(checks);

@@ -190,7 +190,7 @@ describe("drones against structures", () => {
     expect(camp.isActive()).toBe(false);
   });
 
-    test("a coastal battery loses a third of its health per hit", async () => {
+  test("a coastal battery loses a third of its health per hit", async () => {
     const { game, a, b } = await land();
     structure(game, a, UnitType.Airbase, game.ref(40, 100));
     const battery = b.buildUnit(

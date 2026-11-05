@@ -62,7 +62,10 @@ export function attackWeatherInput(
   game: AttackWeatherGame,
   tile: TileRef,
   enemyLand: boolean,
-): Pick<AttackLogicInput, "weatherLossMultiplier" | "weatherTileCostMultiplier"> {
+): Pick<
+  AttackLogicInput,
+  "weatherLossMultiplier" | "weatherTileCostMultiplier"
+> {
   return {
     weatherLossMultiplier: winterAttackLossMultiplier(
       game.config().isWinter(game.ticksSinceStart()),
@@ -75,9 +78,7 @@ export function attackWeatherInput(
 
 /** What the forecast reads about the game. */
 export interface ForecastGame<P>
-  extends GameMap,
-    DefenseUnitQuery,
-    AttackWeatherGame {
+  extends GameMap, DefenseUnitQuery, AttackWeatherGame {
   config(): {
     attackLogic(input: AttackLogicInput): AttackLogicResult;
     msPerTick(): number;

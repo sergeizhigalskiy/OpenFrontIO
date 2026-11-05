@@ -61,7 +61,12 @@ async function lakes(): Promise<Scenario> {
   const sailorInfos = Array.from(
     { length: SAILORS },
     (_, i) =>
-      new PlayerInfo(`sailor${i}`, PlayerType.Human, `client_s${i}`, `sailor${i}`),
+      new PlayerInfo(
+        `sailor${i}`,
+        PlayerType.Human,
+        `client_s${i}`,
+        `sailor${i}`,
+      ),
   );
   const game = await setup(
     "plains",
@@ -105,7 +110,9 @@ function shapeTheMap(s: Scenario): void {
         if (x < 20) {
           // Each sailor a stretch of the lake's west shore.
           if (y >= y0 && y <= y1) {
-            s.sailors[Math.min(SAILORS - 1, Math.floor((y - y0) / band))].conquer(t);
+            s.sailors[
+              Math.min(SAILORS - 1, Math.floor((y - y0) / band))
+            ].conquer(t);
           }
         } else if (x <= 47) s.builder.conquer(t);
         else if (x >= 68) s.enemy.conquer(t);

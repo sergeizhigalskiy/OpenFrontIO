@@ -179,7 +179,7 @@ describe("nation air support in conventional war", () => {
     expect(camp.isActive()).toBe(false);
   });
 
-    test("an open target gets an airstrike, paid like a human's", async () => {
+  test("an open target gets an airstrike, paid like a human's", async () => {
     const { game, nation, post } = await frontWithPost(Difficulty.Hard);
     const execs = added(game);
     behaviors(game, nation).attack.maybeSupportFromTheAir();

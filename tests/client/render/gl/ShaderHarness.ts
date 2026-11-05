@@ -290,7 +290,11 @@ export function compileInChrome(
         "--dump-dom",
         `file:///${file.replace(/\\/g, "/")}`,
       ],
-      { encoding: "utf8", timeout: 60_000, stdio: ["ignore", "pipe", "ignore"] },
+      {
+        encoding: "utf8",
+        timeout: 60_000,
+        stdio: ["ignore", "pipe", "ignore"],
+      },
     );
     const m = /<pre id="out">([^<]*)<\/pre>/.exec(stdout);
     if (m === null) throw new Error("no result in the page");

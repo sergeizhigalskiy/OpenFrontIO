@@ -81,7 +81,7 @@ describe("unit art atlases", () => {
     );
   });
 
-    it("never draws a minefield as a sprite, which would show it to all", () => {
+  it("never draws a minefield as a sprite, which would show it to all", () => {
     expect(UNIT_ORDER).not.toContain(UT_MINEFIELD);
     expect(STRUCTURE_ORDER).not.toContain(UT_MINEFIELD);
   });
