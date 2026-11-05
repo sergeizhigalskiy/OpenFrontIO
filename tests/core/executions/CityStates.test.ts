@@ -243,6 +243,52 @@ describe("city-states: founding", () => {
       .map((e) => (e as AttackExecution).targetID());
     expect(targets).not.toContain(cs.id());
   });
+
+  // Encircled land changes hands in PlayerExecution.removeClusters. City-states
+  // never take land, so they must never be the captor; otherwise they win
+  // pockets on border length alone and snowball across the map.
+  function runAnnexation(game: Game, player: Player): void {
+    const exec = new PlayerExecution(player);
+    exec.init(game, 0);
+    (exec as unknown as { removeClusters(): void }).removeClusters();
+  }
+
+  test("a player ringed by a city-state alone is not annexed by it", async () => {
+    const { game, cs } = await founded();
+    const tribe = game.addPlayer(
+      new PlayerInfo("ringed", PlayerType.Bot, null, "ringed"),
+    );
+    conquerRect(game, cs, 150, 20, 166, 36);
+    conquerRect(game, tribe, 155, 25, 161, 31);
+    const csTiles = cs.numTilesOwned();
+    const tribeTiles = tribe.numTilesOwned();
+
+    runAnnexation(game, tribe);
+
+    expect(tribe.isAlive()).toBe(true);
+    expect(tribe.numTilesOwned()).toBe(tribeTiles);
+    expect(cs.numTilesOwned()).toBe(csTiles);
+  });
+
+  test("a pocket a city-state mostly borders goes to the other neighbor", async () => {
+    const { game, a, cs } = await founded();
+    const tribe = game.addPlayer(
+      new PlayerInfo("pocketed", PlayerType.Bot, null, "pocketed"),
+    );
+    // The tribe's main body sits on open land; its pocket is walled in by the
+    // city-state on three sides and by `a` on the fourth.
+    conquerRect(game, tribe, 10, 150, 60, 190);
+    conquerRect(game, cs, 128, 128, 144, 144);
+    conquerRect(game, a, 128, 128, 133, 144);
+    conquerRect(game, tribe, 133, 133, 138, 138);
+    const pocket = game.ref(135, 135);
+    const csTiles = cs.numTilesOwned();
+
+    runAnnexation(game, tribe);
+
+    expect(game.ownerID(pocket)).toBe(a.smallID());
+    expect(cs.numTilesOwned()).toBe(csTiles);
+  });
 });
 
 describe("city-states: conquest", () => {

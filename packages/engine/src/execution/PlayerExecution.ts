@@ -202,7 +202,14 @@ export class PlayerExecution implements Execution {
       lMaxX,
       lMaxY,
     );
-    if (ring && !ring.enemy.isFriendly(this.player)) {
+    // A city-state never takes land (engine-lib/game/WorldFeatures.ts), so a
+    // body ringed by one alone stays put. A coalition never includes one: a
+    // city-state can't ally.
+    if (
+      ring &&
+      !ring.enemy.isFriendly(this.player) &&
+      !(!ring.coalition && ring.enemy.isCityState())
+    ) {
       const removed = this.removeCluster(
         largestCluster,
         lMinX,
@@ -1045,7 +1052,9 @@ export class PlayerExecution implements Execution {
           continue;
         }
         const owner = this.mg.playerBySmallID(ownerId) as Player;
-        if (!owner.isFriendly(this.player)) {
+        // City-states never take land, so they never annex a pocket either:
+        // without this they win pockets on border length alone and snowball.
+        if (!owner.isFriendly(this.player) && !owner.isCityState()) {
           neighbors.set(owner, (neighbors.get(owner) ?? 0) + 1);
         }
       }
