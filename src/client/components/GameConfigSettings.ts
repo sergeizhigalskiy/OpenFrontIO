@@ -8,7 +8,10 @@ import {
   Trios,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
-import { TeamCountConfig } from "@openfront/engine-api/Schemas";
+import {
+  BOSS_RAID_NATION_BOSS,
+  TeamCountConfig,
+} from "@openfront/engine-api/Schemas";
 import {
   DOOMSDAY_CLOCK_SPEEDS,
   DoomsdayClockSpeed,
@@ -190,6 +193,17 @@ export interface ToggleOptionConfig {
   doomsdayClockSpeed?: DoomsdayClockSpeed;
 }
 
+export interface BossRaidSettings {
+  enabled: boolean;
+  // BOSS_RAID_NATION_BOSS, or a candidate's clientID.
+  boss: string;
+  // Lobby players who can volunteer as the Boss (none in singleplayer).
+  candidates: { clientID: string; name: string }[];
+  timerMinutes: number | undefined;
+  // A translation key when the lobby can't start this raid.
+  errorKey: string | null;
+}
+
 export interface GameConfigSettingsData {
   map: {
     selected: GameMapType;
@@ -208,6 +222,8 @@ export interface GameConfigSettingsData {
   teamCount: {
     selected: TeamCountConfig;
   };
+  // Boss Raid as a third mode choice. Absent: the choice isn't offered.
+  bossRaid?: BossRaidSettings;
   options: {
     titleKey: string;
     bots: {
@@ -290,6 +306,76 @@ export class GameConfigSettings extends LitElement {
   private handleTeamCountSelect = (count: TeamCountConfig) => {
     this.emit("team-count-selected", { count });
   };
+
+  private handleBossRaidSelect = () => {
+    this.emit("boss-raid-selected", {});
+  };
+
+  private handleBossSelect = (boss: string) => {
+    this.emit("boss-raid-boss-selected", { boss });
+  };
+
+  private handleBossRaidTimerInput = (e: Event) => {
+    const value = Number((e.target as HTMLInputElement).value);
+    this.emit("boss-raid-timer-changed", {
+      minutes: Number.isFinite(value) && value > 0 ? value : undefined,
+    });
+  };
+
+  private renderBossRaid(bossRaid: BossRaidSettings): TemplateResult {
+    const choices = [
+      {
+        id: BOSS_RAID_NATION_BOSS,
+        label: translateText("boss_raid.nation_boss"),
+      },
+      ...bossRaid.candidates.map((c) => ({ id: c.clientID, label: c.name })),
+    ];
+    return html`
+      <section class="space-y-4" data-boss-raid-settings>
+        <div
+          class="text-xs font-bold text-white/40 uppercase tracking-widest pl-2"
+        >
+          ${translateText("boss_raid.pick_boss")}
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          ${choices.map((c) =>
+            renderTextCardButton(
+              c.label,
+              bossRaid.boss === c.id,
+              () => this.handleBossSelect(c.id),
+              "px-4 py-3 text-center",
+            ),
+          )}
+        </div>
+        <label
+          class="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-4"
+        >
+          <span class="${CARD_LABEL_CLASS} text-white flex-1">
+            ${translateText("boss_raid.timer")}
+          </span>
+          <input
+            type="number"
+            min="1"
+            max="120"
+            step="1"
+            class="w-20 rounded-md bg-black/40 border border-white/20 px-2 py-1 text-white text-sm"
+            .value=${String(bossRaid.timerMinutes ?? "")}
+            @input=${this.handleBossRaidTimerInput}
+          />
+        </label>
+        <div class="text-[11px] text-white/50 pl-2">
+          ${translateText("boss_raid.rules")}
+        </div>
+        ${
+          bossRaid.errorKey !== null
+            ? html`<div class="text-xs text-red-300 pl-2" role="alert">
+                ${translateText(bossRaid.errorKey)}
+              </div>`
+            : nothing
+        }
+      </section>
+    `;
+  }
 
   private handleOptionToggle = (toggle: ToggleOptionConfig) => {
     this.emit("option-toggle-changed", {
@@ -435,6 +521,7 @@ export class GameConfigSettings extends LitElement {
   render() {
     if (!this.settings) return nothing;
     const settings = this.settings;
+    const bossRaidOn = settings.bossRaid?.enabled ?? false;
 
     return html`
       <div class=${this.sectionGapClass}>
@@ -510,9 +597,12 @@ export class GameConfigSettings extends LitElement {
           "bg-purple-500/20",
           "host_modal.mode",
           html`
-            <div class="grid grid-cols-2 gap-4">
+            <div
+              class="grid ${settings.bossRaid ? "grid-cols-3" : "grid-cols-2"} gap-4"
+            >
               ${[GameMode.FFA, GameMode.Team].map((mode) => {
-                const isSelected = settings.gameMode.selected === mode;
+                const isSelected =
+                  settings.gameMode.selected === mode && !bossRaidOn;
                 return html`
                   <button
                     class="${cardClass(isSelected, "py-6 text-center")}"
@@ -530,11 +620,31 @@ export class GameConfigSettings extends LitElement {
                   </button>
                 `;
               })}
+              ${
+                settings.bossRaid
+                  ? html`<button
+                      class="${cardClass(bossRaidOn, "py-6 text-center")}"
+                      data-mode="boss-raid"
+                      @click=${this.handleBossRaidSelect}
+                    >
+                      <span
+                        class="text-sm font-bold text-white uppercase tracking-widest"
+                      >
+                        ${translateText("game_mode.boss_raid")}
+                      </span>
+                    </button>`
+                  : nothing
+              }
             </div>
           `,
         )}
         ${
-          settings.gameMode.selected === GameMode.FFA
+          settings.bossRaid && bossRaidOn
+            ? this.renderBossRaid(settings.bossRaid)
+            : nothing
+        }
+        ${
+          settings.gameMode.selected === GameMode.FFA || bossRaidOn
             ? nothing
             : html`
                 <section class="space-y-6">

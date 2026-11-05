@@ -8,7 +8,14 @@ import {
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
 import type { SnapshotHeader } from "@openfront/engine-api/game/SnapshotHeader";
-import { TeamCountConfig } from "@openfront/engine-api/Schemas";
+import {
+  BOSS_RAID_NATION_BOSS,
+  TeamCountConfig,
+} from "@openfront/engine-api/Schemas";
+import {
+  BOSS_RAID_DEFAULT_TIMER_MINUTES,
+  bossRaidConfigError,
+} from "@openfront/engine-lib/game/BossRaid";
 import { DoomsdayClockSpeed } from "@openfront/engine-lib/game/DoomsdayClock";
 import { UserMeResponse } from "@openfront/shared/ApiSchemas";
 import { assetUrl } from "@openfront/shared/AssetUrls";
@@ -148,6 +155,7 @@ const DEFAULT_OPTIONS = {
   customAllianceMinutes: undefined as number | undefined,
   waterNukes: false,
   conventionalWar: false,
+  bossRaid: false,
   doomsdayClock: false,
   doomsdayClockSpeed: "normal" as DoomsdayClockSpeed,
   overtime: false,
@@ -238,6 +246,9 @@ export class SinglePlayerModal extends BaseModal {
     DEFAULT_OPTIONS.customAllianceMinutes;
   @state() private waterNukes: boolean = DEFAULT_OPTIONS.waterNukes;
   @state() private conventionalWar: boolean = DEFAULT_OPTIONS.conventionalWar;
+  // Boss Raid: you and the nations raid an Impossible nation Boss. A Team
+  // game, timed by the max timer.
+  @state() private bossRaid: boolean = DEFAULT_OPTIONS.bossRaid;
   @state() private doomsdayClock: boolean = DEFAULT_OPTIONS.doomsdayClock;
   @state() private doomsdayClockSpeed: DoomsdayClockSpeed =
     DEFAULT_OPTIONS.doomsdayClockSpeed;
@@ -569,6 +580,13 @@ export class SinglePlayerModal extends BaseModal {
               teamCount: {
                 selected: this.teamCount,
               },
+              bossRaid: {
+                enabled: this.bossRaidOn(),
+                boss: BOSS_RAID_NATION_BOSS,
+                candidates: [],
+                timerMinutes: this.maxTimer ? this.maxTimerValue : undefined,
+                errorKey: this.bossRaidError(),
+              },
               options: {
                 titleKey: "game_settings.options",
                 bots: {
@@ -631,6 +649,8 @@ export class SinglePlayerModal extends BaseModal {
               this.handleConfigDoomsdayClockSpeedSelected
             }
             @game-mode-selected=${this.handleConfigGameModeSelected}
+            @boss-raid-selected=${this.handleBossRaidSelected}
+            @boss-raid-timer-changed=${this.handleBossRaidTimerChanged}
             @team-count-selected=${this.handleConfigTeamCountSelected}
             @bots-changed=${this.handleBotsChange}
             @nations-changed=${this.handleNationsChange}
@@ -684,6 +704,7 @@ export class SinglePlayerModal extends BaseModal {
       this.customAllianceMinutes !== DEFAULT_OPTIONS.customAllianceMinutes ||
       this.waterNukes !== DEFAULT_OPTIONS.waterNukes ||
       this.conventionalWar !== DEFAULT_OPTIONS.conventionalWar ||
+      this.bossRaid !== DEFAULT_OPTIONS.bossRaid ||
       this.doomsdayClock !== DEFAULT_OPTIONS.doomsdayClock ||
       // Pace only matters when the mode is on (startGame drops it when off).
       (this.doomsdayClock &&
@@ -816,6 +837,7 @@ export class SinglePlayerModal extends BaseModal {
     this.customAllianceMinutes = DEFAULT_OPTIONS.customAllianceMinutes;
     this.waterNukes = DEFAULT_OPTIONS.waterNukes;
     this.conventionalWar = DEFAULT_OPTIONS.conventionalWar;
+    this.bossRaid = DEFAULT_OPTIONS.bossRaid;
     this.doomsdayClock = DEFAULT_OPTIONS.doomsdayClock;
     this.doomsdayClockSpeed = DEFAULT_OPTIONS.doomsdayClockSpeed;
     this.overtime = DEFAULT_OPTIONS.overtime;
@@ -989,8 +1011,43 @@ export class SinglePlayerModal extends BaseModal {
 
   private handleConfigGameModeSelected = (e: Event) => {
     const customEvent = e as CustomEvent<{ mode: GameMode }>;
+    this.bossRaid = false;
     this.handleGameModeSelection(customEvent.detail.mode);
   };
+
+  // Boss Raid is a Team game with the max timer on, at the Boss Raid default
+  // unless one is already set.
+  private handleBossRaidSelected = () => {
+    this.bossRaid = true;
+    this.maxTimer = true;
+    this.maxTimerValue ??= BOSS_RAID_DEFAULT_TIMER_MINUTES;
+    this.handleGameModeSelection(GameMode.Team);
+  };
+
+  private handleBossRaidTimerChanged = (e: Event) => {
+    const { minutes } = (e as CustomEvent<{ minutes: number | undefined }>)
+      .detail;
+    this.maxTimer = minutes !== undefined;
+    this.maxTimerValue =
+      minutes === undefined
+        ? undefined
+        : Math.max(1, Math.min(120, Math.round(minutes)));
+  };
+
+  private bossRaidOn(): boolean {
+    return this.bossRaid && this.gameMode === GameMode.Team;
+  }
+
+  // Why this Boss Raid can't start, as a translation key: in singleplayer
+  // the Boss is a nation, so it needs one.
+  private bossRaidError(): string | null {
+    if (!this.bossRaidOn()) return null;
+    return bossRaidConfigError(
+      { gameMode: this.gameMode, bossRaid: { boss: BOSS_RAID_NATION_BOSS } },
+      ["you"],
+      this.nations,
+    );
+  }
 
   private handleConfigTeamCountSelected = (e: Event) => {
     const customEvent = e as CustomEvent<{ count: TeamCountConfig }>;
@@ -1292,6 +1349,11 @@ export class SinglePlayerModal extends BaseModal {
     // A second click while the first is still resolving would dispatch a
     // second join-lobby for a different gameID.
     if (this.starting) return;
+    const bossRaidError = this.bossRaidError();
+    if (bossRaidError !== null) {
+      showToast(translateText(bossRaidError), "red");
+      return;
+    }
     // Validate and clamp maxTimer setting before starting
     let finalMaxTimerValue: number | undefined = undefined;
     if (this.maxTimer) {
@@ -1368,6 +1430,9 @@ export class SinglePlayerModal extends BaseModal {
               : {}),
             ...(this.waterNukes ? { waterNukes: true } : {}),
             ...(this.conventionalWar ? { conventionalWar: true } : {}),
+            ...(this.bossRaidOn()
+              ? { bossRaid: { boss: BOSS_RAID_NATION_BOSS } }
+              : {}),
             ...(this.doomsdayClock
               ? {
                   doomsdayClock: {

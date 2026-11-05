@@ -15,6 +15,10 @@ import {
   Winner,
 } from "@openfront/engine-api/Schemas";
 import { resolveTribeNameData } from "@openfront/engine-lib/execution/utils/TribeNames";
+import {
+  bossRaidHumanTeams,
+  bossRaidOf,
+} from "@openfront/engine-lib/game/BossRaid";
 import { nationCountForGame } from "@openfront/engine-lib/game/NationCount";
 import { humanTeams } from "@openfront/engine-lib/game/TeamAssignment";
 import { LOBBY_LABEL_MAX, simpleHash } from "@openfront/engine-lib/Util";
@@ -107,12 +111,17 @@ function withRecordedTeams(
       ),
   );
   let teams: (Team | undefined)[];
+  const nationCount = nationCountForGame(
+    config,
+    map.defaultNationCount,
+    humans.length,
+  );
+  const bossRaid = bossRaidOf(config);
   try {
-    teams = humanTeams(
-      humans,
-      config.playerTeams ?? 0,
-      nationCountForGame(config, map.defaultNationCount, humans.length),
-    );
+    teams =
+      bossRaid !== null
+        ? bossRaidHumanTeams(bossRaid, humans, nationCount)
+        : humanTeams(humans, config.playerTeams ?? 0, nationCount);
   } catch {
     return players;
   }

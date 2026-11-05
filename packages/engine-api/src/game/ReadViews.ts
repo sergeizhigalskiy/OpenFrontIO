@@ -3,6 +3,7 @@ import {
   Gold,
   PlayerID,
   PlayerType,
+  Team,
   TerraNullius,
   UnitType,
 } from "./GameTypes";
@@ -27,6 +28,8 @@ export interface PlayerLike {
   troops(): number;
   gold(): Gold;
   units(type: UnitType): readonly UnitLike[];
+  // Boss Raid scales the Boss team (see engine-lib/game/BossRaid.ts).
+  team(): Team | null;
 }
 
 export interface UnitLike {

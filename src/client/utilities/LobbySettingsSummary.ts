@@ -4,7 +4,10 @@ import {
   GameMode,
   GameType,
 } from "@openfront/engine-api/game/GameTypes";
-import { GameConfig } from "@openfront/engine-api/Schemas";
+import {
+  BOSS_RAID_NATION_BOSS,
+  GameConfig,
+} from "@openfront/engine-api/Schemas";
 import { html, TemplateResult } from "lit";
 import { renderDuration, translateText } from "../../client/Utils";
 
@@ -127,6 +130,14 @@ export function notableLobbySettings(
     items.push({
       label: translateText("game_settings.conventional_war"),
       value: enabled,
+    });
+  if (isTeam && c.bossRaid)
+    items.push({
+      label: translateText("game_mode.boss_raid"),
+      value:
+        c.bossRaid.boss === BOSS_RAID_NATION_BOSS
+          ? translateText("boss_raid.nation_boss")
+          : translateText("boss_raid.player_boss"),
     });
   if (c.waterNukes)
     items.push({

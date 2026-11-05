@@ -15,6 +15,10 @@ import { NukeType } from "@openfront/engine-api/StatsSchemas";
 import { Config } from "@openfront/engine-lib/configuration/Config";
 import { exp, log, pow2 } from "@openfront/engine-lib/DetMath";
 import {
+  bossGoldIncomePercent,
+  isBossRaidBoss,
+} from "@openfront/engine-lib/game/BossRaid";
+import {
   AIRDROP_COST,
   BALLISTIC_MISSILE_COST,
   clusterMissileCost,
@@ -486,10 +490,13 @@ export class EngineConfig extends Config {
   private goldMultiplierFor(player: PlayerLike): number {
     const base = this.goldMultiplier();
     const hc = this._gameConfig.hostCheats;
-    if (hc?.goldMultiplier && player.isLobbyCreator()) {
-      return hc.goldMultiplier;
+    const multiplier =
+      hc?.goldMultiplier && player.isLobbyCreator() ? hc.goldMultiplier : base;
+    // Boss Raid: only the Boss's income scales, so no one else's changes.
+    if (isBossRaidBoss(this._gameConfig, player)) {
+      return (multiplier * bossGoldIncomePercent(this.bossRaidRaiders())) / 100;
     }
-    return base;
+    return multiplier;
   }
 
   public conquerGoldAmount(captured: PlayerLike): Gold {

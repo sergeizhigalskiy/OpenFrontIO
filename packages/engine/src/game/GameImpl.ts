@@ -40,6 +40,13 @@ import {
 } from "@openfront/engine-api/Schemas";
 import { ATTACK_INDEX_SENT } from "@openfront/engine-api/StatsSchemas";
 import { renderNumber } from "@openfront/engine-lib/Format";
+import {
+  assignBossRaidTeams,
+  BOSS_RAID_BOSS_TEAM,
+  BOSS_RAID_RAIDER_TEAM,
+  bossRaidOf,
+  countBossRaidRaiders,
+} from "@openfront/engine-lib/game/BossRaid";
 import { GameMapImpl } from "@openfront/engine-lib/game/GameMapImpl";
 import {
   MotionPlanRecord,
@@ -222,6 +229,10 @@ export class GameImpl implements Game {
   }
 
   private populateTeams() {
+    if (bossRaidOf(this._config.gameConfig()) !== null) {
+      this.playerTeams = [BOSS_RAID_BOSS_TEAM, BOSS_RAID_RAIDER_TEAM];
+      return;
+    }
     const totalPlayers = this._humans.length + this._nations.length;
     this.playerTeams = resolveTeamsList(
       this._config.playerTeams(),
@@ -233,6 +244,18 @@ export class GameImpl implements Game {
     if (this.config().gameConfig().gameMode === GameMode.FFA) {
       this._humans.forEach((p) => this.addPlayer(p));
       this._nations.forEach((n) => this.addPlayer(n.playerInfo));
+      return;
+    }
+
+    const bossRaid = bossRaidOf(this._config.gameConfig());
+    if (bossRaid !== null) {
+      const teams = assignBossRaidTeams(
+        bossRaid,
+        this._humans,
+        this._nations.map((n) => n.playerInfo),
+      );
+      for (const [playerInfo, team] of teams) this.addPlayer(playerInfo, team);
+      this._config.setBossRaidRaiders(countBossRaidRaiders(this.allPlayers()));
       return;
     }
 

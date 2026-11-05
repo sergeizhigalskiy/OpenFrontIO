@@ -190,6 +190,23 @@
     "title": "Your account is banned",
     "until": "Banned until {date}."
   },
+  "boss_raid": {
+    "boss_not_in_lobby": "The player picked as the Boss is no longer in the lobby. Pick a new Boss.",
+    "boss_won": "Boss Raid: the Boss survived!",
+    "lose_as_boss": "Boss Raid: the Raiders brought you down.",
+    "lose_as_raider": "Boss Raid: the Boss survived the raid.",
+    "nation_boss": "Impossible nation",
+    "needs_nation": "An Impossible nation Boss needs nations turned on.",
+    "needs_raiders": "A Boss Raid needs at least one Raider.",
+    "needs_team_mode": "Boss Raid is a team mode.",
+    "pick_boss": "Boss",
+    "player_boss": "Player",
+    "raiders_won": "Boss Raid: the Raiders defeated the Boss!",
+    "rules": "Everyone else is a Raider on one team. Raiders win by eliminating the Boss. The Boss wins by surviving the timer. For each Raider the Boss gets +60% max troops, +30% troop growth and +30% gold income.",
+    "timer": "Boss survives for (minutes)",
+    "win_as_boss": "Boss Raid: you survived the raid!",
+    "win_as_raider": "Boss Raid: the Boss has fallen!"
+  },
   "build_menu": {
     "desc": {
       "airbase": "Launches airstrikes, airdrops and drones",
@@ -1061,6 +1078,7 @@
     "stats": "Stats"
   },
   "game_mode": {
+    "boss_raid": "Boss Raid",
     "ffa": "Free for All",
     "hvn": "Humans vs Nations",
     "teams": "Teams"
@@ -1381,6 +1399,11 @@
     "subscription_required_body": "You need a Warlord or Sovereign subscription to make your lobby public.",
     "subscription_required_title": "Subscription Required",
     "team_count": "Number of Teams",
+    "team_pick_auto": "Auto",
+    "team_pick_auto_bucket": "Unassigned (auto)",
+    "team_pick_hint": "Drag players onto a team, or tap a player and then a team. Players left here fill the open seats automatically.",
+    "team_pick_pinned": "Picked",
+    "team_pick_viewer_hint": "The host picks teams. Players left here fill the open seats automatically.",
     "teams_Duos": "Duos (teams of 2)",
     "teams_Quads": "Quads (teams of 4)",
     "teams_Trios": "Trios (teams of 3)",
@@ -2635,15 +2658,26 @@
   },
   "team_colors": {
     "blue": "Blue",
+    "boss": "Boss",
     "bot": "Tribes",
     "green": "Green",
     "humans": "Humans",
     "nations": "Nations",
     "orange": "Orange",
     "purple": "Purple",
+    "raiders": "Raiders",
     "red": "Red",
     "teal": "Teal",
     "yellow": "Yellow"
+  },
+  "team_pick": {
+    "no_such_team": "That team doesn't exist anymore.",
+    "not_allowed": "Teams can only be picked in a private Team lobby.",
+    "not_host": "Only the host can move players between teams.",
+    "started": "The game has already started.",
+    "team_full": "That team is full.",
+    "team_full_named": "{team} is full ({max} players max).",
+    "unknown_player": "That player is no longer in the lobby."
   },
   "territory_patterns": {
     "pattern": {

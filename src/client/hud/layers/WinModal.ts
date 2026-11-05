@@ -1,6 +1,7 @@
 import { GameType, RankedType } from "@openfront/engine-api/game/GameTypes";
 import { GameUpdateType } from "@openfront/engine-api/game/GameUpdates";
 import type { AllPlayersStats, Winner } from "@openfront/engine-api/Schemas";
+import { isBossRaid } from "@openfront/engine-lib/game/BossRaid";
 import type { GameXpEligible, Progress } from "@openfront/shared/ApiSchemas";
 import { Pattern } from "@openfront/shared/CosmeticSchemas";
 import { EventBus } from "@openfront/shared/EventBus";
@@ -59,6 +60,7 @@ import { steamSDK } from "../../SteamSDK";
 import { SendWinnerEvent } from "../../Transport";
 import { shareGame } from "../../utilities/ShareGame";
 import { GameView } from "../../view";
+import { bossRaidWinTitle } from "./BossRaidTitles";
 
 type LegendCeremonyModule = typeof import("../../components/LegendCeremony");
 
@@ -1072,6 +1074,12 @@ export class WinModal extends LitElement implements Controller {
             team: getTranslatedPlayerTeamLabel(wu.winner[1]),
           });
           this.isWin = false;
+        }
+        if (isBossRaid(this.game.config().gameConfig())) {
+          this._title = bossRaidWinTitle(
+            wu.winner[1],
+            this.game.myPlayer()?.team() ?? null,
+          );
         }
         this.playEndOfGameSound();
         history.replaceState(null, "", `${window.location.pathname}?replay`);

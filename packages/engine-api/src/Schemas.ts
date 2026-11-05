@@ -259,6 +259,17 @@ export const PoolConfigSchema = z
   });
 export type PoolConfig = z.infer<typeof PoolConfigSchema>;
 
+// Boss Raid (engine-lib/game/BossRaid.ts): a Team game of everyone against
+// one Boss. `boss` is BOSS_RAID_NATION_BOSS for an Impossible nation, or the
+// clientID of the lobby player who volunteered. `raiders` is not a lobby
+// setting: the engine fills it in when the game is created.
+export const BOSS_RAID_NATION_BOSS = "nation";
+export const BossRaidConfigSchema = z.object({
+  boss: z.string().regex(/^(nation|[A-Za-z0-9]{8,10})$/),
+  raiders: zb.uint({ max: 1000 }).optional(),
+});
+export type BossRaidConfig = z.infer<typeof BossRaidConfigSchema>;
+
 export const GameConfigSchema = z.object({
   gameMap: z.enum(GameMapType),
   difficulty: z.enum(Difficulty),
@@ -350,6 +361,8 @@ export const GameConfigSchema = z.object({
   // built, and airbases, airstrikes, airdrops, cruise missiles and capitals
   // are on (see engine-lib/game/ConventionalWar.ts). Off when absent.
   conventionalWar: z.boolean().optional(),
+  // Boss Raid mode, only with gameMode Team. null clears it in a patch.
+  bossRaid: BossRaidConfigSchema.nullable().optional(),
 });
 
 // What a host sends in update_game_config. maxPlayers is the private-lobby

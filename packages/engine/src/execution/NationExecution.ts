@@ -103,18 +103,22 @@ export class NationExecution implements Execution {
 
   init(mg: Game) {
     this.mg = mg;
-    this.attackRate = this.getAttackRate();
-    this.attackTick = this.random.nextInt(0, this.attackRate);
-
+    // The player first: a Boss Raid's nation Boss reacts at Impossible speed.
+    // Neither lookup draws from the PRNG, so the order changes no result.
     if (!this.mg.hasPlayer(this.nation.playerInfo.id)) {
       this.player = this.mg.addPlayer(this.nation.playerInfo);
     } else {
       this.player = this.mg.player(this.nation.playerInfo.id);
     }
+    this.attackRate = this.getAttackRate();
+    this.attackTick = this.random.nextInt(0, this.attackRate);
   }
 
   private getAttackRate(): number {
-    const { difficulty } = this.mg.config().gameConfig();
+    const difficulty =
+      this.player === null
+        ? this.mg.config().gameConfig().difficulty
+        : this.mg.config().difficultyFor(this.player);
     switch (difficulty) {
       case Difficulty.Easy:
         return this.random.nextInt(65, 100); // Slower reactions

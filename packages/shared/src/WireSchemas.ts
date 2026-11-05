@@ -40,7 +40,8 @@ export type ClientMessage =
   | ClientLogMessage
   | ClientHashMessage
   | ClientSpectateMessage
-  | ClientReportMessage;
+  | ClientReportMessage
+  | ClientAssignTeamMessage;
 
 export type ServerMessage =
   | ServerTurnMessage
@@ -107,6 +108,10 @@ export type ClientLogMessage = z.infer<typeof ClientLogMessageSchema>;
 export type ClientHashMessage = z.infer<typeof ClientHashSchema>;
 
 export type ClientSpectateMessage = z.infer<typeof ClientSpectateMessageSchema>;
+
+export type ClientAssignTeamMessage = z.infer<
+  typeof ClientAssignTeamMessageSchema
+>;
 
 export type PlayerCosmeticRefs = z.infer<typeof PlayerCosmeticRefsSchema>;
 
@@ -754,6 +759,16 @@ export const ClientSpectateMessageSchema = z.object({
   spectator: z.boolean(),
 });
 
+// Host-only, lobby-phase only: pin a player to a team slot (an index into the
+// game's team list, like PlayerSchema.teamIndex), or send them back to auto
+// balancing with null. The server checks the sender is the host and that the
+// team has room (src/server/HostTeamPins.ts), then rebroadcasts the lobby.
+export const ClientAssignTeamMessageSchema = z.object({
+  type: z.literal("assign_team"),
+  target: ID,
+  teamIndex: zb.uint({ max: 1000 }).nullable(),
+});
+
 export const ClientMessageSchema = zb.discriminatedUnion("type", [
   ClientSendWinnerSchema,
   ClientSendLiveStatsSchema,
@@ -765,6 +780,8 @@ export const ClientMessageSchema = zb.discriminatedUnion("type", [
   ClientHashSchema,
   ClientSpectateMessageSchema,
   ClientReportMessageSchema,
+  // Appended, never inserted: variant order is the wire tag (zbin/README.md).
+  ClientAssignTeamMessageSchema,
 ]);
 
 //

@@ -328,7 +328,22 @@ export function joinLobby(
         });
     }
     if (message.type === "error") {
-      if (message.error === "full-lobby" || message.error === "game-started") {
+      if (message.error.startsWith("team_pick.")) {
+        // The server refused a host's team move (HostTeamPins.ts): say why,
+        // the lobby itself is fine.
+        window.dispatchEvent(
+          new CustomEvent("show-message", {
+            detail: {
+              message: translateText(message.error),
+              color: "red",
+              duration: 4000,
+            },
+          }),
+        );
+      } else if (
+        message.error === "full-lobby" ||
+        message.error === "game-started"
+      ) {
         document.dispatchEvent(
           new CustomEvent("leave-lobby", {
             detail: { lobby: lobbyConfig.gameID, cause: message.error },

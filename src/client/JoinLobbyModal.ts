@@ -260,6 +260,8 @@ export class JoinLobbyModal extends BaseModal {
                               this.gameConfig?.nations ?? "default",
                               this.nationCount,
                             )}
+                            .teamPicking=${hostClientID !== ""}
+                            .bossRaid=${this.gameConfig?.bossRaid ?? null}
                           ></lobby-player-view>
                         `
                       : ""
