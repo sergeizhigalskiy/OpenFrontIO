@@ -37,7 +37,10 @@ import { BorderStampPass } from "./passes/BorderStampPass";
 import { CapitalMarker, CapitalPass } from "./passes/CapitalPass";
 import { CoordinateGridPass } from "./passes/CoordinateGridPass";
 import { CrosshairPass } from "./passes/CrosshairPass";
-import { DefenseCoveragePass } from "./passes/DefenseCoveragePass";
+import {
+  DefenseCoveragePass,
+  defensePostCircles,
+} from "./passes/DefenseCoveragePass";
 import { FalloutBloomPass } from "./passes/FalloutBloomPass";
 import { FalloutLightPass } from "./passes/FalloutLightPass";
 import { FxPass } from "./passes/fx-pass";
@@ -413,7 +416,6 @@ export class GPURenderer {
       mapW,
       mapH,
       this.res.tileTex,
-      this.settings,
     );
 
     // --- Heat manager (needs tileTex, heatTexA/B) ---
@@ -966,18 +968,9 @@ export class GPURenderer {
     this.structureLevelPass.updateStructures(units);
     this.samRadiusPass.updateStructures(units);
     this.unitPass.setStructures(units);
-    const posts: { x: number; y: number; ownerID: number }[] = [];
-    const w = this.mapW;
-    for (const u of units.values()) {
-      if (u.unitType === "Defense Post" && !u.underConstruction) {
-        posts.push({
-          x: u.pos % w,
-          y: (u.pos - (u.pos % w)) / w,
-          ownerID: u.ownerID,
-        });
-      }
-    }
-    this.defenseCoveragePass.updateDefensePosts(posts);
+    this.defenseCoveragePass.updateDefensePosts(
+      defensePostCircles(units.values(), this.mapW),
+    );
   }
 
   applyDeadUnits(deadUnits: DeadUnitFx[]): void {

@@ -1,6 +1,8 @@
 /**
  * DefenseCoveragePass — per-tile "is this tile defended by a same-owner Defense
- * Post?" flag, computed by stamping one instanced circle per post.
+ * Post?" flag, computed by stamping one instanced circle per post. Each post
+ * stamps its own radius: a post's range grows with its level
+ * (engine-lib/game/Siege.ts defensePostRange).
  *
  * Replaces the old per-fragment scan (border-compute looped over a uniform array
  * of up to 64 posts for every border tile). Here we invert the loop: each post
@@ -29,33 +31,61 @@
  * viewport before screen draws.
  */
 
+import { defensePostRange } from "@openfront/engine-lib/game/Siege";
+import { UT_DEFENSE_POST, type UnitState } from "../../types";
 import { DynamicInstanceBuffer } from "../DynamicBuffer";
-import type { RenderSettings } from "../RenderSettings";
 import coverageFragSrc from "../shaders/defense-coverage/defense-coverage.frag.glsl?raw";
 import coverageVertSrc from "../shaders/defense-coverage/defense-coverage.vert.glsl?raw";
 import { createProgram, createTexture2D, shaderSrc } from "../utils/GlUtils";
 import { TILE_DEFINES } from "../utils/TileCodec";
 
-/** Per-instance data (3 floats): tileX, tileY, ownerID. */
-const FLOATS_PER_INSTANCE = 3;
+/** One built defense post's circle: its tile, owner and own range. */
+export interface DefensePostCircle {
+  x: number;
+  y: number;
+  ownerID: number;
+  range: number;
+}
+
+/**
+ * The circles DefenseCoveragePass stamps: every built defense post, with
+ * the range of its level (a post covers more the higher its level).
+ */
+export function defensePostCircles(
+  units: Iterable<UnitState>,
+  mapW: number,
+): DefensePostCircle[] {
+  const posts: DefensePostCircle[] = [];
+  for (const u of units) {
+    if (u.unitType !== UT_DEFENSE_POST || u.underConstruction) continue;
+    posts.push({
+      x: u.pos % mapW,
+      y: (u.pos - (u.pos % mapW)) / mapW,
+      ownerID: u.ownerID,
+      range: defensePostRange(u.level),
+    });
+  }
+  return posts;
+}
+
+/** Per-instance data (4 floats): tileX, tileY, ownerID, range in tiles. */
+const FLOATS_PER_INSTANCE = 4;
 
 /**
  * Tile block size for incremental scissored re-stamping. ~2× the post diameter
- * (range ≈ 30, so circles ≈ 60 wide): small enough to confine work to the
+ * (range 30–45, so circles 60–90 wide): small enough to confine work to the
  * changed region, large enough to keep the per-block draw-call count low.
  */
 const BLOCK = 128;
 
 export class DefenseCoveragePass {
   private gl: WebGL2RenderingContext;
-  private settings: RenderSettings;
   private mapW: number;
   private mapH: number;
   private tileTex: WebGLTexture;
 
   private program: WebGLProgram;
   private uMapSize: WebGLUniformLocation;
-  private uRange: WebGLUniformLocation;
 
   private coverageTex: WebGLTexture;
   private fbo: WebGLFramebuffer;
@@ -82,10 +112,8 @@ export class DefenseCoveragePass {
     mapW: number,
     mapH: number,
     tileTex: WebGLTexture,
-    settings: RenderSettings,
   ) {
     this.gl = gl;
-    this.settings = settings;
     this.mapW = mapW;
     this.mapH = mapH;
     this.tileTex = tileTex;
@@ -103,7 +131,6 @@ export class DefenseCoveragePass {
       "DefenseCoveragePass",
     );
     this.uMapSize = gl.getUniformLocation(this.program, "uMapSize")!;
-    this.uRange = gl.getUniformLocation(this.program, "uRange")!;
 
     gl.useProgram(this.program);
     gl.uniform1i(gl.getUniformLocation(this.program, "uTileTex"), 0);
@@ -153,13 +180,13 @@ export class DefenseCoveragePass {
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
     gl.bindBuffer(gl.ARRAY_BUFFER, instGlBuf);
     gl.enableVertexAttribArray(1);
-    gl.vertexAttribPointer(1, 3, gl.FLOAT, false, FLOATS_PER_INSTANCE * 4, 0);
+    gl.vertexAttribPointer(1, 4, gl.FLOAT, false, FLOATS_PER_INSTANCE * 4, 0);
     gl.vertexAttribDivisor(1, 1);
     gl.bindVertexArray(null);
   }
 
-  /** Replace the set of defense posts. No cap. */
-  updateDefensePosts(posts: { x: number; y: number; ownerID: number }[]): void {
+  /** Replace the set of defense posts, each with its own range. No cap. */
+  updateDefensePosts(posts: readonly DefensePostCircle[]): void {
     this.count = posts.length;
     this.instanceBuf.ensureCapacity(posts.length);
     const f = this.instanceBuf.float32;
@@ -169,6 +196,7 @@ export class DefenseCoveragePass {
       f[off] = p.x;
       f[off + 1] = p.y;
       f[off + 2] = p.ownerID;
+      f[off + 3] = p.range;
     }
     if (posts.length > 0) {
       const gl = this.gl;
@@ -231,7 +259,6 @@ export class DefenseCoveragePass {
     // Shared stamp state (uniforms/textures/VAO don't change between blocks).
     gl.useProgram(this.program);
     gl.uniform2f(this.uMapSize, this.mapW, this.mapH);
-    gl.uniform1f(this.uRange, this.settings.mapOverlay.defensePostRange);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.tileTex);
     gl.bindVertexArray(this.vao);

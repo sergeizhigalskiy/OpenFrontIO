@@ -13,6 +13,8 @@ export const samLauncherIcon = assetUrl("images/SamLauncherIconWhite.svg");
 export const defensePostIcon = assetUrl("images/ShieldIconWhite.svg");
 export const minefieldIcon = assetUrl("images/ExplosionIconWhite.svg");
 export const coastalBatteryIcon = assetUrl("images/TargetIconWhite.svg");
+// An existing icon: the build hammer, for a field workshop.
+export const siegeCampIcon = assetUrl("images/BuildIconWhite.svg");
 // Conventional war: existing icons reused.
 export const airbaseIcon = assetUrl("images/FastForwardIconSolidWhite.svg");
 export const flakGunIcon = assetUrl("images/HighlightIconWhite.svg");

@@ -10,6 +10,12 @@ import { PlayerLike } from "@openfront/engine-api/game/ReadViews";
 import { GameConfig } from "@openfront/engine-api/Schemas";
 import { pow } from "../DetMath";
 import {
+  attackLogic,
+  AttackLogicInput,
+  AttackLogicResult,
+  AttackRules,
+} from "../game/AttackLogic";
+import {
   AIRBASE_CONSTRUCTION_TICKS,
   CONVENTIONAL_WAR_UNIT_TYPES,
   FLAK_GUN_CONSTRUCTION_TICKS,
@@ -21,6 +27,11 @@ import {
   COASTAL_BATTERY_HEALTH_PERCENT_OF_WARSHIP,
   MINEFIELD_MAX_DENSITY,
 } from "../game/NavalDefense";
+import {
+  DEFENSE_POST_MAX_LEVEL,
+  defensePostRange,
+  SIEGE_CAMP_CONSTRUCTION_TICKS,
+} from "../game/Siege";
 import { assertNever } from "../Util";
 
 export interface NukeMagnitude {
@@ -97,7 +108,7 @@ const OVERTIME_DEFAULTS = {
   dropPercentPerMinute: 2,
 };
 
-export class Config {
+export class Config implements AttackRules {
   private unitInfoCache = new Map<UnitType, UnitInfo>();
   constructor(
     protected _gameConfig: GameConfig,
@@ -117,6 +128,31 @@ export class Config {
 
   traitorDefenseDebuff(): number {
     return 0.5;
+  }
+  traitorSpeedDebuff(): number {
+    return 0.8;
+  }
+
+  falloutDefenseModifier(falloutRatio: number): number {
+    // falloutRatio is between 0 and 1
+    // So defense modifier is between [5, 2.5]
+    return 5 - falloutRatio * 2;
+  }
+
+  defensePostDefenseBonus(): number {
+    return 5;
+  }
+
+  defensePostSpeedBonus(): number {
+    return 3;
+  }
+
+  /**
+   * Per-tile attack outcome (see game/AttackLogic.ts). Here so the engine and
+   * the client's attack forecast run the same math with the same tunables.
+   */
+  attackLogic(input: AttackLogicInput): AttackLogicResult {
+    return attackLogic(input, this);
   }
   traitorDuration(): number {
     return 30 * 10; // 30 seconds
@@ -185,8 +221,9 @@ export class Config {
     return 90;
   }
 
-  defensePostRange(): number {
-    return 30;
+  /** Tiles a defense post of `level` covers (see game/Siege.ts). */
+  defensePostRange(level: number = 1): number {
+    return defensePostRange(level);
   }
 
   /**
@@ -261,7 +298,18 @@ export class Config {
         };
         break;
       case UnitType.DefensePost:
-        info = { constructionDuration: this.instantBuild() ? 0 : 5 * 10 };
+        info = {
+          constructionDuration: this.instantBuild() ? 0 : 5 * 10,
+          upgradable: true,
+          maxLevel: DEFENSE_POST_MAX_LEVEL,
+        };
+        break;
+      case UnitType.SiegeCamp:
+        info = {
+          constructionDuration: this.instantBuild()
+            ? 0
+            : SIEGE_CAMP_CONSTRUCTION_TICKS,
+        };
         break;
       case UnitType.SAMLauncher:
         info = {

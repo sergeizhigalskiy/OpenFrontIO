@@ -10,6 +10,12 @@ import {
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
 import { renderTroops } from "@openfront/engine-lib/Format";
+import { siegeCampTiles } from "@openfront/engine-lib/game/AttackForecast";
+import {
+  defensePostCoverage,
+  POST_COVERAGE_NONE,
+  POST_COVERAGE_REDUCED,
+} from "@openfront/engine-lib/game/Siege";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import {
   zInt,
@@ -41,6 +47,13 @@ const malusForRetreat = 25;
 export const SPEARHEAD_DELAY_PER_TILE = 2.5;
 /** Cap on the delay, so flanks still move eventually instead of stalling. */
 export const SPEARHEAD_MAX_DELAY = 120;
+/**
+ * Tiles of the attacker side's active siege camps, refilled at the start of
+ * each attack's tick (see siegeCampsForTick). Module-level scratch rather
+ * than state: it is rebuilt before every read, and the simulation is
+ * single-threaded.
+ */
+const SIEGE_CAMP_TILES: TileRef[] = [];
 export class AttackExecution implements Execution {
   private active: boolean = true;
   private toConquer = new FlatBinaryHeap();
@@ -323,6 +336,9 @@ export class AttackExecution implements Execution {
     }
 
     const borderSize = this.attack.borderSize() + this.random.nextInt(0, 5);
+    // Fixed for the tick, like the border size: camps only finish building
+    // or change hands between ticks.
+    const siegeCamps = targetPlayer !== null ? this.siegeCampsForTick() : 0;
     // Each tile consumes a fraction of the tick; conquer until it is spent.
     let tickBudget = 1;
 
@@ -363,7 +379,12 @@ export class AttackExecution implements Execution {
       const { attackerTroopLoss, defenderTroopLoss, tickFraction } = this.mg
         .config()
         .attackLogic(
-          this.attackLogicInput(troopCount, tileToConquer, borderSize),
+          this.attackLogicInput(
+            troopCount,
+            tileToConquer,
+            borderSize,
+            siegeCamps,
+          ),
         );
       tickBudget -= tickFraction;
       troopCount -= attackerTroopLoss;
@@ -376,24 +397,43 @@ export class AttackExecution implements Execution {
     }
   }
 
+  /**
+   * Fills SIEGE_CAMP_TILES with the active (built) siege camps of the
+   * attacker and their friends and returns how many there are. Skips the
+   * unit scan while no camp exists anywhere, as in most games.
+   */
+  private siegeCampsForTick(): number {
+    if (this.mg.unitCount(UnitType.SiegeCamp) === 0) return 0;
+    // A friend that went AFK still has its camp standing: friendly, as the
+    // client (whose views ignore disconnects) also counts it.
+    return siegeCampTiles(
+      this.mg.units(UnitType.SiegeCamp),
+      (owner) => owner === this._owner || this._owner.isFriendly(owner, true),
+      SIEGE_CAMP_TILES,
+    );
+  }
+
   private attackLogicInput(
     attackTroops: number,
     tile: TileRef,
     borderSize: number,
+    siegeCamps: number,
   ): AttackLogicInput {
     const defender = this.target.isPlayer() ? this.target : null;
-    // Same test as scanning nearbyUnits() for a post owned by the defender
-    // (active, not under construction, within range), without building a
-    // result array per conquered tile — this runs for every tile of every
-    // attack on the map.
-    const defenderHasDefensePost =
-      defender !== null &&
-      this.mg.hasUnitNearby(
-        tile,
-        this.mg.config().defensePostRange(),
-        UnitType.DefensePost,
-        defender.id(),
-      );
+    // A post owned by the defender (active, built) whose own level's range
+    // reaches the tile. Allocation-free: this runs for every tile of every
+    // attack on the map. With no siege camps it stops at the first post.
+    const coverage =
+      defender === null
+        ? POST_COVERAGE_NONE
+        : defensePostCoverage(
+            this.mg,
+            this.map,
+            tile,
+            defender.smallID(),
+            SIEGE_CAMP_TILES,
+            siegeCamps,
+          );
     return {
       terrain: this.map.terrainType(tile),
       attackTroops,
@@ -412,7 +452,8 @@ export class AttackExecution implements Execution {
               isDisconnectedTeammate:
                 defender.isDisconnected() && this._owner.isOnSameTeam(defender),
             },
-      defenderHasDefensePost,
+      defenderHasDefensePost: coverage !== POST_COVERAGE_NONE,
+      siegeCampReducesDefensePost: coverage === POST_COVERAGE_REDUCED,
       falloutRatio: this.mg.hasFallout(tile)
         ? this.mg.numTilesWithFallout() / this.mg.numLandTiles()
         : null,

@@ -115,14 +115,14 @@ export class DefensePostExecution implements Execution {
     // }
   }
 
-  /** The nearest hostile convoy within the post's range not yet shelled. */
+  /** The nearest hostile convoy within the post's range (by level) not yet shelled. */
   private findConvoyTarget(): Unit | null {
     let best: Unit | null = null;
     let bestDist = Infinity;
     const owner = this.post.owner();
     for (const { unit, distSquared } of this.mg.nearbyUnits(
       this.post.tile(),
-      this.mg.config().defensePostRange(),
+      this.mg.config().defensePostRange(this.post.level()),
       UnitType.Convoy,
     )) {
       if (

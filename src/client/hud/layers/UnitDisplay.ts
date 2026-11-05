@@ -44,6 +44,7 @@ import {
   missileSiloIcon,
   portIcon,
   samLauncherIcon,
+  siegeCampIcon,
   warshipIcon,
 } from "../HotbarIcons";
 import { TutorialHighlight, TutorialHighlightEvent } from "../Tutorial";
@@ -75,6 +76,7 @@ export class UnitDisplay extends LitElement implements Controller {
   private _minefields = 0;
   private _airbases = 0;
   private _flakGuns = 0;
+  private _siegeCamps = 0;
   private allDisabled = false;
   private enabledUnitCount = 0;
   private tutorialMode = false;
@@ -495,6 +497,7 @@ export class UnitDisplay extends LitElement implements Controller {
     this._minefields = player.totalUnitLevels(UnitType.Minefield);
     this._airbases = player.totalUnitLevels(UnitType.Airbase);
     this._flakGuns = player.totalUnitLevels(UnitType.FlakGun);
+    this._siegeCamps = player.totalUnitLevels(UnitType.SiegeCamp);
     this.requestUpdate();
   }
 
@@ -633,6 +636,13 @@ export class UnitDisplay extends LitElement implements Controller {
               UnitType.Warship,
               "warship",
               this.getHotkey("buildWarship", "Digit7"),
+            )}
+            ${this.renderUnitItem(
+              siegeCampIcon,
+              this._siegeCamps,
+              UnitType.SiegeCamp,
+              "siege_camp",
+              "",
             )}
             ${this.renderUnitItem(
               coastalBatteryIcon,

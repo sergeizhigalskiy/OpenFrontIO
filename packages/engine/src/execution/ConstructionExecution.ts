@@ -180,6 +180,10 @@ export class ConstructionExecution implements Execution {
       case UnitType.FlakGun:
         this.mg.addExecution(new FlakGunExecution(this.structure!));
         break;
+      case UnitType.SiegeCamp:
+        // Passive: once built, AttackExecution finds it through the unit
+        // grid (see engine-lib/game/Siege.ts), so it needs no execution.
+        break;
       case UnitType.Drone:
         // The swarm validates and charges each drone as it takes off.
         this.mg.addExecution(
@@ -242,6 +246,7 @@ export class ConstructionExecution implements Execution {
       case UnitType.CoastalBattery:
       case UnitType.Airbase:
       case UnitType.FlakGun:
+      case UnitType.SiegeCamp:
         return true;
       default:
         return false;

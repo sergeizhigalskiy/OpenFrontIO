@@ -41,6 +41,8 @@ export const UT_COASTAL_BATTERY = "Coastal Battery" as const;
 /** Conventional war structures, drawn with the silo's and the SAM's icons. */
 export const UT_AIRBASE = "Airbase" as const;
 export const UT_FLAK_GUN = "Flak Gun" as const;
+/** Breaks defense-post lines; drawn with the factory's icon. */
+export const UT_SIEGE_CAMP = "Siege Camp" as const;
 
 // Conventional war flights, drawn with existing sprites (UnitPass).
 export const UT_AIRSTRIKE = "Airstrike" as const;
@@ -65,6 +67,7 @@ export const STRUCTURE_TYPES: ReadonlySet<string> = new Set([
   UT_COASTAL_BATTERY,
   UT_AIRBASE,
   UT_FLAK_GUN,
+  UT_SIEGE_CAMP,
 ]);
 
 export const NUKE_TYPES: ReadonlySet<string> = new Set([
@@ -135,4 +138,5 @@ export const ALL_UNIT_TYPES = [
   UT_BALLISTIC_MISSILE,
   UT_CLUSTER_MISSILE,
   UT_CLUSTER_WARHEAD,
+  UT_SIEGE_CAMP,
 ] as const;

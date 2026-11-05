@@ -169,6 +169,12 @@
   "account_settings_modal": {
     "title": "Account Settings"
   },
+  "attack_forecast": {
+    "defense_post": "Covered by a level {level} defense post",
+    "defense_post_reduced": "Level {level} defense post, weakened by a siege camp",
+    "loss": "You lose about {troops} troops per tile",
+    "speed": "About {speed} tiles per second"
+  },
   "ban_notice": {
     "appeal": "If you believe this is a mistake, contact us on Discord.",
     "category": {
@@ -211,6 +217,7 @@
       "missile_silo": "Used to launch nukes",
       "port": "Sends trade ships to generate gold",
       "sam_launcher": "Defends against incoming nukes",
+      "siege_camp": "Near an enemy border, weakens their defense posts for you and allies",
       "warship": "Captures trade ships, destroys ships and boats"
     },
     "drone_swarm": "Swarm of {count} drones: {cost} gold",
@@ -2761,6 +2768,7 @@
     "missile_silo": "Missile Silo",
     "port": "Port",
     "sam_launcher": "SAM Launcher",
+    "siege_camp": "Siege Camp",
     "warship": "Warship"
   },
   "update_available": {

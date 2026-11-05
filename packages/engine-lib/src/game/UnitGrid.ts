@@ -2,9 +2,50 @@ import { GameMap, TileRef } from "@openfront/engine-api/game/GameMap";
 import { PlayerID, UnitType } from "@openfront/engine-api/game/GameTypes";
 import { UnitLike, UnitPredicate } from "@openfront/engine-api/game/ReadViews";
 
+/** Side of a UnitGrid cell, in tiles. */
+export const UNIT_GRID_CELL_SIZE = 100;
+
+/** First cell index a range query around coordinate `c` scans on one axis. */
+function firstCellInRange(c: number, range: number): number {
+  const cs = UNIT_GRID_CELL_SIZE;
+  return Math.floor(c / cs) - Math.ceil((range - (c % cs)) / cs);
+}
+
+/** Last cell index a range query around coordinate `c` scans on one axis. */
+function lastCellInRange(c: number, range: number): number {
+  const cs = UNIT_GRID_CELL_SIZE;
+  return Math.floor(c / cs) + Math.ceil((range - (cs - (c % cs))) / cs);
+}
+
+/**
+ * Whether a query of `range` around `from` scans the cell holding `tile`.
+ * The scanned cells stop short of a tile exactly `range` away along +x or +y
+ * when it starts the next cell, so such a unit is never found. Rules that
+ * filter a wider query by a smaller range use this to find exactly what a
+ * query of that smaller range finds.
+ */
+export function rangeQueryScans(
+  gm: GameMap,
+  from: TileRef,
+  range: number,
+  tile: TileRef,
+): boolean {
+  const cs = UNIT_GRID_CELL_SIZE;
+  const fx = gm.x(from);
+  const fy = gm.y(from);
+  const cx = Math.floor(gm.x(tile) / cs);
+  const cy = Math.floor(gm.y(tile) / cs);
+  return (
+    cx >= firstCellInRange(fx, range) &&
+    cx <= lastCellInRange(fx, range) &&
+    cy >= firstCellInRange(fy, range) &&
+    cy <= lastCellInRange(fy, range)
+  );
+}
+
 export class UnitGrid<U extends UnitLike = UnitLike> {
   private grid: Map<UnitType, Set<U>>[][];
-  private readonly cellSize = 100;
+  private readonly cellSize = UNIT_GRID_CELL_SIZE;
 
   constructor(private gm: GameMap) {
     this.grid = Array(Math.ceil(gm.height() / this.cellSize))
@@ -117,24 +158,13 @@ export class UnitGrid<U extends UnitLike = UnitLike> {
   private getCellsInRange(tile: TileRef, range: number) {
     const x = this.gm.x(tile);
     const y = this.gm.y(tile);
-    const cellSize = this.cellSize;
-    const [gridX, gridY] = this.getGridCoords(x, y);
-    const startGridX = Math.max(
-      0,
-      gridX - Math.ceil((range - (x % cellSize)) / cellSize),
-    );
+    const startGridX = Math.max(0, firstCellInRange(x, range));
     const endGridX = Math.min(
       this.grid[0].length - 1,
-      gridX + Math.ceil((range - (cellSize - (x % cellSize))) / cellSize),
+      lastCellInRange(x, range),
     );
-    const startGridY = Math.max(
-      0,
-      gridY - Math.ceil((range - (y % cellSize)) / cellSize),
-    );
-    const endGridY = Math.min(
-      this.grid.length - 1,
-      gridY + Math.ceil((range - (cellSize - (y % cellSize))) / cellSize),
-    );
+    const startGridY = Math.max(0, firstCellInRange(y, range));
+    const endGridY = Math.min(this.grid.length - 1, lastCellInRange(y, range));
 
     return { startGridX, endGridX, startGridY, endGridY };
   }
@@ -272,6 +302,45 @@ export class UnitGrid<U extends UnitLike = UnitLike> {
           ) {
             return true;
           }
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Calls `visit` with each active, built unit of `type` within `searchRange`
+   * of `tile` (and its squared distance) until it returns true; returns
+   * whether one did. `ctx` is handed to `visit`, so a hot caller can pass a
+   * module-level function and allocate nothing per call.
+   */
+  someUnitNearby<C>(
+    tile: TileRef,
+    searchRange: number,
+    type: UnitType,
+    ctx: C,
+    visit: (unit: U, distSquared: number, ctx: C) => boolean,
+  ): boolean {
+    const gm = this.gm;
+    const x = gm.x(tile);
+    const y = gm.y(tile);
+    const { startGridX, endGridX, startGridY, endGridY } = this.getCellsInRange(
+      tile,
+      searchRange,
+    );
+    const rangeSquared = searchRange * searchRange;
+    for (let cy = startGridY; cy <= endGridY; cy++) {
+      for (let cx = startGridX; cx <= endGridX; cx++) {
+        const unitSet = this.grid[cy][cx].get(type);
+        if (unitSet === undefined) continue;
+        for (const unit of unitSet) {
+          if (!unit.isActive() || unit.isUnderConstruction()) continue;
+          const unitTile = unit.tile();
+          const dx = gm.x(unitTile) - x;
+          const dy = gm.y(unitTile) - y;
+          const distSquared = dx * dx + dy * dy;
+          if (distSquared > rangeSquared) continue;
+          if (visit(unit, distSquared, ctx)) return true;
         }
       }
     }

@@ -66,7 +66,6 @@ function maybeStrikeDefensePost(game: Game, player: Player): void {
     .some((b) => !b.isUnderConstruction() && !b.isInCooldown());
   if (!hasReadyBase || spare(player) < BigInt(AIRSTRIKE_COST)) return;
 
-  const range = game.config().defensePostRange();
   for (const attack of player.outgoingAttacks()) {
     const target = attack.target();
     if (!attack.isActive() || !target.isPlayer()) continue;
@@ -75,6 +74,7 @@ function maybeStrikeDefensePost(game: Game, player: Player): void {
       .filter((p) => p.isActive() && !p.isUnderConstruction())
       .sort((a, b) => a.id() - b.id());
     for (const post of posts) {
+      const range = game.config().defensePostRange(post.level());
       if (!frontWithin(game, attack, post.tile(), range)) continue;
       if (player.canBuild(UnitType.Airstrike, post.tile()) === false) continue;
       const sam = coveringSam(game, player, post.tile());

@@ -736,6 +736,17 @@ export class GameView implements GameLike {
     );
   }
 
+  /** UnitGrid.someUnitNearby: allocation-free scan of active, built units. */
+  someUnitNearby<C>(
+    tile: TileRef,
+    searchRange: number,
+    type: UnitType,
+    ctx: C,
+    visit: (unit: UnitView, distSquared: number, ctx: C) => boolean,
+  ): boolean {
+    return this.unitGrid.someUnitNearby(tile, searchRange, type, ctx, visit);
+  }
+
   anyUnitNearby(
     tile: TileRef,
     searchRange: number,

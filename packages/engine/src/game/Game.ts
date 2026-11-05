@@ -127,6 +127,8 @@ export interface UnitParamsMap {
 
   [UnitType.FlakGun]: Record<string, never>;
 
+  [UnitType.SiegeCamp]: Record<string, never>;
+
   // Conventional war flights (see AirMissionExecution). The trajectory is the
   // flat flight path, kept like a nuke's so SAM missiles can chase it; an
   // airdrop carries `troops`.
@@ -696,6 +698,14 @@ export interface Game extends GameLike {
     predicate?: UnitPredicate,
     includeUnderConstruction?: boolean,
   ): Array<{ unit: Unit; distSquared: number }>;
+  /** UnitGrid.someUnitNearby: allocation-free scan of active, built units. */
+  someUnitNearby<C>(
+    tile: TileRef,
+    searchRange: number,
+    type: UnitType,
+    ctx: C,
+    visit: (unit: Unit, distSquared: number, ctx: C) => boolean,
+  ): boolean;
 
   addExecution(...exec: Execution[]): void;
   executions(): Execution[];
