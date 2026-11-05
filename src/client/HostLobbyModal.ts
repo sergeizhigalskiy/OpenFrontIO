@@ -6,10 +6,15 @@ import {
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
 import {
+  BOSS_RAID_NATION_BOSS,
   GameConfigPatch,
   isValidGameID,
   TeamCountConfig,
 } from "@openfront/engine-api/Schemas";
+import {
+  BOSS_RAID_DEFAULT_TIMER_MINUTES,
+  bossRaidConfigError,
+} from "@openfront/engine-lib/game/BossRaid";
 import { DoomsdayClockSpeed } from "@openfront/engine-lib/game/DoomsdayClock";
 import { GameEnv } from "@openfront/shared/configuration/Env";
 import { EventBus } from "@openfront/shared/EventBus";
@@ -48,6 +53,7 @@ import { inviteFriendsButton } from "./components/ui/InviteFriendsButton";
 import { modalHeader } from "./components/ui/ModalHeader";
 import { fetchCosmetics, InsufficientCurrency } from "./Cosmetics";
 import { gamePortal } from "./GamePortal";
+import { SendAssignTeamEvent } from "./LobbyEvents";
 import {
   deleteLobbyPreset,
   LobbyPreset,
@@ -124,6 +130,10 @@ export class HostLobbyModal extends BaseModal {
   @state() private allowedPublicIds: string = "";
   @state() private waterNukes: boolean = false;
   @state() private conventionalWar: boolean = false;
+  // Boss Raid mode (engine-lib/game/BossRaid.ts): a Team game, so gameMode
+  // stays Team while it is on. Its timer is the lobby's max timer.
+  @state() private bossRaid: boolean = false;
+  @state() private bossRaidBoss: string = BOSS_RAID_NATION_BOSS;
   @state() private lobbyId = "";
   @state() private lobbyUrlSuffix = "";
   @state() private clients: ClientInfo[] = [];
@@ -720,6 +730,15 @@ export class HostLobbyModal extends BaseModal {
               teamCount: {
                 selected: this.teamCount,
               },
+              bossRaid: {
+                enabled: this.bossRaidOn(),
+                boss: this.bossRaidBoss,
+                candidates: this.clients
+                  .filter((c) => c.spectator !== true)
+                  .map((c) => ({ clientID: c.clientID, name: c.username })),
+                timerMinutes: this.maxTimer ? this.maxTimerValue : undefined,
+                errorKey: this.bossRaidError(),
+              },
               options: {
                 titleKey: "game_settings.options",
                 bots: {
@@ -820,6 +839,9 @@ export class HostLobbyModal extends BaseModal {
               this.handleConfigDoomsdayClockSpeedSelected
             }
             @game-mode-selected=${this.handleConfigGameModeSelected}
+            @boss-raid-selected=${this.handleBossRaidSelected}
+            @boss-raid-boss-selected=${this.handleBossRaidBossSelected}
+            @boss-raid-timer-changed=${this.handleBossRaidTimerChanged}
             @team-count-selected=${this.handleConfigTeamCountSelected}
             @bots-changed=${this.handleBotsChange}
             @nations-changed=${this.handleNationsChange}
@@ -850,6 +872,10 @@ export class HostLobbyModal extends BaseModal {
             }
             .nameReveals=${this.nameReveals}
             .anonymizeNames=${this.anonymizeNames}
+            .teamPicking=${true}
+            .onAssignTeam=${(clientID: string, teamIndex: number | null) =>
+              this.eventBus?.emit(new SendAssignTeamEvent(clientID, teamIndex))}
+            .bossRaid=${this.bossRaidOn() ? { boss: this.bossRaidBoss } : null}
           ></lobby-player-view>
         </div>
 
@@ -1135,6 +1161,8 @@ export class HostLobbyModal extends BaseModal {
     this.allowedPublicIds = "";
     this.waterNukes = false;
     this.conventionalWar = false;
+    this.bossRaid = false;
+    this.bossRaidBoss = BOSS_RAID_NATION_BOSS;
     this.hostCheatsEnabled = false;
     this.hostCheatInfiniteGold = false;
     this.hostCheatInfiniteTroops = false;
@@ -1193,8 +1221,48 @@ export class HostLobbyModal extends BaseModal {
 
   private handleConfigGameModeSelected = (e: Event) => {
     const customEvent = e as CustomEvent<{ mode: GameMode }>;
+    this.bossRaid = false;
     void this.handleGameModeSelection(customEvent.detail.mode);
   };
+
+  // Boss Raid is a Team game: Team mode, donations on, and the max timer on
+  // at the Boss Raid default unless the host already set one.
+  private handleBossRaidSelected = () => {
+    this.bossRaid = true;
+    this.maxTimer = true;
+    this.maxTimerValue ??= BOSS_RAID_DEFAULT_TIMER_MINUTES;
+    void this.handleGameModeSelection(GameMode.Team);
+  };
+
+  private handleBossRaidBossSelected = (e: Event) => {
+    this.bossRaidBoss = (e as CustomEvent<{ boss: string }>).detail.boss;
+    void this.putGameConfig();
+  };
+
+  private handleBossRaidTimerChanged = (e: Event) => {
+    const { minutes } = (e as CustomEvent<{ minutes: number | undefined }>)
+      .detail;
+    this.maxTimer = minutes !== undefined;
+    this.maxTimerValue =
+      minutes === undefined
+        ? undefined
+        : Math.max(1, Math.min(120, Math.round(minutes)));
+    void this.putGameConfig();
+  };
+
+  private bossRaidOn(): boolean {
+    return this.bossRaid && this.gameMode === GameMode.Team;
+  }
+
+  // Why this Boss Raid can't start yet, as a translation key.
+  private bossRaidError(): string | null {
+    if (!this.bossRaidOn()) return null;
+    return bossRaidConfigError(
+      { gameMode: this.gameMode, bossRaid: { boss: this.bossRaidBoss } },
+      this.clients.filter((c) => c.spectator !== true).map((c) => c.clientID),
+      this.nations,
+    );
+  }
 
   private handleConfigTeamCountSelected = (e: Event) => {
     const customEvent = e as CustomEvent<{ count: TeamCountConfig }>;
@@ -2012,6 +2080,7 @@ export class HostLobbyModal extends BaseModal {
               : [],
             waterNukes: this.waterNukes ? true : null,
             conventionalWar: this.conventionalWar,
+            bossRaid: this.bossRaidOn() ? { boss: this.bossRaidBoss } : null,
             hostCheats: this.hostCheatsEnabled
               ? {
                   infiniteGold: this.hostCheatInfiniteGold || undefined,
@@ -2043,6 +2112,11 @@ export class HostLobbyModal extends BaseModal {
   }
 
   private async toggleGameStartTimer() {
+    const bossRaidError = this.bossRaidError();
+    if (bossRaidError !== null && this.lobbyStartAt === null) {
+      showToast(translateText(bossRaidError), "red");
+      return;
+    }
     await this.putGameConfig();
     console.log(
       `Starting private game with map: ${GameMapType[this.selectedMap as keyof typeof GameMapType]} ${this.useRandomMap ? " (Randomly selected)" : ""}`,

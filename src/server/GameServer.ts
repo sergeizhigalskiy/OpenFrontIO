@@ -21,6 +21,7 @@ import {
   Turn,
   Winner,
 } from "@openfront/engine-api/Schemas";
+import { isBossRaid } from "@openfront/engine-lib/game/BossRaid";
 import {
   adjustForTeams,
   assignTeamsLobbyPreview,
@@ -31,6 +32,7 @@ import { CloseCode, CloseReason } from "@openfront/shared/CloseCodes";
 import { GameEnv } from "@openfront/shared/configuration/Env";
 import { createPartialGameRecord } from "@openfront/shared/SharedUtil";
 import {
+  ClientAssignTeamMessage,
   ClientMessage,
   ClientReportMessage,
   ClientSendLiveStatsMessage,
@@ -71,6 +73,7 @@ import { LiveStatsVote, voteKey, WinnerVote } from "./Consensus";
 import { fetchCustomTribes } from "./CustomTribes";
 import { DesyncDetector } from "./DesyncDetector";
 import { Gatekeeper, MatchGatekeeper, noopGatekeeper } from "./Gatekeeper";
+import { HostTeamPins, TeamPinError, TeamPinLobby } from "./HostTeamPins";
 import {
   authorizeIntent,
   IntentActor,
@@ -311,6 +314,8 @@ export class GameServer {
   // team. At start each client is stamped with its team's index.
   private matchmakingTeams?: string[][];
   private matchmakingClanTags?: string[];
+  // Team slots the host picked in the lobby (HostTeamPins.ts).
+  private readonly hostTeamPins = new HostTeamPins();
   private readonly deps: GameServerDeps;
   // Who may see whose real identity (anonymizeNames / pinned teams / admin
   // clan-tag reveal); shapes the per-viewer lobby roster and start message.
@@ -332,7 +337,7 @@ export class GameServer {
       gameID: opts.id,
       config: () => this.gameConfig,
       clients: () => this.clients.all(),
-      teamIndex: (c) => this.matchmakingTeamIndex(c),
+      teamIndex: (c) => this.pinnedTeamIndex(c),
     });
     this.log = opts.log.child({ gameID: opts.id });
     this.ingress = new SocketIngress(
@@ -839,6 +844,10 @@ export class GameServer {
         this.handleReport(client, clientMsg);
         break;
       }
+      case "assign_team": {
+        this.handleAssignTeam(client, clientMsg);
+        break;
+      }
       default: {
         this.log.warn(`Unknown message type: ${(clientMsg as any).type}`, {
           clientID: client.clientID,
@@ -1143,7 +1152,7 @@ export class GameServer {
         cosmetics: c.cosmetics,
         isLobbyCreator: this.lobbyCreatorID === c.clientID,
         friends: friendsFor(c),
-        teamIndex: this.matchmakingTeamIndex(c),
+        teamIndex: this.pinnedTeamIndex(c),
       })),
       tribes: this.tribes,
     });
@@ -1195,6 +1204,7 @@ export class GameServer {
       this.gameConfig.playerTeams === undefined ||
       this.gameConfig.playerTeams === HumansVsNations ||
       this.matchmakingTeams !== undefined ||
+      isBossRaid(this.gameConfig) ||
       this.gameConfig.rankedType !== undefined ||
       this.gameConfig.disableClanTags === true ||
       this.gameConfig.anonymizeNames === true
@@ -1257,6 +1267,8 @@ export class GameServer {
           c.clientID,
           false,
           c.clanTag ?? null,
+          [],
+          this.pinnedTeamIndex(c) ?? null,
         ),
     );
     const preview = assignTeamsLobbyPreview(
@@ -1394,6 +1406,63 @@ export class GameServer {
     }
     this.matchmakingTeams[teamIndex].push(publicId);
     return { ok: true, teams: this.matchmakingTeams };
+  }
+
+  // A client's team slot: the matchmade one, else the one the host picked.
+  private pinnedTeamIndex(c: Client): number | undefined {
+    const matchmade = this.matchmakingTeamIndex(c);
+    if (matchmade !== undefined || this.hostTeamPins.size() === 0) {
+      return matchmade;
+    }
+    return this.hostTeamPins.effective(this.teamPinLobby()).get(c.clientID);
+  }
+
+  private teamPinLobby(): TeamPinLobby {
+    return {
+      config: this.gameConfig,
+      players: this.clients.players().map((c) => c.clientID),
+      nationCount: this.resolveDefaultNationCount(),
+    };
+  }
+
+  // The host moves a player to a team (or back to auto) in the lobby.
+  // Refusals go back to the host only; a move goes out to everyone.
+  private handleAssignTeam(client: Client, msg: ClientAssignTeamMessage) {
+    const error = this.assignTeamPin(
+      client.clientID,
+      msg.target,
+      msg.teamIndex,
+    );
+    if (error !== null) {
+      this.log.info("team pick refused", {
+        clientID: client.clientID,
+        target: msg.target,
+        error,
+      });
+      if (client.ws.readyState === WebSocket.OPEN) {
+        client.ws.send(
+          encodeServerMessage(
+            { type: "error", error } satisfies ServerErrorMessage,
+            this.zbinCtx,
+          ),
+        );
+      }
+      return;
+    }
+    this.broadcastLobbyInfo();
+  }
+
+  public assignTeamPin(
+    sender: ClientID,
+    target: ClientID,
+    teamIndex: number | null,
+  ): TeamPinError | null {
+    if (this.lobbyCreatorID === undefined || sender !== this.lobbyCreatorID) {
+      return "team_pick.not_host";
+    }
+    if (this.hasStarted() || this.ended) return "team_pick.started";
+    if (this.matchmakingTeams !== undefined) return "team_pick.not_allowed";
+    return this.hostTeamPins.assign(this.teamPinLobby(), target, teamIndex);
   }
 
   // Resolves a client to its matchmade team slot (index into

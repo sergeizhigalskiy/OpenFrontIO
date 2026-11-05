@@ -10,7 +10,17 @@ import {
   Trios,
   formatPlayerDisplayName,
 } from "@openfront/engine-api/game/GameTypes";
-import { ClientID, TeamCountConfig } from "@openfront/engine-api/Schemas";
+import {
+  BOSS_RAID_NATION_BOSS,
+  BossRaidConfig,
+  ClientID,
+  TeamCountConfig,
+} from "@openfront/engine-api/Schemas";
+import {
+  BOSS_RAID_BOSS_TEAM,
+  BOSS_RAID_RAIDER_TEAM,
+  bossRaidHumanTeams,
+} from "@openfront/engine-lib/game/BossRaid";
 import { assignTeamsLobbyPreview } from "@openfront/engine-lib/game/TeamAssignment";
 import {
   type LevelBadge,
@@ -18,7 +28,7 @@ import {
 } from "@openfront/shared/LevelBadgeWire";
 import { createRandomName } from "@openfront/shared/SharedUtil";
 import { ClientInfo } from "@openfront/shared/WireSchemas";
-import { LitElement, html } from "lit";
+import { LitElement, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
@@ -69,6 +79,19 @@ export class LobbyTeamView extends LitElement {
   @property({ type: Boolean }) anonymizeNames: boolean = false;
   @property({ type: Number }) nationCount: number = 0;
   @property({ type: Boolean }) isPublicGame: boolean = false;
+  // Host team picking (src/server/HostTeamPins.ts): the lobby shows who is
+  // pinned and who is left to auto balancing. Everyone sees it; only a view
+  // given onAssignTeam (the host's) can move players.
+  @property({ type: Boolean }) teamPicking: boolean = false;
+  @property({ attribute: false }) onAssignTeam?: (
+    clientID: string,
+    teamIndex: number | null,
+  ) => void;
+  // Boss Raid: the preview is the Boss against everyone else.
+  @property({ attribute: false }) bossRaid: BossRaidConfig | null = null;
+  // Tap to pick a player up, tap a team to drop them (touch has no drag).
+  @state() private pickedUp: string | null = null;
+  @state() private pickError: string | null = null;
 
   private get theme(): Theme {
     return themeProvider.current();
@@ -138,7 +161,8 @@ export class LobbyTeamView extends LitElement {
       changedProperties.has("clients") ||
       changedProperties.has("teamCount") ||
       changedProperties.has("nationCount") ||
-      changedProperties.has("isPublicGame")
+      changedProperties.has("isPublicGame") ||
+      changedProperties.has("bossRaid")
     ) {
       const teamsList = this.getTeamList();
       this.computeTeamPreview(teamsList);
@@ -241,34 +265,71 @@ export class LobbyTeamView extends LitElement {
   }
 
   private renderTeamMode() {
+    const alwaysShown = (t: TeamPreviewData) =>
+      t.team === ColoredTeams.Nations || this.bossRaid !== null;
     const active = this.teamPreview.filter(
-      (t) => t.players.length > 0 || t.team === ColoredTeams.Nations,
+      (t) => t.players.length > 0 || alwaysShown(t),
     );
     const empty = this.teamPreview.filter(
-      (t) => t.players.length === 0 && t.team !== ColoredTeams.Nations,
+      (t) => t.players.length === 0 && !alwaysShown(t),
     );
-    const listSlot = this.anyVisibleLevelBadge(this.activePlayers);
+    // With team picking the left list is the "auto" bucket: the players the
+    // host hasn't pinned, whom the game balances into the open seats.
+    const picking = this.teamPickingActive();
+    const listed = picking
+      ? this.activePlayers.filter((c) => c.teamIndex === undefined)
+      : this.activePlayers;
+    const listSlot = this.anyVisibleLevelBadge(listed);
     return html` <div
       class="flex flex-col md:flex-row gap-3 md:gap-4 items-stretch"
     >
       <div
-        class="w-full md:w-60 bg-gray-800 p-2 border border-gray-700 rounded-lg"
+        class="w-full md:w-60 bg-gray-800 p-2 border rounded-lg ${
+          picking && this.pickedUp !== null
+            ? "border-sky-500/60 cursor-pointer"
+            : "border-gray-700"
+        }"
+        data-team-drop="auto"
+        @dragover=${this.allowDrop}
+        @drop=${(e: DragEvent) => this.dropOn(e, null)}
+        @click=${() => this.dropPickedUp(null)}
       >
         <div class="font-bold mb-1.5 text-gray-300 text-sm">
-          ${translateText("host_modal.players")}
+          ${
+            picking
+              ? translateText("host_modal.team_pick_auto_bucket")
+              : translateText("host_modal.players")
+          }
         </div>
+        ${
+          picking
+            ? html`<div class="text-[11px] text-gray-400 mb-1.5">
+                ${
+                  this.onAssignTeam
+                    ? translateText("host_modal.team_pick_hint")
+                    : translateText("host_modal.team_pick_viewer_hint")
+                }
+              </div>`
+            : nothing
+        }
         ${repeat(
-          this.activePlayers,
+          listed,
           (c) => c.clientID ?? c.username,
           (client) => {
             const displayName = this.getClientDisplayName(client);
             return html`<div
               class="px-2 py-1 rounded-sm mb-1 text-xs text-white border break-words
                 ${
-                this.isCurrentPlayer(client)
-                  ? "bg-malibu-blue/20 border-sky-500/40"
-                  : "bg-gray-700/70 border-transparent"
-              }"
+                this.pickedUp === client.clientID
+                  ? "bg-sky-500/30 border-sky-400"
+                  : this.isCurrentPlayer(client)
+                    ? "bg-malibu-blue/20 border-sky-500/40"
+                    : "bg-gray-700/70 border-transparent"
+              } ${this.canMovePlayers() ? "cursor-grab" : ""}"
+              data-chip=${client.clientID}
+              draggable=${this.canMovePlayers() ? "true" : "false"}
+              @dragstart=${(e: DragEvent) => this.dragStart(e, client.clientID)}
+              @click=${(e: Event) => this.pickUp(e, client.clientID)}
             >
               ${this.renderLevelBadge(client, listSlot)}${displayName}
               ${this.renderVerifiedBadge(client)}
@@ -282,6 +343,16 @@ export class LobbyTeamView extends LitElement {
           <div class="font-semibold text-gray-200 mb-1 text-sm">
             ${translateText("host_modal.assigned_teams")}
           </div>
+          ${
+            this.pickError !== null
+              ? html`<div
+                  class="team-pick-error text-xs text-red-300 mb-1.5"
+                  role="alert"
+                >
+                  ${this.pickError}
+                </div>`
+              : nothing
+          }
           <div class="w-full grid grid-cols-1 sm:grid-cols-2 gap-2 md:gap-3">
             ${repeat(
               active,
@@ -375,15 +446,22 @@ export class LobbyTeamView extends LitElement {
   }
 
   private renderTeamCard(preview: TeamPreviewData, isEmpty: boolean = false) {
+    const bossRaidCount = this.bossRaidCount(preview);
     const displayCount =
-      preview.team === ColoredTeams.Nations
+      bossRaidCount ??
+      (preview.team === ColoredTeams.Nations
         ? this.effectiveNationCount
-        : preview.players.length;
+        : preview.players.length);
 
     const maxTeamSize =
-      preview.team === ColoredTeams.Nations
+      bossRaidCount ??
+      (preview.team === ColoredTeams.Nations
         ? this.effectiveNationCount
-        : this.teamMaxSize;
+        : this.teamMaxSize);
+    const teamIndex = this.teamPreview.findIndex(
+      (t) => t.team === preview.team,
+    );
+    const picking = this.teamPickingActive();
 
     const clanTag = this._teamClanTags.get(preview.team) ?? null;
     const teamLabel = getTranslatedPlayerTeamLabel(preview.team, clanTag);
@@ -393,10 +471,15 @@ export class LobbyTeamView extends LitElement {
       <div
         class="bg-gray-800 border rounded-xl flex flex-col
           ${
-          this.teamContainsCurrentPlayer(preview)
+          this.teamContainsCurrentPlayer(preview) ||
+          (picking && this.pickedUp !== null)
             ? "border-sky-500/60"
             : "border-gray-700"
-        }"
+        } ${picking && this.pickedUp !== null ? "cursor-pointer" : ""}"
+        data-team-drop=${String(teamIndex)}
+        @dragover=${this.allowDrop}
+        @drop=${(e: DragEvent) => this.dropOn(e, teamIndex)}
+        @click=${() => this.dropPickedUp(teamIndex)}
       >
         <div
           class="px-2 py-1 font-bold flex items-center justify-between text-white rounded-t-xl text-[13px] gap-2 bg-gray-700/70"
@@ -417,6 +500,7 @@ export class LobbyTeamView extends LitElement {
           >
         </div>
         <div class="p-2 ${isEmpty ? "" : "flex flex-col gap-1.5"}">
+          ${this.renderNationBoss(preview)}
           ${
             isEmpty
               ? html`<div class="text-[11px] italic text-gray-400">
@@ -430,16 +514,24 @@ export class LobbyTeamView extends LitElement {
                     return html` <div
                       class="px-2 py-1 rounded-sm text-xs flex items-center justify-between border
                       ${
-                        this.isCurrentPlayer(p)
-                          ? "bg-malibu-blue/20 border-sky-500/40"
-                          : "bg-gray-700/70 border-transparent"
-                      }"
+                        this.pickedUp === p.clientID
+                          ? "bg-sky-500/30 border-sky-400"
+                          : this.isCurrentPlayer(p)
+                            ? "bg-malibu-blue/20 border-sky-500/40"
+                            : "bg-gray-700/70 border-transparent"
+                      } ${this.canMovePlayers() ? "cursor-grab" : ""}"
+                      data-chip=${p.clientID}
+                      draggable=${this.canMovePlayers() ? "true" : "false"}
+                      @dragstart=${(e: DragEvent) =>
+                        this.dragStart(e, p.clientID)}
+                      @click=${(e: Event) => this.pickUp(e, p.clientID)}
                     >
                       <span class="flex items-center gap-1 min-w-0">
                         ${this.renderLevelBadge(p, badgeSlot)}
                         <span class="truncate text-white">${displayName}</span>
                         ${this.renderVerifiedBadge(p)}
                         ${this.renderFriendBadge(p)}
+                        ${picking ? this.renderPinTag(p) : nothing}
                       </span>
                       ${this.renderRevealToggle(p.clientID)}
                       ${
@@ -483,6 +575,9 @@ export class LobbyTeamView extends LitElement {
 
   private getTeamList(): Team[] {
     if (this.gameMode !== GameMode.Team) return [];
+    if (this.bossRaid !== null) {
+      return [BOSS_RAID_BOSS_TEAM, BOSS_RAID_RAIDER_TEAM];
+    }
     const playerCount = this.activePlayers.length + this.effectiveNationCount;
     const config = this.teamCount;
 
@@ -532,6 +627,30 @@ export class LobbyTeamView extends LitElement {
         window.clearTimeout(this._clanUpdateTimeout);
         this._clanUpdateTimeout = null;
       }
+      return;
+    }
+
+    // Boss Raid: the Boss alone (a volunteer, or a nation shown as a row of
+    // its own), everyone else a Raider. Same rule the game uses.
+    if (this.bossRaid !== null) {
+      const teamOf = bossRaidHumanTeams(
+        this.bossRaid,
+        this.activePlayers,
+        this.effectiveNationCount,
+      );
+      const players = this.activePlayers;
+      this.teamMaxSize = players.length + this.effectiveNationCount;
+      this.teamPreview = [
+        {
+          team: BOSS_RAID_BOSS_TEAM,
+          players: players.filter((_, i) => teamOf[i] === BOSS_RAID_BOSS_TEAM),
+        },
+        {
+          team: BOSS_RAID_RAIDER_TEAM,
+          players: players.filter((_, i) => teamOf[i] !== BOSS_RAID_BOSS_TEAM),
+        },
+      ];
+      this.triggerClanUpdate();
       return;
     }
 
@@ -598,6 +717,132 @@ export class LobbyTeamView extends LitElement {
       players: buckets.get(t) ?? [],
     }));
     this.triggerClanUpdate();
+  }
+
+  private teamPickingActive(): boolean {
+    return (
+      this.teamPicking &&
+      this.gameMode === GameMode.Team &&
+      this.bossRaid === null &&
+      this.teamCount !== HumansVsNations
+    );
+  }
+
+  private canMovePlayers(): boolean {
+    return this.teamPickingActive() && this.onAssignTeam !== undefined;
+  }
+
+  private readonly allowDrop = (e: DragEvent) => {
+    if (!this.canMovePlayers()) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+  };
+
+  private dragStart(e: DragEvent, clientID: string) {
+    if (!this.canMovePlayers()) return;
+    e.dataTransfer?.setData("text/plain", clientID);
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+    this.pickedUp = clientID;
+  }
+
+  private dropOn(e: DragEvent, teamIndex: number | null) {
+    if (!this.canMovePlayers()) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const dragged = e.dataTransfer?.getData("text/plain") ?? "";
+    const clientID = dragged !== "" ? dragged : this.pickedUp;
+    this.pickedUp = null;
+    if (clientID !== null) this.assignTeam(clientID, teamIndex);
+  }
+
+  private pickUp(e: Event, clientID: string) {
+    if (!this.canMovePlayers()) return;
+    e.stopPropagation();
+    this.pickedUp = this.pickedUp === clientID ? null : clientID;
+  }
+
+  private dropPickedUp(teamIndex: number | null) {
+    if (!this.canMovePlayers() || this.pickedUp === null) return;
+    const clientID = this.pickedUp;
+    this.pickedUp = null;
+    this.assignTeam(clientID, teamIndex);
+  }
+
+  /**
+   * Moves a player for the host. A full team is refused here with a message,
+   * before anything is sent; the server checks the same rule.
+   */
+  assignTeam(clientID: string, teamIndex: number | null) {
+    if (!this.canMovePlayers()) return;
+    const client = this.activePlayers.find((c) => c.clientID === clientID);
+    if (client === undefined) return;
+    if ((client.teamIndex ?? null) === teamIndex) {
+      this.pickError = null;
+      return;
+    }
+    if (teamIndex !== null) {
+      const pinned = this.activePlayers.filter(
+        (c) => c.teamIndex === teamIndex && c.clientID !== clientID,
+      ).length;
+      if (pinned >= this.teamMaxSize) {
+        const team = this.teamPreview[teamIndex]?.team ?? "";
+        this.pickError = translateText("team_pick.team_full_named", {
+          team: getTranslatedPlayerTeamLabel(team),
+          max: this.teamMaxSize,
+        });
+        return;
+      }
+    }
+    this.pickError = null;
+    this.onAssignTeam?.(clientID, teamIndex);
+  }
+
+  private renderPinTag(client: ClientInfo) {
+    return client.teamIndex !== undefined
+      ? html`<span
+          class="team-pin-tag ml-1 text-[10px] uppercase tracking-wide text-amber-300 shrink-0"
+          >${translateText("host_modal.team_pick_pinned")}</span
+        >`
+      : html`<span
+          class="team-auto-tag ml-1 text-[10px] uppercase tracking-wide text-gray-400 shrink-0"
+          >${translateText("host_modal.team_pick_auto")}</span
+        >`;
+  }
+
+  // Boss Raid head counts, nations included: the Boss team holds one, the
+  // Raiders everyone else. Null outside a Boss Raid.
+  private bossRaidCount(preview: TeamPreviewData): number | null {
+    if (this.bossRaid === null) return null;
+    if (preview.team === BOSS_RAID_BOSS_TEAM) return 1;
+    const nationBoss = this.isNationBoss();
+    return (
+      preview.players.length +
+      Math.max(0, this.effectiveNationCount - (nationBoss ? 1 : 0))
+    );
+  }
+
+  private isNationBoss(): boolean {
+    if (this.bossRaid === null) return false;
+    const boss = this.teamPreview.find((t) => t.team === BOSS_RAID_BOSS_TEAM);
+    return (
+      this.bossRaid.boss === BOSS_RAID_NATION_BOSS ||
+      (boss !== undefined && boss.players.length === 0)
+    );
+  }
+
+  private renderNationBoss(preview: TeamPreviewData) {
+    if (
+      this.bossRaid === null ||
+      preview.team !== BOSS_RAID_BOSS_TEAM ||
+      preview.players.length > 0
+    ) {
+      return nothing;
+    }
+    return html`<div
+      class="boss-raid-nation-boss px-2 py-1 rounded-sm text-xs text-red-200 border border-red-500/40 bg-red-500/10"
+    >
+      ${translateText("boss_raid.nation_boss")}
+    </div>`;
   }
 
   private triggerClanUpdate() {

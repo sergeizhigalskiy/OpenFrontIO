@@ -16,6 +16,12 @@ import {
   AttackRules,
 } from "../game/AttackLogic";
 import {
+  bossMaxTroopsPercent,
+  bossTroopGrowthPercent,
+  isBossRaidBoss,
+  withBossRaidDefaults,
+} from "../game/BossRaid";
+import {
   AIRBASE_CONSTRUCTION_TICKS,
   CONVENTIONAL_WAR_UNIT_TYPES,
   FLAK_GUN_CONSTRUCTION_TICKS,
@@ -115,7 +121,9 @@ export class Config implements AttackRules {
     private _isReplay: boolean,
     public readonly listed: boolean = false,
     private _spectator: boolean = false,
-  ) {}
+  ) {
+    this._gameConfig = withBossRaidDefaults(_gameConfig);
+  }
 
   isReplay(): boolean {
     return this._isReplay;
@@ -482,10 +490,11 @@ export class Config implements AttackRules {
     }
 
     if (player.type() === PlayerType.Human) {
-      return maxTroops;
+      return this.bossRaidTroopCap(player, maxTroops);
     }
 
-    switch (this._gameConfig.difficulty) {
+    const difficulty = this.difficultyFor(player);
+    switch (difficulty) {
       case Difficulty.Easy:
         return maxTroops * 0.5;
       case Difficulty.Medium:
@@ -493,10 +502,49 @@ export class Config implements AttackRules {
       case Difficulty.Hard:
         return maxTroops * 1; // Like humans
       case Difficulty.Impossible:
-        return maxTroops * 1.25;
+        return this.bossRaidTroopCap(player, maxTroops * 1.25);
       default:
-        assertNever(this._gameConfig.difficulty);
+        assertNever(difficulty);
     }
+  }
+
+  /**
+   * The difficulty a nation plays at: the lobby's, except a Boss Raid's
+   * nation Boss, which is always Impossible.
+   */
+  difficultyFor(player: PlayerLike): Difficulty {
+    if (
+      player.type() === PlayerType.Nation &&
+      isBossRaidBoss(this._gameConfig, player)
+    ) {
+      return Difficulty.Impossible;
+    }
+    return this._gameConfig.difficulty;
+  }
+
+  /** N, the raiders a Boss Raid started with (0 outside one). */
+  bossRaidRaiders(): number {
+    return this._gameConfig.bossRaid?.raiders ?? 0;
+  }
+
+  /**
+   * Records N. The engine sets it when it creates the game (it is then part
+   * of the stored config); the client's view sets it once it sees the teams.
+   */
+  setBossRaidRaiders(raiders: number): void {
+    const bossRaid = this._gameConfig.bossRaid;
+    if (bossRaid === undefined || bossRaid === null) return;
+    if (bossRaid.raiders === raiders) return;
+    this._gameConfig = {
+      ...this._gameConfig,
+      bossRaid: { ...bossRaid, raiders },
+    };
+  }
+
+  // Only the Boss changes, so every other player's cap stays bit-identical.
+  private bossRaidTroopCap(player: PlayerLike, maxTroops: number): number {
+    if (!isBossRaidBoss(this._gameConfig, player)) return maxTroops;
+    return (maxTroops * bossMaxTroopsPercent(this.bossRaidRaiders())) / 100;
   }
 
   troopIncreaseRate(player: PlayerLike): number {
@@ -512,7 +560,8 @@ export class Config implements AttackRules {
     }
 
     if (player.type() === PlayerType.Nation) {
-      switch (this._gameConfig.difficulty) {
+      const difficulty = this.difficultyFor(player);
+      switch (difficulty) {
         case Difficulty.Easy:
           toAdd *= 0.9;
           break;
@@ -526,8 +575,12 @@ export class Config implements AttackRules {
           toAdd *= 1.05;
           break;
         default:
-          assertNever(this._gameConfig.difficulty);
+          assertNever(difficulty);
       }
+    }
+
+    if (isBossRaidBoss(this._gameConfig, player)) {
+      toAdd = (toAdd * bossTroopGrowthPercent(this.bossRaidRaiders())) / 100;
     }
 
     return Math.min(player.troops() + toAdd, max) - player.troops();

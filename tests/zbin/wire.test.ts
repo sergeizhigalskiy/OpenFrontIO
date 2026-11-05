@@ -202,6 +202,27 @@ const SERVER_MESSAGES: ServerMessage[] = [
   },
   { type: "new_lobby", gameID: "nEwL0bby" },
   { type: "pong", sentAt: 12345 },
+  {
+    type: "lobby_info",
+    myClientID: P2,
+    lobby: {
+      gameID: "gM3xQ1zR",
+      serverTime: 1_700_000_000_000,
+      gameConfig: {
+        ...CONFIG,
+        gameType: GameType.Private,
+        gameMode: GameMode.Team,
+        playerTeams: 2,
+        maxTimerValue: 25,
+        bossRaid: { boss: P1, raiders: 3 },
+      },
+      clients: [
+        { clientID: P1, username: "alpha", clanTag: null },
+        { clientID: P2, username: "bravo", clanTag: null, teamIndex: 1 },
+      ],
+      lobbyCreatorClientID: P2,
+    },
+  },
 ];
 
 const TOKEN = "3f1b8c8e-4a2f-4a0e-9d5e-6f2a1b3c4d5e";
@@ -277,6 +298,9 @@ const CLIENT_MESSAGES: ClientMessage[] = [
       ],
     },
   },
+  // Host team picking (src/server/HostTeamPins.ts): a pin, and back to auto.
+  { type: "assign_team", target: P2, teamIndex: 1 },
+  { type: "assign_team", target: P3, teamIndex: null },
 ];
 
 const LOBBY_MESSAGES: PublicLobbyMessage[] = [

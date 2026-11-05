@@ -105,6 +105,12 @@ export function applyGameConfigPatch(
   ) {
     target.maxPlayers = adjustForTeams(target.maxPlayers, target.playerTeams);
   }
+  // Boss Raid: null turns it off. Only the Boss pick is the host's: the
+  // raider count is the engine's to fill in.
+  if (patch.bossRaid !== undefined) {
+    target.bossRaid =
+      patch.bossRaid === null ? undefined : { boss: patch.bossRaid.boss };
+  }
   // Unconditional on purpose: the host clears cheats by omitting hostCheats
   // (the full config it sends has hostCheats: undefined when the toggle is
   // off), so `undefined` here means "clear", not "leave unchanged".

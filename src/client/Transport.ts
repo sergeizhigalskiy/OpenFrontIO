@@ -25,6 +25,7 @@ import {
   GameEvent,
 } from "@openfront/shared/EventBus";
 import {
+  ClientAssignTeamMessage,
   ClientHashMessage,
   ClientIntentMessage,
   ClientJoinMessage,
@@ -52,6 +53,7 @@ import { clientDevice, clientPlatform } from "./ClientPlatform";
 import { isDesktopShell } from "./DesktopShell";
 import { showInGameConfirm } from "./InGameModal";
 import {
+  SendAssignTeamEvent,
   SendKickPlayerIntentEvent,
   SendSpectateEvent,
   SendToggleGameStartTimer,
@@ -391,6 +393,13 @@ export class Transport {
         type: "spectate",
         spectator: e.spectator,
       } satisfies ClientSpectateMessage);
+    });
+    this.subscribe(SendAssignTeamEvent, (e) => {
+      this.sendMsg({
+        type: "assign_team",
+        target: e.target,
+        teamIndex: e.teamIndex,
+      } satisfies ClientAssignTeamMessage);
     });
   }
 

@@ -13,6 +13,7 @@ import {
   TerraNullius,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
+import { isBossRaid } from "@openfront/engine-lib/game/BossRaid";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import { Versioned } from "@openfront/engine-lib/snapshot/SnapshotType";
 import {
@@ -35,6 +36,7 @@ import { AttackExecution } from "../AttackExecution";
 import { DonateTroopsExecution } from "../DonateTroopExecution";
 import { TransportShipExecution } from "../TransportShipExecution";
 import { AiAttackBehavior, BoatRoute } from "../utils/AiAttackBehavior";
+import { bossFor, withBossStrategy } from "./BossRaidTargeting";
 import { planBotAttacks, walledInBots } from "./BotAnnexation";
 import { NationAllianceBehavior } from "./NationAllianceBehavior";
 import {
@@ -351,7 +353,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
     borderingFriends: Player[],
     borderingEnemies: Player[],
   ) {
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
 
     // Hard & Impossible: answer attacks right away, even below the reserve and trigger ratios
     if (
@@ -398,7 +400,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
     borderingFriends: Player[],
     borderingEnemies: Player[],
   ): Array<() => boolean> {
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
 
     // Target groups, tried in order and each sorted by troops (ascending). Hard & Impossible
     // without a land front weigh every enemy within boat range across the water alongside
@@ -557,27 +559,42 @@ export class NationAttackBehavior extends AiAttackBehavior {
       );
     };
 
+    // Boss Raid: a Raider goes for the Boss (see BossRaidTargeting.ts)
+    const raidBoss = bossFor(this.game, this.player);
+    const boss = (): boolean => {
+      const target = pick((enemies) =>
+        raidBoss !== null && enemies.includes(raidBoss) ? raidBoss : null,
+      );
+      return target !== null ? this.sendAttack(target) : false;
+    };
+
     // Return strategies in order based on difficulty
     // Easy nations get the dumbest order, impossible nations get the smartest order
     // Medium and up retaliate in attackBestTarget, ahead of the ratio checks
+    let order: Array<() => boolean>;
     switch (difficulty) {
       case Difficulty.Easy:
         // So dumb, they cant even find islanders
         // prettier-ignore
-        return [nuked, bots, retaliate, assist, betray, hated, weakest];
+        order = [nuked, bots, retaliate, assist, betray, hated, weakest];
+        break;
       case Difficulty.Medium:
         // prettier-ignore
-        return [bots, nuked, assist, betray, hated, afk, traitor, crown, weakest, island, donate];
+        order = [bots, nuked, assist, betray, hated, afk, traitor, crown, weakest, island, donate];
+        break;
       case Difficulty.Hard:
         // Strong veryWeak and juicy strats after the distracting hated strat, to make the nations weaker than impossible
         // prettier-ignore
-        return [bots, assist, betray, nuked, traitor, afk, hated, veryWeak, juicy, victim, crown, weakest, island, donate];
+        order = [bots, assist, betray, nuked, traitor, afk, hated, veryWeak, juicy, victim, crown, weakest, island, donate];
+        break;
       case Difficulty.Impossible:
         // prettier-ignore
-        return [bots, veryWeak, betray, assist, victim, crown, traitor, juicy, afk, nuked, hated, weakest, island, donate];
+        order = [bots, veryWeak, betray, assist, victim, crown, traitor, juicy, afk, nuked, hated, weakest, island, donate];
+        break;
       default:
         assertNever(difficulty);
     }
+    return withBossStrategy(order, boss, raidBoss !== null, difficulty);
   }
 
   private hasNeighboringBotWithStructures(): boolean {
@@ -1035,8 +1052,9 @@ export class NationAttackBehavior extends AiAttackBehavior {
       other.isPlayer() === false ||
       other.type() !== PlayerType.Human ||
       other.isTraitor() ||
-      // Always attack in an HvN game
-      this.game.config().gameConfig().playerTeams === HumansVsNations
+      // Always attack in an HvN game, and in a Boss Raid (the one enemy)
+      this.game.config().gameConfig().playerTeams === HumansVsNations ||
+      isBossRaid(this.game.config().gameConfig())
     ) {
       return true;
     }

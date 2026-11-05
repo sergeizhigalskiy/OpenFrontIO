@@ -25,6 +25,10 @@ import {
 } from "@openfront/engine-api/game/ReadViews";
 import { ClientID, GameID } from "@openfront/engine-api/Schemas";
 import { Config } from "@openfront/engine-lib/configuration/Config";
+import {
+  BOSS_RAID_BOSS_TEAM,
+  countBossRaidRaiders,
+} from "@openfront/engine-lib/game/BossRaid";
 import { unpackMotionPlans } from "@openfront/engine-lib/game/MotionPlans";
 import {
   PackedUnitUpdateDecoder,
@@ -312,6 +316,7 @@ export class GameView implements GameLike {
     // all smallIDs registered before pass 2 can translate embargo PlayerIDs.
     // PlayerUpdate is now partial: only `id` is guaranteed; everything else
     // is present only when its value changed since the last emission.
+    let addedBoss = false;
     gu.updates[GameUpdateType.Player].forEach((pu) => {
       // First-emission (new player) — must have all static fields populated.
       // Subsequent emissions for an existing player carry only changed fields.
@@ -369,12 +374,22 @@ export class GameView implements GameLike {
         if (team !== null) {
           this._teams.set(pu.smallID!, team);
         }
+        if (team === BOSS_RAID_BOSS_TEAM) addedBoss = true;
         this._namesDirty = true;
         this._relationsDirty = true;
         this._clustersDirty = true;
         this._teamClanTags = null;
       }
     });
+    // Boss Raid: the Boss's caps scale with the raiders the game started
+    // with, which the engine counted when it made the teams; count the same
+    // players here so this view's Config agrees (engine-lib/game/BossRaid.ts).
+    // Every player arrives on the first update, the Boss among them.
+    if (addedBoss) {
+      this._config.setBossRaidRaiders(
+        countBossRaidRaiders(this._players.values()),
+      );
+    }
 
     // Pass 2: translate engine embargoes (Set<PlayerID>) → renderer-format
     // smallIDs. Only re-translate when embargoes changed (field present);

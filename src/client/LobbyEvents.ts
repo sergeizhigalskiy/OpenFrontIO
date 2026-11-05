@@ -21,3 +21,11 @@ export class SendToggleGameStartTimer implements GameEvent {
 export class SendSpectateEvent implements GameEvent {
   constructor(public readonly spectator: boolean) {}
 }
+
+// Host team picking: pin a player to a team slot, or null for auto.
+export class SendAssignTeamEvent implements GameEvent {
+  constructor(
+    public readonly target: string,
+    public readonly teamIndex: number | null,
+  ) {}
+}

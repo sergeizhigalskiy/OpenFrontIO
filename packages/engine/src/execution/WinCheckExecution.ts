@@ -5,6 +5,13 @@ import {
   RankedType,
   Team,
 } from "@openfront/engine-api/game/GameTypes";
+import {
+  BOSS_RAID_BOSS_TEAM,
+  BOSS_RAID_RAIDER_TEAM,
+  bossRaidTimerMinutes,
+  bossRaidWinner,
+  isBossRaid,
+} from "@openfront/engine-lib/game/BossRaid";
 import { z } from "zod";
 import { Execution, Game } from "../game/Game";
 import { execSnapshotType } from "../snapshot/ExecutionSnapshot";
@@ -39,6 +46,8 @@ export class WinCheckExecution implements Execution {
 
     if (this.mg.config().gameConfig().gameMode === GameMode.FFA) {
       this.checkWinnerFFA();
+    } else if (isBossRaid(this.mg.config().gameConfig())) {
+      this.checkWinnerBossRaid();
     } else {
       this.checkWinnerTeam();
     }
@@ -158,6 +167,32 @@ export class WinCheckExecution implements Execution {
       numTilesWithoutFallout *
         this.mg.config().percentageTilesOwnedToWinTenths(timeElapsed)
     );
+  }
+
+  // Boss Raid: the Raiders win by eliminating the Boss, the Boss by surviving
+  // the timer (or outlasting every Raider). Tile share doesn't count.
+  checkWinnerBossRaid(): void {
+    if (this.mg === null) throw new Error("Not initialized");
+    let bossAlive = false;
+    let raidersAlive = false;
+    for (const p of this.mg.allPlayers()) {
+      if (!p.isAlive()) continue;
+      const team = p.team();
+      if (team === BOSS_RAID_BOSS_TEAM) bossAlive = true;
+      else if (team === BOSS_RAID_RAIDER_TEAM) raidersAlive = true;
+    }
+    const winner = bossRaidWinner({
+      bossAlive,
+      raidersAlive,
+      elapsedSeconds: this.mg.elapsedGameSeconds(),
+      timerMinutes: bossRaidTimerMinutes(this.mg.config().gameConfig()),
+    });
+    if (winner === null) return;
+    const team =
+      winner === "boss" ? BOSS_RAID_BOSS_TEAM : BOSS_RAID_RAIDER_TEAM;
+    this.mg.setWinner(team, this.mg.stats().stats());
+    console.log(`${team} has won the Boss Raid`);
+    this.active = false;
   }
 
   checkWinnerTeam(): void {

@@ -4,6 +4,7 @@ import {
   PlayerType,
   Relation,
 } from "@openfront/engine-api/game/GameTypes";
+import { acrossBossLine } from "@openfront/engine-lib/game/BossRaid";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import {
   readVersioned,
@@ -119,6 +120,12 @@ export class NationAllianceBehavior {
     otherPlayer: Player,
     isResponse: boolean,
   ): boolean {
+    // Boss Raid: no alliance between the Boss and a Raider, either way round
+    if (
+      acrossBossLine(this.game.config().gameConfig(), this.player, otherPlayer)
+    ) {
+      return false;
+    }
     // Easy (dumb) nations sometimes get confused and accept/reject randomly (Just like dumb humans do)
     if (this.isConfused()) {
       return this.random.chance(2);
