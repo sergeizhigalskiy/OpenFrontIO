@@ -1,6 +1,7 @@
 /**
- * ResourceSitePass — an icon on every resource site (gold mine) for every
- * player, ringed with its holder's territory color (grey when unheld).
+ * ResourceSitePass — an icon on every resource site (gold mine, oil field,
+ * fishing grounds) for every player, ringed with its holder's territory
+ * color (grey when unheld).
  *
  * Sites are public, like the land they sit on. The icon keeps a readable
  * size on screen at every zoom: its world radius grows when zoomed out and
@@ -23,6 +24,8 @@ const MAX_SCREEN_RADIUS_PX = 22;
 export interface ResourceSiteMarker {
   x: number;
   y: number;
+  /** Its kind's index in RESOURCE_SITE_KINDS, which picks the icon. */
+  kind: number;
   owned: boolean;
   r: number;
   g: number;
@@ -48,6 +51,7 @@ export class ResourceSitePass {
   private uRadius: WebGLUniformLocation;
   private uRing: WebGLUniformLocation;
   private uOwned: WebGLUniformLocation;
+  private uKind: WebGLUniformLocation;
 
   private sites: ResourceSiteMarker[] = [];
 
@@ -59,6 +63,7 @@ export class ResourceSitePass {
     this.uRadius = gl.getUniformLocation(this.program, "uRadius")!;
     this.uRing = gl.getUniformLocation(this.program, "uRing")!;
     this.uOwned = gl.getUniformLocation(this.program, "uOwned")!;
+    this.uKind = gl.getUniformLocation(this.program, "uKind")!;
 
     this.vao = gl.createVertexArray()!;
     gl.bindVertexArray(this.vao);
@@ -88,6 +93,7 @@ export class ResourceSitePass {
       gl.uniform2f(this.uCenter, s.x, s.y);
       gl.uniform3f(this.uRing, s.r, s.g, s.b);
       gl.uniform1f(this.uOwned, s.owned ? 1 : 0);
+      gl.uniform1i(this.uKind, s.kind);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
     }
     gl.bindVertexArray(null);

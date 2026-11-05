@@ -7,6 +7,7 @@ import {
   RESOURCE_SITE_KINDS,
   RESOURCE_SITES_RESEND_TICKS,
   ResourceSite,
+  resourceSiteHolderTile,
 } from "@openfront/engine-lib/game/ResourceSites";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import { zInt, zTile } from "@openfront/engine-lib/snapshot/SnapshotType";
@@ -81,9 +82,12 @@ export class ResourceSiteExecution implements Execution {
     if (ticks % RESOURCE_SITES_RESEND_TICKS === 0) this.announce();
     if (this.mg.inSpawnPhase()) return;
     const config = this.mg.config();
+    const map = this.mg.map();
     for (const site of this.sites) {
-      if (!this.mg.isLand(site.tile)) continue;
-      const owner = this.mg.owner(site.tile);
+      // Its tile, or for fishing grounds the nearest coast's.
+      const holder = resourceSiteHolderTile(map, site);
+      if (holder === null) continue;
+      const owner = this.mg.owner(holder);
       if (!owner.isPlayer()) continue;
       const gold = config.resourceSiteGold(
         owner,
@@ -143,7 +147,8 @@ const ResourceSiteStateSchema = z.object({
   sites: z.array(
     z.object({
       tile: zTile(),
-      // An index into RESOURCE_SITE_KINDS.
+      // An index into RESOURCE_SITE_KINDS. Kinds are only appended, so a
+      // record from an earlier build stays valid as the range grows.
       kind: zInt()
         .nonnegative()
         .max(RESOURCE_SITE_KINDS.length - 1),

@@ -13,7 +13,8 @@ import type { GameView } from "./GameView";
  * ResourceSites.ts). The engine sends the full list in a ResourceSitesUpdate
  * when it places them and every second after; WebGLFrameBuilder calls
  * absorbResourceSites once per tick, and the map icons, the hover and the
- * leaderboard read it back with resourceSitesOf.
+ * leaderboard read it back with resourceSitesOf. Who holds a site comes
+ * from engine-lib's resourceSiteHolderTile, the same answer the engine pays.
  */
 
 const sitesByGame = new WeakMap<GameView, readonly ResourceSite[]>();
@@ -44,7 +45,7 @@ export function siteGoldPerSecond(game: GameView, site: ResourceSite): number {
   );
 }
 
-/** How many sites `smallID` holds and the gold per minute they pay. */
+/** How many sites (of every kind) `smallID` holds and their gold per minute. */
 export function heldResourceSites(
   game: GameView,
   smallID: number,
