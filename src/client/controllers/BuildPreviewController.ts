@@ -36,6 +36,7 @@ import {
 import { EventBus } from "@openfront/shared/EventBus";
 import { Controller } from "../Controller";
 import { airOrderExtras } from "../hud/layers/AirOrders";
+import { canalGhostMarker } from "../hud/layers/CanalMenu";
 import {
   chosenMinefieldDensity,
   displayedCost,
@@ -730,6 +731,22 @@ export class BuildPreviewController implements Controller {
     // The trajectory target is tracked separately from the ghost tile:
     // impassable terrain voids the ghost but still gets a trajectory arc.
     this.updateNukeTrajectoryPreview(trajectoryTileRef);
+    this.updateCanalGhost(tileRef);
+  }
+
+  /** Canals: whether a ghost path is on screen (so it is cleared once). */
+  private canalGhostShown = false;
+
+  /** Canals: the path the dig would take through the hovered tile. */
+  private updateCanalGhost(tileRef: TileRef | undefined): void {
+    const u = this.ghostUnit?.buildableUnit;
+    const marker =
+      u?.type === UnitType.Canal && tileRef !== undefined
+        ? canalGhostMarker(this.game, tileRef, u.canBuild !== false)
+        : null;
+    if (marker === null && !this.canalGhostShown) return;
+    this.canalGhostShown = marker !== null;
+    this.view.updateCanalGhost(marker);
   }
 
   /**
@@ -1448,6 +1465,7 @@ export class BuildPreviewController implements Controller {
     this.resetCursorCaches();
     this.view.updateGhostPreview(null);
     this.clearNukeTrajectory();
+    this.updateCanalGhost(undefined);
   }
 
   private removeGhostStructure() {

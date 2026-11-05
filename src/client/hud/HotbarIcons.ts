@@ -24,6 +24,8 @@ export const ballisticMissileIcon = assetUrl(
 );
 export const clusterMissileIcon = assetUrl("images/MIRVIcon.svg");
 export const droneIcon = assetUrl("images/SwordIconWhite.svg");
+// Canals open routes for ships.
+export const canalIcon = assetUrl("images/BoatIconWhite.svg");
 export const soldierIcon = assetUrl("images/SoldierIcon.svg");
 export const claimIcon = assetUrl("images/ClaimIcon.svg");
 export const profileIcon = assetUrl("images/ProfileIcon.svg");

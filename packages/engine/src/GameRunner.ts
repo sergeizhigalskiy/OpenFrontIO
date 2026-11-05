@@ -32,6 +32,7 @@ import { EngineConfig } from "./configuration/EngineConfig";
 import { DoomsdayClockExecution } from "./execution/DoomsdayClockExecution";
 import { Executor } from "./execution/ExecutionManager";
 import { RecomputeRailClusterExecution } from "./execution/RecomputeRailClusterExecution";
+import { ResourceSiteExecution } from "./execution/ResourceSiteExecution";
 import { SpawnTimerExecution } from "./execution/SpawnTimerExecution";
 import { WinCheckExecution } from "./execution/WinCheckExecution";
 import { Game, Player } from "./game/Game";
@@ -202,6 +203,11 @@ export class GameRunner {
     if (!this.game.config().isUnitDisabled(UnitType.Factory)) {
       this.game.addExecution(
         new RecomputeRailClusterExecution(this.game.railNetwork()),
+      );
+    }
+    if (this.game.config().resourceSites()) {
+      this.game.addExecution(
+        new ResourceSiteExecution(this.execManager.gameID()),
       );
     }
   }

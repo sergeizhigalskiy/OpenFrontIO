@@ -158,6 +158,14 @@ const DERIVED_FIELDS = new Set<string>([
   "inBfs",
   // SharedWaterCache
   "playerWater",
+  // WaterManager: stamp-based BFS scratch, allocated on the first water
+  // conversion (canal or water nuke) and reset with its stamps on restore
+  "_waterDistArr",
+  "_waterStampArr",
+  "_waterStamp",
+  "_miniDistArr",
+  "_miniStampArr",
+  "_miniStamp",
   // Config / EngineConfig
   "unitInfoCache",
   "engineUnitInfoCache",

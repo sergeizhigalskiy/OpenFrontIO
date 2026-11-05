@@ -10,6 +10,7 @@ import {
 } from "@openfront/shared/CosmeticSchemas";
 import { colord } from "colord";
 import { getCachedCosmetics } from "./Cosmetics";
+import { EconomyOverlaySync } from "./EconomyOverlaySync";
 import { buildTerrainRowSpans } from "./render/frame/derive/TerrainRowSpans";
 import { uploadFrameData } from "./render/frame/Upload";
 // Type-only: a value import would pull GPURenderer and its `.glsl?raw` shader
@@ -156,6 +157,8 @@ export class WebGLFrameBuilder {
   private readonly lastSpawnTile = new Map<number, number>();
   /** The capitals last sent to the renderer (see syncCapitals). */
   private lastCapitalsKey = "";
+  /** Resource sites and canal digs (see EconomyOverlaySync). */
+  private readonly economy = new EconomyOverlaySync();
   /** Skin atlas allocated once on first syncPlayers — player set is locked at game start. */
   private skinsInitialized = false;
   // The renderer needs to know which player is "me" so affiliation tint,
@@ -181,6 +184,7 @@ export class WebGLFrameBuilder {
     this.effectPalette.fill(0);
     this.lastSpawnTile.clear();
     this.lastCapitalsKey = "";
+    this.economy.clear();
     this.localPlayerSmallID = 0;
     this.skinsInitialized = false;
   }
@@ -243,6 +247,7 @@ export class WebGLFrameBuilder {
     this.syncLocalPlayer(gameView);
     this.syncSpawnOverlay(gameView);
     this.syncCapitals(gameView);
+    this.economy.sync(gameView, this.view);
     this.syncSmallPlayerGlow(gameView);
     this.syncTerrainDeltas(gameView);
     this.syncNukeImpacts(gameView);

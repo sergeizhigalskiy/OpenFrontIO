@@ -9,6 +9,7 @@ import {
 import { PlayerLike } from "@openfront/engine-api/game/ReadViews";
 import { GameConfig } from "@openfront/engine-api/Schemas";
 import { pow } from "../DetMath";
+import { CANAL_CONSTRUCTION_TICKS } from "../game/Canal";
 import {
   AIRBASE_CONSTRUCTION_TICKS,
   CONVENTIONAL_WAR_UNIT_TYPES,
@@ -197,6 +198,11 @@ export class Config {
     return this._gameConfig.conventionalWar ?? false;
   }
 
+  /** Gold mines on the map (see game/ResourceSites.ts). Off when absent. */
+  resourceSites(): boolean {
+    return this._gameConfig.resourceSites ?? false;
+  }
+
   isUnitDisabled(unitType: UnitType): boolean {
     // The mode decides first: air units exist only in conventional war, and
     // conventional war has no nukes. disabledUnits can still turn more off.
@@ -325,6 +331,13 @@ export class Config {
       case UnitType.Train:
       case UnitType.Convoy:
         info = {};
+        break;
+      case UnitType.Canal:
+        info = {
+          constructionDuration: this.instantBuild()
+            ? 0
+            : CANAL_CONSTRUCTION_TICKS,
+        };
         break;
       default:
         assertNever(type);

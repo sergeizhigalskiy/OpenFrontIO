@@ -31,6 +31,7 @@ const COPIED_KEYS = [
   "doomsdayClock",
   "overtime",
   "conventionalWar",
+  "resourceSites",
   "anonymizeNames",
   "nameReveals",
   "nameRevealPublicIds",

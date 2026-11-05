@@ -78,6 +78,7 @@ import {
   droneSpawn,
 } from "./AirOps";
 import { AttackImpl } from "./AttackImpl";
+import { canalMenuPrice, canalPrice, canalSpawn } from "./Canal";
 import {
   Alliance,
   AllianceRequest,
@@ -1443,11 +1444,14 @@ export class PlayerImpl implements Player {
       );
     }
 
-    // A minefield is priced by the density it is laid with.
+    // A minefield is priced by the density it is laid with, a canal by
+    // its length.
     const cost =
       type === UnitType.Minefield && "density" in params
         ? this.mg.config().minefieldCost(this.mg, this, params.density)
-        : this.mg.unitInfo(type).cost(this.mg, this);
+        : type === UnitType.Canal && "length" in params
+          ? canalPrice(this.mg, this, params.length)
+          : this.mg.unitInfo(type).cost(this.mg, this);
     const b = new UnitImpl(
       type,
       this.mg,
@@ -1568,7 +1572,11 @@ export class PlayerImpl implements Player {
     for (let i = 0; i < len; i++) {
       const u = units[i];
 
-      const cost = config.unitInfo(u).cost(mg, this);
+      // A canal is priced by the length of the path through the tile.
+      const cost =
+        u === UnitType.Canal && tile !== null
+          ? canalMenuPrice(mg, this, tile)
+          : config.unitInfo(u).cost(mg, this);
       let canUpgrade: number | false = false;
       let canBuild: TileRef | false = false;
       // `cost` is a minefield's price at the default density; the player
@@ -1696,6 +1704,8 @@ export class PlayerImpl implements Player {
       case UnitType.ClusterWarhead:
         // Only a cluster missile splitting creates them.
         return targetTile;
+      case UnitType.Canal:
+        return canalSpawn(this.mg, this, targetTile);
       case UnitType.Airbase:
       case UnitType.FlakGun:
       case UnitType.MissileSilo:

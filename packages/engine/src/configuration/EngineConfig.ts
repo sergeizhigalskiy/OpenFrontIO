@@ -14,6 +14,7 @@ import { TeamCountConfig } from "@openfront/engine-api/Schemas";
 import { NukeType } from "@openfront/engine-api/StatsSchemas";
 import { Config } from "@openfront/engine-lib/configuration/Config";
 import { exp, log, pow2 } from "@openfront/engine-lib/DetMath";
+import { CANAL_COST_PER_TILE } from "@openfront/engine-lib/game/Canal";
 import {
   AIRDROP_COST,
   BALLISTIC_MISSILE_COST,
@@ -470,6 +471,10 @@ export class EngineConfig extends Config {
       case UnitType.Train:
       case UnitType.Convoy:
         return () => 0n;
+      case UnitType.Canal:
+        // Per step of length: a canal is charged this times its length
+        // (see engine/game/Canal.ts canalPrice).
+        return this.costWrapper(() => CANAL_COST_PER_TILE, UnitType.Canal);
       default:
         assertNever(type);
     }
@@ -761,6 +766,13 @@ export class EngineConfig extends Config {
       baseRate = 100n;
     }
     return BigInt(Math.floor(Number(baseRate) * multiplier));
+  }
+
+  /** What a resource site paying `goldPerTick` gives `player` per tick. */
+  resourceSiteGold(player: PlayerLike, goldPerTick: Gold): Gold {
+    return BigInt(
+      Math.floor(Number(goldPerTick) * this.goldMultiplierFor(player)),
+    );
   }
 
   nukeSpeed(unitType: UnitType): number {

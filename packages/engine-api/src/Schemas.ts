@@ -350,6 +350,10 @@ export const GameConfigSchema = z.object({
   // built, and airbases, airstrikes, airdrops, cruise missiles and capitals
   // are on (see engine-lib/game/ConventionalWar.ts). Off when absent.
   conventionalWar: z.boolean().optional(),
+  // Resource sites: gold mines placed at game start that pay whoever holds
+  // their tile (see engine-lib/game/ResourceSites.ts). Off when absent, so
+  // older records replay unchanged; the lobbies and GameManager turn it on.
+  resourceSites: z.boolean().optional(),
 });
 
 // What a host sends in update_game_config. maxPlayers is the private-lobby

@@ -34,6 +34,7 @@ import { GLUnavailableError, initGL } from "./initGL";
 import { BarPass } from "./passes/BarPass";
 import { BorderComputePass } from "./passes/BorderComputePass";
 import { BorderStampPass } from "./passes/BorderStampPass";
+import { CanalMarker, CanalPass } from "./passes/CanalPass";
 import { CapitalMarker, CapitalPass } from "./passes/CapitalPass";
 import { CoordinateGridPass } from "./passes/CoordinateGridPass";
 import { CrosshairPass } from "./passes/CrosshairPass";
@@ -52,6 +53,10 @@ import { NukeTrajectoryPass } from "./passes/NukeTrajectoryPass";
 import { PointLightPass } from "./passes/PointLightPass";
 import { RailroadPass } from "./passes/RailroadPass";
 import { RangeCirclePass } from "./passes/RangeCirclePass";
+import {
+  ResourceSiteMarker,
+  ResourceSitePass,
+} from "./passes/ResourceSitePass";
 import { SAMRadiusPass } from "./passes/SamRadiusPass";
 import { SelectionBoxPass } from "./passes/SelectionBoxPass";
 import { SkinAtlasArray } from "./passes/SkinAtlasArray";
@@ -139,6 +144,8 @@ export class GPURenderer {
   private rangeCirclePass: RangeCirclePass;
   private minefieldPass: MinefieldPass;
   private capitalPass: CapitalPass;
+  private resourceSitePass: ResourceSitePass;
+  private canalPass: CanalPass;
   private samRadiusPass: SAMRadiusPass;
   private crosshairPass: CrosshairPass;
   private railroadPass: RailroadPass;
@@ -564,6 +571,10 @@ export class GPURenderer {
 
     // --- Capital stars (conventional war) ---
     this.capitalPass = new CapitalPass(gl);
+
+    // --- Resource sites and canal digs (everyone sees both) ---
+    this.resourceSitePass = new ResourceSitePass(gl);
+    this.canalPass = new CanalPass(gl);
 
     // --- SAM radius overlay (dashed green circles during build mode) ---
     this.samRadiusPass = new SAMRadiusPass(gl, mapW, this.settings);
@@ -1123,6 +1134,21 @@ export class GPURenderer {
     this.capitalPass.update(capitals);
   }
 
+  /** The gold mines (and later other resource sites) to draw. */
+  updateResourceSites(sites: ResourceSiteMarker[]): void {
+    this.resourceSitePass.update(sites);
+  }
+
+  /** The canals being dug. */
+  updateCanals(canals: CanalMarker[]): void {
+    this.canalPass.update(canals);
+  }
+
+  /** The canal build preview's path under the cursor, or null. */
+  updateCanalGhost(ghost: CanalMarker | null): void {
+    this.canalPass.updateGhost(ghost);
+  }
+
   updateSmallPlayerGlow(set: Uint8Array | null): void {
     this.smallPlayerGlowPass.update(set);
   }
@@ -1385,6 +1411,7 @@ export class GPURenderer {
     if (pe.railroad) this.railroadPass.draw(cam, zoom);
     // Under the ships that sail through them.
     this.minefieldPass.draw(cam);
+    this.canalPass.draw(cam);
     if (pe.unit) this.unitPass.drawGround(cam);
     if (pe.falloutBloom) this.bloomPass.draw(cam, this.frameTick);
     this.samRadiusPass.draw(cam);
@@ -1394,6 +1421,7 @@ export class GPURenderer {
     if (pe.structure) this.structurePass.draw(cam, zoom);
     if (pe.structure) this.structureLevelPass.draw(cam, zoom);
     this.capitalPass.draw(cam);
+    this.resourceSitePass.draw(cam, zoom);
     // Small-player glow draws after structures so buildings can't hide it.
     this.smallPlayerGlowPass.draw(cam);
     if (pe.bar) this.barPass.draw(cam);
@@ -1529,6 +1557,8 @@ export class GPURenderer {
     this.rangeCirclePass.dispose();
     this.minefieldPass.dispose();
     this.capitalPass.dispose();
+    this.resourceSitePass.dispose();
+    this.canalPass.dispose();
     this.samRadiusPass.dispose();
     this.crosshairPass.dispose();
     this.structurePass.dispose();

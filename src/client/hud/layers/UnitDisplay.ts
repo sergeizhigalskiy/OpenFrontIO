@@ -29,6 +29,7 @@ import {
   airstrikeIcon,
   atomBombIcon,
   ballisticMissileIcon,
+  canalIcon,
   cityIcon,
   clusterMissileIcon,
   coastalBatteryIcon,
@@ -648,6 +649,7 @@ export class UnitDisplay extends LitElement implements Controller {
               "minefield",
               "",
             )}
+            ${this.renderUnitItem(canalIcon, null, UnitType.Canal, "canal", "")}
             ${this.renderUnitItem(
               atomBombIcon,
               null,

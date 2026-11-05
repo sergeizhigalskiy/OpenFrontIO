@@ -82,6 +82,8 @@ const UPDATE_TYPE_ROUTING: Record<
   SpawnPhaseEnd: "events",
   GamePaused: "misc",
   DonateEvent: "misc",
+  // The replay viewer draws no resource sites (yet).
+  ResourceSites: "dropped",
 };
 
 /**

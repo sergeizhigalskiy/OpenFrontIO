@@ -30,7 +30,9 @@ import type {
   TerrainRect,
   UnitState,
 } from "../types";
+import type { CanalMarker } from "./passes/CanalPass";
 import type { CapitalMarker } from "./passes/CapitalPass";
+import type { ResourceSiteMarker } from "./passes/ResourceSitePass";
 import type { SpawnCenter } from "./passes/SpawnOverlayPass";
 import type { AttackTroopLabel } from "./passes/WorldTextPass";
 import { GPURenderer } from "./Renderer";
@@ -309,6 +311,21 @@ export class MapRenderer {
   /** Conventional war: the capital stars to draw. */
   updateCapitals(capitals: CapitalMarker[]): void {
     this.renderer?.updateCapitals(capitals);
+  }
+
+  /** The resource sites to draw. */
+  updateResourceSites(sites: ResourceSiteMarker[]): void {
+    this.renderer?.updateResourceSites(sites);
+  }
+
+  /** The canals being dug. */
+  updateCanals(canals: CanalMarker[]): void {
+    this.renderer?.updateCanals(canals);
+  }
+
+  /** The canal build preview's path under the cursor, or null. */
+  updateCanalGhost(ghost: CanalMarker | null): void {
+    this.renderer?.updateCanalGhost(ghost);
   }
 
   /** Set the small-player glow set (1 byte per owner smallID), or null = off. */

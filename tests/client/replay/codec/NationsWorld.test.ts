@@ -45,7 +45,14 @@ test("world map nations: trade ships and trains round-trip", async () => {
   const nations = loadWorldNations();
   const game = await setup(
     "world",
-    { difficulty: Difficulty.Impossible },
+    {
+      difficulty: Difficulty.Impossible,
+      // Impossible nations dig canals, and a ship whose path is refreshed by
+      // the water graph rebuild after one moves a tick before its new motion
+      // plan is recorded (the same happens after a water nuke). This fixture
+      // checks trade ships and trains against plans, so it keeps the terrain.
+      disabledUnits: [UnitType.Canal],
+    },
     [],
     undefined,
     EngineConfig,

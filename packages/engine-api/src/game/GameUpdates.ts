@@ -124,6 +124,7 @@ export enum GameUpdateType {
   SpawnPhaseEnd,
   GamePaused,
   DonateEvent,
+  ResourceSites,
 }
 
 export type GameUpdate =
@@ -149,7 +150,20 @@ export type GameUpdate =
   | EmbargoUpdate
   | SpawnPhaseEndUpdate
   | GamePausedUpdate
-  | DonateEventUpdate;
+  | DonateEventUpdate
+  | ResourceSitesUpdate;
+
+/**
+ * Every resource site on the map (see engine-lib/game/ResourceSites.ts), as
+ * `[tile, kind, tile, kind, ...]` with kind an index into
+ * RESOURCE_SITE_KINDS. Sites never move and whoever owns the tile owns the
+ * site, so this is all a view needs. Sent when they are placed and again
+ * every RESOURCE_SITES_RESEND_TICKS, so a view that starts mid-game gets it.
+ */
+export interface ResourceSitesUpdate {
+  type: GameUpdateType.ResourceSites;
+  sites: number[];
+}
 
 export interface BonusEventUpdate {
   type: GameUpdateType.BonusEvent;
