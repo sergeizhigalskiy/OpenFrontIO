@@ -10,6 +10,7 @@ import "../../components/HordeNightPanel";
 import "../../components/OvertimePanel";
 import "../../components/PlaguePanel";
 import "../../components/RisingTidePanel";
+import "../../components/SeasonPanel";
 import { Controller } from "../../Controller";
 import { isDesktopShell } from "../../DesktopShell";
 import { gamePortal } from "../../GamePortal";
@@ -485,6 +486,11 @@ export class GameRightSidebar extends LitElement implements Controller {
         .hasWinner=${this.hasWinner}
         .refreshKey=${this.timer}
       ></plague-panel>
+      <season-panel
+        .game=${this.game}
+        .hasWinner=${this.hasWinner}
+        .refreshKey=${this.timer}
+      ></season-panel>
     `;
   }
 

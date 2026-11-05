@@ -10,6 +10,7 @@
 import { GameMap, TileRef } from "@openfront/engine-api/game/GameMap";
 import { PlayerType, UnitType } from "@openfront/engine-api/game/GameTypes";
 import { AttackLogicInput, AttackLogicResult } from "./AttackLogic";
+import { winterAttackLossMultiplier } from "./Seasons";
 import {
   coveringDefensePostLevel,
   DefenseUnitQuery,
@@ -41,11 +42,45 @@ export interface ForecastCamp<P> {
   isUnderConstruction(): boolean;
 }
 
+/** What the weather inputs of an attack read (Seasons.ts, Weather.ts). */
+export interface AttackWeatherGame extends GameMap {
+  config(): { isWinter(ticksSinceStart: number): boolean };
+  /** Ticks since the spawn phase: the seasons' clock. */
+  ticksSinceStart(): number;
+  /** Mud's tick-cost multiplier for taking `tile` from a player; 1 without. */
+  mudTileCostMultiplier(tile: TileRef): number;
+}
+
+/**
+ * The weather multipliers of taking `tile` (from a player when `enemyLand`,
+ * else from terra nullius): winter on snow land raises the attacker's loss,
+ * a mud front on enemy land the tile's cost. AttackExecution and the
+ * forecast both call it, so they agree.
+ */
+export function attackWeatherInput(
+  game: AttackWeatherGame,
+  tile: TileRef,
+  enemyLand: boolean,
+): Pick<AttackLogicInput, "weatherLossMultiplier" | "weatherTileCostMultiplier"> {
+  return {
+    weatherLossMultiplier: winterAttackLossMultiplier(
+      game.config().isWinter(game.ticksSinceStart()),
+      game,
+      tile,
+    ),
+    weatherTileCostMultiplier: enemyLand ? game.mudTileCostMultiplier(tile) : 1,
+  };
+}
+
 /** What the forecast reads about the game. */
-export interface ForecastGame<P> extends GameMap, DefenseUnitQuery {
+export interface ForecastGame<P>
+  extends GameMap,
+    DefenseUnitQuery,
+    AttackWeatherGame {
   config(): {
     attackLogic(input: AttackLogicInput): AttackLogicResult;
     msPerTick(): number;
+    isWinter(ticksSinceStart: number): boolean;
   };
   units(type: UnitType): readonly ForecastCamp<P>[];
 }
@@ -165,6 +200,8 @@ export function attackForecast<P extends ForecastPlayer<P>>(
       ? game.numTilesWithFallout() / game.numLandTiles()
       : null,
     borderSize,
+    // Winter and mud, as AttackExecution applies them.
+    ...attackWeatherInput(game, tile, defender !== null),
   });
   const ticksPerSecond = 1000 / game.config().msPerTick();
   return {

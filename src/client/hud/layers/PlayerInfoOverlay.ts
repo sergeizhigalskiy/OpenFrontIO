@@ -5,7 +5,10 @@ import {
   Relation,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
-import { AllianceView } from "@openfront/engine-api/game/GameUpdates";
+import {
+  AllianceView,
+  WeatherKind,
+} from "@openfront/engine-api/game/GameUpdates";
 import { UnitLike } from "@openfront/engine-api/game/ReadViews";
 import { renderNumber, renderTroops } from "@openfront/engine-lib/Format";
 import {
@@ -90,6 +93,16 @@ function renderForecastTroops(troops: number): string {
 /** How close (in tiles) the cursor must be to an unclaimed ruin to name it. */
 const RUINS_HOVER_RADIUS = 4;
 
+/** The hover card's line naming the weather over the tile. */
+const WEATHER_NAME_KEYS: Record<WeatherKind, string> = {
+  [WeatherKind.Mud]: "weather.mud",
+  [WeatherKind.Storm]: "weather.storm",
+  [WeatherKind.Fog]: "weather.fog",
+};
+
+/** What the hover card shows for a troop count hidden by fog. */
+const FOG_TROOPS = "?";
+
 /** Unit types whose hover card names them through a translation key. */
 const UNIT_NAME_KEYS: Partial<Record<UnitType, string>> = {
   [UnitType.Convoy]: "unit_type.convoy",
@@ -152,6 +165,8 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
 
   @state()
   private unit: UnitView | null = null;
+  /** The weather in effect over the hovered tile. */
+  private weather: WeatherKind | null = null;
 
   /** What attacking the hovered tile would cost, or null when I can't. */
   @state() private forecast: AttackForecast | null = null;
@@ -273,6 +288,7 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
     this.forecast = null;
     this.forecastTile = null;
     this.onRuins = false;
+    this.weather = null;
   }
 
   public maybeShow(x: number, y: number) {
@@ -284,6 +300,7 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
 
     const tile = this.game.ref(worldCoord.x, worldCoord.y);
     if (!tile) return;
+    this.weather = this.game.weatherAt(tile);
 
     // A troop convoy under the cursor wins over the land it crosses.
     const convoy = this.game
@@ -358,6 +375,8 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
         this.setVisible(true);
       }
     }
+    // Weather over open sea or free land still gets a card naming it.
+    if (this.weather !== null) this.setVisible(true);
   }
 
   // Asks what I can do to the hovered player when it changes, and at most
@@ -485,14 +504,34 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
     this.requestUpdate();
   }
 
-  /** Up to three short lines: loss per tile, speed, and defense cover. */
+  /**
+   * Fog over the forecast tile hides the defender's troops, and with them
+   * the forecast's troop-derived numbers (loss and speed both follow from
+   * the defender's army), as the hover card hides the counts themselves.
+   */
+  private forecastFogged(): boolean {
+    const tile = this.forecastTile;
+    if (tile === null) return false;
+    const owner = this.game.owner(tile);
+    return (
+      owner.isPlayer() && this.game.fogHidesTroops(tile, owner as PlayerView)
+    );
+  }
+
+  /**
+   * Up to three short lines: loss per tile, speed, and defense cover. Under
+   * fog the loss and speed read "?"; the cover (a visible structure) stays.
+   */
   private renderAttackForecast(f: AttackForecast) {
+    const fogged = this.forecastFogged();
     const speed =
       f.tilesPerSecond === null
         ? null
-        : f.tilesPerSecond < 10
-          ? f.tilesPerSecond.toFixed(1)
-          : Math.round(f.tilesPerSecond).toString();
+        : fogged
+          ? FOG_TROOPS
+          : f.tilesPerSecond < 10
+            ? f.tilesPerSecond.toFixed(1)
+            : Math.round(f.tilesPerSecond).toString();
     let cover = "";
     if (f.defensePostLevel > 0) {
       cover = translateText(
@@ -508,7 +547,7 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
     >
       <div>
         ${translateText("attack_forecast.loss", {
-          troops: renderForecastTroops(f.lossPerTile),
+          troops: fogged ? FOG_TROOPS : renderForecastTroops(f.lossPerTile),
         })}
       </div>
       ${
@@ -756,6 +795,9 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
       .map((a) => a.troops)
       .reduce((a, b) => a + b, 0);
     const totalTroops = player.troops();
+    // Fog hides an enemy's troop counts over the hovered tile.
+    const fogged =
+      this.tile !== null && this.game.fogHidesTroops(this.tile, player);
 
     let playerType = "";
     switch (player.type()) {
@@ -895,12 +937,12 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
                 />↑</span
               >
               <span class="tabular-nums leading-none text-sm mt-0.5"
-                >${renderTroops(attackingTroops)}</span
+                >${fogged ? FOG_TROOPS : renderTroops(attackingTroops)}</span
               >
             </div>
           </div>
           <div class="w-28 md:w-36" translate="no">
-            ${this.renderTroopBar(totalTroops, attackingTroops, maxTroops)}
+            ${this.renderTroopBar(totalTroops, attackingTroops, maxTroops, fogged)}
           </div>
         </div>
         <!-- Right: Player identity + Units below -->
@@ -1055,10 +1097,11 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
     totalTroops: number,
     attackingTroops: number,
     maxTroops: number,
+    fogged = false,
   ) {
     const base = Math.max(maxTroops, 1);
-    const greenPercentRaw = (totalTroops / base) * 100;
-    const orangePercentRaw = (attackingTroops / base) * 100;
+    const greenPercentRaw = fogged ? 0 : (totalTroops / base) * 100;
+    const orangePercentRaw = fogged ? 0 : (attackingTroops / base) * 100;
 
     const greenPercent = Math.max(0, Math.min(100, greenPercentRaw));
     const orangePercent = Math.max(
@@ -1087,7 +1130,7 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
           translate="no"
         >
           <span class="text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]"
-            >${renderTroops(totalTroops)}</span
+            >${fogged ? FOG_TROOPS : renderTroops(totalTroops)}</span
           >
           <span class="text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]"
             >${renderTroops(maxTroops)}</span
@@ -1142,7 +1185,12 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
             unit.type() === UnitType.Convoy
               ? html`
                   <div class="text-sm">
-                    Troops: ${renderTroops(unit.troops())}
+                    Troops:
+                    ${
+                      this.game.fogHidesTroops(unit.tile(), unit.owner())
+                        ? FOG_TROOPS
+                        : renderTroops(unit.troops())
+                    }
                   </div>
                 `
               : ""
@@ -1176,6 +1224,15 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
     });
   }
 
+  private renderWeather(weather: WeatherKind) {
+    return html`<div
+      class="px-2 pt-1 text-sm font-bold text-sky-200"
+      data-weather=${weather}
+    >
+      ${translateText(WEATHER_NAME_KEYS[weather])}
+    </div>`;
+  }
+
   render() {
     // The onboarding tutorial keeps the screen to its own guide.
     if (!this._isActive || this.game.config().gameConfig().tutorial === true) {
@@ -1202,6 +1259,7 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
           @mouseenter=${this.onPanelEnter}
           @mouseleave=${this.onPanelLeave}
         >
+          ${this.weather !== null ? this.renderWeather(this.weather) : ""}
           ${this.player ? this.renderPlayerInfo(this.player) : ""}
           ${this.unit ? this.renderUnitInfo(this.unit) : ""}
           ${

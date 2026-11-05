@@ -35,6 +35,8 @@ export interface BoatRoute {
   landing: TileRef;
   length: number;
   blocker: Unit | null;
+  // weather-seasons: it sails through an active sea storm (nations only look).
+  stormy?: boolean;
 }
 
 /** How tribes and nations send attacks by land and boat; the protected hooks default to how tribes do it. */
@@ -231,7 +233,9 @@ export abstract class AiAttackBehavior {
 
   protected sendBoatAttack(target: Player): boolean {
     const route = this.boatRoute(target);
-    if (route === null || route.blocker !== null) return false;
+    if (route === null || route.blocker !== null || route.stormy === true) {
+      return false;
+    }
 
     const troops = this.calculateAttackTroops(
       target,
@@ -322,7 +326,8 @@ export abstract class AiAttackBehavior {
         if (this.game.hasFallout(tile)) continue;
         const launch = canBuildTransportShip(this.game, this.player, tile);
         if (launch === false) continue;
-        if (this.sail(launch, tile).blocker !== null) continue;
+        const sailed = this.sail(launch, tile);
+        if (sailed.blocker !== null || sailed.stormy === true) continue;
         return this.sendExpansionBoat(tile);
       }
     }
@@ -368,7 +373,9 @@ export abstract class AiAttackBehavior {
     if (closest === null) return null;
     const warships = this.hostileWarships();
     const direct = this.routeTo(closest.y, warships);
-    if (direct !== null && direct.blocker === null) return direct;
+    if (direct !== null && direct.blocker === null && direct.stormy !== true) {
+      return direct;
+    }
 
     let best: BoatRoute | null = null;
     for (const landing of this.otherLandings(
@@ -381,6 +388,7 @@ export abstract class AiAttackBehavior {
       if (
         route !== null &&
         route.blocker === null &&
+        route.stormy !== true &&
         (best === null || route.length < best.length)
       ) {
         best = route;
@@ -473,7 +481,7 @@ export abstract class AiAttackBehavior {
     launch: TileRef,
     target: TileRef,
     warships?: Unit[],
-  ): { length: number; blocker: Unit | null } {
+  ): { length: number; blocker: Unit | null; stormy?: boolean } {
     const landing =
       targetTransportTile(this.game, this.player, target) ?? target;
     return { length: this.game.manhattanDist(launch, landing), blocker: null };

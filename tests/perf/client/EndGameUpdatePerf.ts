@@ -119,6 +119,8 @@ function createGlStub() {
     updateSpawnOverlay: noop("updateSpawnOverlay"),
     updateCapitals: noop("updateCapitals"),
     updateRuins: noop("updateRuins"),
+    updateWeather: noop("updateWeather"),
+    setFogHiddenTroops: noop("setFogHiddenTroops"),
     initSkinAtlas: noop("initSkinAtlas"),
     applyTerrainRects: (rects: unknown[]) =>
       bump("applyTerrainRects", rects.length),

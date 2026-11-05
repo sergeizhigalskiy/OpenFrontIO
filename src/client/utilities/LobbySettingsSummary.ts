@@ -174,6 +174,17 @@ export function notableLobbySettings(
       label: translateText("game_settings.plague"),
       value: enabled,
     });
+  // Seasons and weather are on by default: only turning them off is notable.
+  if (c.seasons === false)
+    items.push({
+      label: translateText("game_settings.seasons"),
+      value: disabled,
+    });
+  if (c.weather === false)
+    items.push({
+      label: translateText("game_settings.weather"),
+      value: disabled,
+    });
   if (c.waterNukes)
     items.push({
       label: translateText("game_settings.water_nukes"),

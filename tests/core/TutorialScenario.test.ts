@@ -42,6 +42,8 @@ const tutorialConfig: GameConfig = {
   ],
   startingGold: 750_000,
   tutorial: true,
+  seasons: false,
+  weather: false,
 };
 
 /**

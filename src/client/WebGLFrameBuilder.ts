@@ -1,5 +1,10 @@
 import { PlayerType } from "@openfront/engine-api/game/GameTypes";
 import { INFECTED_PLAYER_ID } from "@openfront/engine-lib/game/Plague";
+import {
+  SeasonPhase,
+  seasonAt,
+  WINTER_TICKS,
+} from "@openfront/engine-lib/game/Seasons";
 import { assetUrl } from "@openfront/shared/AssetUrls";
 import {
   type EffectAttributesFor,
@@ -54,6 +59,8 @@ const SMALL_PLAYER_GLOW_GRACE_SECONDS = 60;
 // The set is a visual aid, not tick-critical, so rescan ~once a second
 // (10 ticks) instead of every tick.
 const SMALL_PLAYER_GLOW_RESCAN_TICKS = 10;
+// The winter tint fades in and out over this many ticks.
+const WINTER_FADE_TICKS = 20;
 
 // Attribute → render-param mappings:
 //   size      = the ring's final WIDTH (diameter) in world tiles when it fades
@@ -165,6 +172,8 @@ export class WebGLFrameBuilder {
   /** Volcano and tide state versions last sent (see syncCataclysm). */
   private lastVolcanoVersion = -1;
   private lastTideVersion = -1;
+  /** The fog-hidden troop labels last sent to the renderer (see syncWeather). */
+  private lastFogHiddenKey = "";
   /** Skin atlas allocated once on first syncPlayers — player set is locked at game start. */
   private skinsInitialized = false;
   // The renderer needs to know which player is "me" so affiliation tint,
@@ -193,6 +202,7 @@ export class WebGLFrameBuilder {
     this.lastRuins = null;
     this.lastVolcanoVersion = -1;
     this.lastTideVersion = -1;
+    this.lastFogHiddenKey = "";
     this.localPlayerSmallID = 0;
     this.skinsInitialized = false;
   }
@@ -258,6 +268,7 @@ export class WebGLFrameBuilder {
     this.syncCapitals(gameView);
     this.syncRuins(gameView);
     this.syncCataclysm(gameView);
+    this.syncWeather(gameView);
     this.syncSmallPlayerGlow(gameView);
     this.syncTerrainDeltas(gameView);
     this.syncNukeImpacts(gameView);
@@ -510,6 +521,50 @@ export class WebGLFrameBuilder {
       this.lastTideVersion = cataclysm.tideVersion;
       this.view.updateTideWarning(cataclysm.tide?.warningTiles ?? []);
     }
+  }
+
+  /**
+   * Seasons and weather: the weather cells and the winter tint, every tick,
+   * and (on change) the players whose name label sits in fog the local
+   * player can't see through.
+   */
+  private syncWeather(gameView: GameView): void {
+    const config = gameView.config();
+    const tick = gameView.ticks();
+    let winter = 0;
+    if (config.seasonsEnabled()) {
+      const season = seasonAt(gameView.ticksSinceStart());
+      if (season.phase === SeasonPhase.Winter) {
+        // Fade in over the first and out over the last WINTER_FADE_TICKS.
+        const elapsed = WINTER_TICKS - season.ticksLeft;
+        winter = Math.min(
+          1,
+          (elapsed + 1) / WINTER_FADE_TICKS,
+          season.ticksLeft / WINTER_FADE_TICKS,
+        );
+      }
+    }
+    const cells = gameView.weatherCells();
+    this.view.updateWeather(cells, tick, winter);
+
+    const hidden = new Set<number>();
+    let key = "";
+    if (cells.length > 0) {
+      for (const p of gameView.players()) {
+        const loc = p.nameLocation();
+        if (loc === undefined || !p.isAlive()) continue;
+        const x = Math.floor(loc.x);
+        const y = Math.floor(loc.y);
+        if (!gameView.isValidCoord(x, y)) continue;
+        if (gameView.fogHidesTroops(gameView.ref(x, y), p)) {
+          hidden.add(p.smallID());
+          key += `${p.smallID()},`;
+        }
+      }
+    }
+    if (key === this.lastFogHiddenKey) return;
+    this.lastFogHiddenKey = key;
+    this.view.setFogHiddenTroops(hidden);
   }
 
   /**

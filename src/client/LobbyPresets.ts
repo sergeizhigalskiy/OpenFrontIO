@@ -51,6 +51,8 @@ export const LobbyPresetConfigSchema = z.object({
   hordeNight: z.boolean().optional(),
   hordeNightSurvivalMinutes: z.number().int().min(1).max(120).optional(),
   plague: z.boolean().optional(),
+  seasons: z.boolean().optional(),
+  weather: z.boolean().optional(),
   doomsdayClock: z.boolean().optional(),
   doomsdayClockSpeed: z.enum(DOOMSDAY_CLOCK_SPEEDS).optional(),
   overtime: z.boolean().optional(),

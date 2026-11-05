@@ -152,6 +152,9 @@ export class HostLobbyModal extends BaseModal {
   @state() private hordeNight: boolean = false;
   @state() private hordeNightSurvivalMinutes: number | undefined = undefined;
   @state() private plague: boolean = false;
+  // On by default (the sim's default too).
+  @state() private seasons: boolean = true;
+  @state() private weather: boolean = true;
   @state() private lobbyId = "";
   @state() private lobbyUrlSuffix = "";
   @state() private clients: ClientInfo[] = [];
@@ -847,6 +850,14 @@ export class HostLobbyModal extends BaseModal {
                     checked: this.plague,
                   },
                   {
+                    labelKey: "game_settings.seasons",
+                    checked: this.seasons,
+                  },
+                  {
+                    labelKey: "game_settings.weather",
+                    checked: this.weather,
+                  },
+                  {
                     labelKey: "game_settings.doomsday_clock",
                     checked: this.doomsdayClock,
                     doomsdayClockSpeed: this.doomsdayClockSpeed,
@@ -1223,6 +1234,8 @@ export class HostLobbyModal extends BaseModal {
     this.hordeNight = false;
     this.hordeNightSurvivalMinutes = undefined;
     this.plague = false;
+    this.seasons = true;
+    this.weather = true;
     this.hostCheatsEnabled = false;
     this.hostCheatInfiniteGold = false;
     this.hostCheatInfiniteTroops = false;
@@ -1435,6 +1448,14 @@ export class HostLobbyModal extends BaseModal {
       case "game_settings.plague":
         this.plague = checked;
         if (checked) this.turnOffOtherExclusiveModes("plague");
+        void this.putGameConfig();
+        break;
+      case "game_settings.seasons":
+        this.seasons = checked;
+        void this.putGameConfig();
+        break;
+      case "game_settings.weather":
+        this.weather = checked;
         void this.putGameConfig();
         break;
       case "game_settings.doomsday_clock":
@@ -2002,6 +2023,8 @@ export class HostLobbyModal extends BaseModal {
       cityStates: this.cityStates,
       volcanoes: this.volcanoes,
       risingTide: this.risingTide,
+      seasons: this.seasons,
+      weather: this.weather,
       doomsdayClock: this.doomsdayClock,
       doomsdayClockSpeed: this.doomsdayClockSpeed,
       overtime: this.overtime,
@@ -2057,6 +2080,8 @@ export class HostLobbyModal extends BaseModal {
     this.cityStates = config.cityStates ?? true;
     this.volcanoes = config.volcanoes ?? false;
     this.risingTide = config.risingTide ?? false;
+    this.seasons = config.seasons ?? true;
+    this.weather = config.weather ?? true;
     this.doomsdayClock = config.doomsdayClock ?? false;
     this.doomsdayClockSpeed = config.doomsdayClockSpeed ?? "normal";
     this.overtime = config.overtime ?? false;
@@ -2264,6 +2289,8 @@ export class HostLobbyModal extends BaseModal {
             volcanoes: this.volcanoes,
             risingTide: this.risingTide,
             plague: this.plague,
+            seasons: this.seasons,
+            weather: this.weather,
             hostCheats: this.hostCheatsEnabled
               ? {
                   infiniteGold: this.hostCheatInfiniteGold || undefined,

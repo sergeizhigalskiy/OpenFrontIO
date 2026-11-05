@@ -388,6 +388,12 @@ export const GameConfigSchema = z.object({
   // Zombie plague: a hostile Infected faction breaks out and spreads by
   // infecting troops (see engine-lib/game/Plague.ts). Off when absent.
   plague: z.boolean().optional(),
+  // Seasons: a 90-second winter every 7 minutes (see
+  // engine-lib/game/Seasons.ts). On when absent.
+  seasons: z.boolean().optional(),
+  // Weather systems: mud fronts, sea storms and fog drifting over the map
+  // (see engine-lib/game/Weather.ts). On when absent.
+  weather: z.boolean().optional(),
 });
 
 // What a host sends in update_game_config. maxPlayers is the private-lobby

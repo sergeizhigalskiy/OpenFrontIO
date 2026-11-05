@@ -9,6 +9,7 @@
  *     structure levels → bars → bloom → trails → missiles → fx → conquest → names
  */
 
+import type { WeatherCell } from "@openfront/engine-api/game/GameUpdates";
 import type { MapLayer } from "@openfront/engine-api/game/MapFiles";
 import type { Config } from "@openfront/engine-lib/configuration/Config";
 import { translateText } from "../../Utils";
@@ -72,6 +73,7 @@ import { TideWarningPass } from "./passes/TideWarningPass";
 import { TrailPass } from "./passes/TrailPass";
 import { UnitPass } from "./passes/UnitPass";
 import { VolcanoMarker, VolcanoPass } from "./passes/VolcanoPass";
+import { WeatherPass } from "./passes/WeatherPass";
 import { WorldTextPass } from "./passes/WorldTextPass";
 import type { RenderSettings } from "./RenderSettings";
 import { AffiliationPalette } from "./utils/Affiliation";
@@ -149,6 +151,7 @@ export class GPURenderer {
   private ruinsPass: RuinsPass;
   private volcanoPass: VolcanoPass;
   private tideWarningPass: TideWarningPass;
+  private weatherPass: WeatherPass;
   private samRadiusPass: SAMRadiusPass;
   private crosshairPass: CrosshairPass;
   private railroadPass: RailroadPass;
@@ -580,6 +583,9 @@ export class GPURenderer {
     // --- Volcano sites and the rising tide warning ---
     this.volcanoPass = new VolcanoPass(gl);
     this.tideWarningPass = new TideWarningPass(gl, mapW, mapH);
+    // --- Seasons and weather (winter tint, weather cells) ---
+    // Created above; only dispose() clears it.
+    this.weatherPass = new WeatherPass(gl, mapW, mapH, this.terrainBytesTex!);
 
     // --- SAM radius overlay (dashed green circles during build mode) ---
     this.samRadiusPass = new SAMRadiusPass(gl, mapW, this.settings);
@@ -1152,6 +1158,20 @@ export class GPURenderer {
     this.tideWarningPass.update(tiles);
   }
 
+  /** Seasons and weather: the live cells and the winter strength (0-1). */
+  updateWeather(
+    cells: readonly WeatherCell[],
+    tick: number,
+    winter: number,
+  ): void {
+    this.weatherPass.update(cells, tick, winter);
+  }
+
+  /** Fog: players (smallIDs) whose name label shows no troop count. */
+  setFogHiddenTroops(hidden: ReadonlySet<number>): void {
+    this.namePass.setHiddenTroops(hidden);
+  }
+
   updateSmallPlayerGlow(set: Uint8Array | null): void {
     this.smallPlayerGlowPass.update(set);
   }
@@ -1412,6 +1432,9 @@ export class GPURenderer {
     this.spawnOverlayPass.draw(cam);
     if (pe.borderStamp) this.borderStampPass.draw(cam);
     if (pe.railroad) this.railroadPass.draw(cam, zoom);
+    // Over the land the weather covers, under the ships sailing through it.
+    // The strategic alt view stays effects-free.
+    if (!this.altView) this.weatherPass.draw(cam);
     // Under the ships that sail through them.
     this.minefieldPass.draw(cam);
     this.tideWarningPass.draw(cam);
@@ -1565,6 +1588,7 @@ export class GPURenderer {
     this.ruinsPass.dispose();
     this.volcanoPass.dispose();
     this.tideWarningPass.dispose();
+    this.weatherPass.dispose();
     this.samRadiusPass.dispose();
     this.crosshairPass.dispose();
     this.structurePass.dispose();

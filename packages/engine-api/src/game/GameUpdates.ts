@@ -127,6 +127,8 @@ export enum GameUpdateType {
   Ruins,
   // Volcanoes and rising tide (lobby modes, off by default).
   Cataclysm,
+  // The live weather cells (see WeatherUpdate).
+  Weather,
 }
 
 export type GameUpdate =
@@ -154,7 +156,8 @@ export type GameUpdate =
   | GamePausedUpdate
   | DonateEventUpdate
   | RuinsUpdate
-  | CataclysmUpdate;
+  | CataclysmUpdate
+  | WeatherUpdate;
 
 /**
  * Every unclaimed ruin on the map (see engine-lib/game/WorldFeatures.ts),
@@ -455,4 +458,45 @@ export interface RisingTideUpdate {
   wave: number;
   /** Land tiles when the tide started (a view counts the land left itself). */
   originalLand: number;
+}
+
+/** The kinds of weather cell (see engine-lib/game/Weather.ts). */
+export enum WeatherKind {
+  /** Spawns over land: enemy land under it is slower to take. */
+  Mud = 0,
+  /** Spawns over ocean: ships inside are slowed, boats lose troops. */
+  Storm = 1,
+  /** Land or sea: hides enemy troop counts on the client. No engine effect. */
+  Fog = 2,
+}
+
+/**
+ * One weather cell: a circle drifting in a straight line. Its center at tick
+ * t is (x + dx * (t - announceTick), y + dy * (t - announceTick)). It is a
+ * forecast from announceTick, takes effect at activeTick and is gone at
+ * endTick.
+ */
+export interface WeatherCell {
+  id: number;
+  kind: WeatherKind;
+  /** Center at announceTick, in tiles. */
+  x: number;
+  y: number;
+  /** Drift per tick, in tiles. */
+  dx: number;
+  dy: number;
+  /** In tiles. */
+  radius: number;
+  announceTick: Tick;
+  activeTick: Tick;
+  endTick: Tick;
+}
+
+/**
+ * Every live weather cell, forecasts included. Sent when the list changes
+ * and once a second, so a view that starts mid-game catches up.
+ */
+export interface WeatherUpdate {
+  type: GameUpdateType.Weather;
+  cells: WeatherCell[];
 }

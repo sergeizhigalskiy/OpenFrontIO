@@ -10,7 +10,10 @@ import {
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
 import { renderTroops } from "@openfront/engine-lib/Format";
-import { siegeCampTiles } from "@openfront/engine-lib/game/AttackForecast";
+import {
+  attackWeatherInput,
+  siegeCampTiles,
+} from "@openfront/engine-lib/game/AttackForecast";
 import {
   isInfected,
   plagueCaptureTroops,
@@ -475,6 +478,9 @@ export class AttackExecution implements Execution {
         ? this.mg.numTilesWithFallout() / this.mg.numLandTiles()
         : null,
       borderSize,
+      // weather-seasons hooks: winter on snow land, mud on enemy land (the
+      // same helper the client's attack forecast calls).
+      ...attackWeatherInput(this.mg, tile, defender !== null),
     };
   }
 

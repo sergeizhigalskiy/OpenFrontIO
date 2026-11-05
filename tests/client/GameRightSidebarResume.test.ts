@@ -15,6 +15,7 @@ async function mount(resumedFromSave: boolean) {
     doomsdayClockConfig: () => ({ enabled: false }),
     overtimeConfig: () => ({ enabled: false, startMinutes: 0 }),
     risingTide: () => false,
+    seasonsEnabled: () => false,
     isReplay: () => false,
     listed: false,
   };

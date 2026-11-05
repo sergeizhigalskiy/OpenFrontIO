@@ -27,14 +27,20 @@ import {
   AttackLogicResult,
 } from "@openfront/engine-lib/game/AttackLogic";
 import {
+  SEASON_CYCLE_TICKS,
+  WINTER_ATTACKER_LOSS_MULTIPLIER,
+} from "@openfront/engine-lib/game/Seasons";
+import {
   SIEGE_CAMP_POST_DEFENSE_BONUS,
   SIEGE_CAMP_POST_SPEED_BONUS,
 } from "@openfront/engine-lib/game/Siege";
+import { MUD_TILE_COST_MULTIPLIER } from "@openfront/engine-lib/game/Weather";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import { sigmoid, within } from "@openfront/engine-lib/Util";
 import { EngineConfig } from "@openfront/engine/configuration/EngineConfig";
 import { AttackExecution } from "@openfront/engine/execution/AttackExecution";
 import { Game, Player } from "@openfront/engine/game/Game";
+import { CALM, WeatherSystem } from "@openfront/engine/game/WeatherSystem";
 import { vi } from "vitest";
 import { setup } from "./util/Setup";
 import { UseRealAttackLogic } from "./util/TestConfig";
@@ -364,7 +370,30 @@ describe("attack forecast matches the engine", () => {
     );
   });
 
-  test("into unclaimed land", async () => {
+  test("in winter and mud, with the same multipliers as the attack", async () => {
+    const { game, attacker, defender } = await plainsGame(true);
+    // Winter on the seasons' clock (its first winter starts a cycle in).
+    vi.spyOn(game, "ticksSinceStart").mockReturnValue(SEASON_CYCLE_TICKS + 5);
+    expect(game.config().isWinter(game.ticksSinceStart())).toBe(true);
+    // A mud front over the defender's land south of y = 50.
+    const mud: WeatherSystem = {
+      cells: () => [],
+      attackTileCostMultiplier: (tile) =>
+        game.y(tile) >= 50 ? MUD_TILE_COST_MULTIPLIER : 1,
+      inStorm: () => false,
+      stormMove: () => CALM,
+    };
+    game.setWeather(mud);
+    const checks = recordAttack(game, attacker, defender, 60_000, 20);
+    expectForecastMatches(checks);
+    // Snow is the northern 30% of the plains: both sides of each rule show up.
+    const loss = new Set(checks.map((c) => c.input.weatherLossMultiplier));
+    const cost = new Set(checks.map((c) => c.input.weatherTileCostMultiplier));
+    expect([...loss].sort()).toEqual([1, WINTER_ATTACKER_LOSS_MULTIPLIER]);
+    expect([...cost].sort()).toEqual([1, MUD_TILE_COST_MULTIPLIER]);
+  });
+
+    test("into unclaimed land", async () => {
     const { game, attacker } = await plainsGame(false);
     const checks = recordAttack(game, attacker, null, 60_000, 10);
     expectForecastMatches(checks);

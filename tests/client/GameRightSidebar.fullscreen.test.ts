@@ -13,6 +13,7 @@ function fakeGame(): GameView {
     doomsdayClockConfig: () => ({ enabled: false }),
     overtimeConfig: () => ({ enabled: false, startMinutes: 0 }),
     risingTide: () => false,
+    seasonsEnabled: () => false,
     isReplay: () => false,
     listed: true,
   };

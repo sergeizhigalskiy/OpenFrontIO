@@ -98,7 +98,11 @@ export class PlayerExecution implements Execution {
       return;
     }
 
-    const troopInc = this.config.troopIncreaseRate(this.player);
+    // weather-seasons hook: the season clock (winter slows troop growth).
+    const troopInc = this.config.troopIncreaseRate(
+      this.player,
+      this.mg.ticksSinceStart(),
+    );
     this.player.addTroops(troopInc);
     // Conventional war: enemy capitals held raise the income (Capital.ts).
     const goldFromWorkers = this.config.goldAdditionRate(

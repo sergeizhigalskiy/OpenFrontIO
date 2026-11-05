@@ -46,6 +46,8 @@ function createSidebar(overrides: Partial<TimerState> = {}) {
       // config read must exist even though these tests keep the mode off.
       overtimeConfig: () => ({ enabled: false, startMinutes: 30 }),
       risingTide: () => false,
+      // Likewise the season panel's.
+      seasonsEnabled: () => false,
       gameConfig: () => ({
         gameType: GameType.Public,
         maxTimerValue: state.maxTimerValue,

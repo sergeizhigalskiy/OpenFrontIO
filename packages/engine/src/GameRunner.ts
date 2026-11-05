@@ -39,6 +39,7 @@ import { RisingTideExecution } from "./execution/RisingTideExecution";
 import { RuinsExecution } from "./execution/RuinsExecution";
 import { SpawnTimerExecution } from "./execution/SpawnTimerExecution";
 import { VolcanoExecution } from "./execution/VolcanoExecution";
+import { WeatherExecution } from "./execution/WeatherExecution";
 import { WinCheckExecution } from "./execution/WinCheckExecution";
 import { Game, Player } from "./game/Game";
 import { createGame } from "./game/GameImpl";
@@ -230,6 +231,13 @@ export class GameRunner {
     }
     if (this.game.config().plague()) {
       this.game.addExecution(new PlagueExecution(this.execManager.gameID()));
+    }
+    if (this.game.config().weatherEnabled()) {
+      this.game.addExecution(
+        new WeatherExecution(
+          simpleHash(`${this.execManager.gameID()}:weather`),
+        ),
+      );
     }
     if (!this.game.config().isUnitDisabled(UnitType.Factory)) {
       this.game.addExecution(

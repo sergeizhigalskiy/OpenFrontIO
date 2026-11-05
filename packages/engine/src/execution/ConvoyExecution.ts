@@ -231,6 +231,9 @@ export class ConvoyExecution implements Execution {
       return;
     }
 
+    // weather-seasons hook: a sea storm halves a convoy's speed at sea.
+    if (this.mg.weather()?.stormMove(this.convoy, ticks).hold) return;
+
     for (let step = 0; step < CONVOY_TILES_PER_TICK; step++) {
       if (this.pathIndex + 1 >= this.path.length) {
         this.deliver();

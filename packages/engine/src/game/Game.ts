@@ -53,6 +53,7 @@ import { PathFinder } from "../pathfinding/types";
 import type { ExecRecord, SnapshotWriter } from "../snapshot/SnapshotContext";
 import { RailNetwork } from "./RailNetwork";
 import { Stats } from "./Stats";
+import type { WeatherSystem } from "./WeatherSystem";
 
 export interface OwnerComp {
   owner: Player;
@@ -687,8 +688,21 @@ export interface Game extends GameLike {
 
   // Game State
   ticks(): Tick;
+  /** Ticks since the spawn phase ended; 0 during it. The seasons' clock. */
+  ticksSinceStart(): Tick;
   inSpawnPhase(): boolean;
   endSpawnPhase(): void;
+  /**
+   * weather-seasons: the running weather systems, or null when weather is
+   * off or has not started. WeatherExecution registers itself on init.
+   */
+  weather(): WeatherSystem | null;
+  setWeather(weather: WeatherSystem): void;
+  /**
+   * Mud's tick-cost multiplier for taking `tile` from a player (Weather.ts):
+   * 1 without weather. The attack forecast reads the same from the view.
+   */
+  mudTileCostMultiplier(tile: TileRef): number;
   queueViewResync(): void;
   executeNextTick(): GameUpdates;
   drainPackedTileUpdates(): Uint32Array;

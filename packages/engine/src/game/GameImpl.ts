@@ -117,6 +117,7 @@ import { Railroad } from "./Railroad";
 import { Stats } from "./Stats";
 import { StatsImpl, StatsSnapshot } from "./StatsImpl";
 import { WaterManager, WaterManagerSnapshot } from "./WaterManager";
+import { isWeatherSystem, WeatherSystem } from "./WeatherSystem";
 import { claimRuin, payCityStateBounty } from "./WorldFeatures";
 
 export function createGame(
@@ -187,6 +188,9 @@ export class GameImpl implements Game {
   private _nationMirvTargets = new Map<PlayerID, Tick>();
   // Unclaimed ruins by tile, in placement order (WorldFeatures.ts).
   private _ruins = new Map<TileRef, RuinReward>();
+  // weather-seasons: the WeatherExecution, once inited. Not stored: a
+  // restore finds it again in the exec list (see restoreState).
+  private _weather: WeatherSystem | null = null;
 
   private _isPaused: boolean = false;
   private _winner: Player | Team | null = null;
@@ -586,6 +590,18 @@ export class GameImpl implements Game {
 
   inSpawnPhase(): boolean {
     return this.startTick === null;
+  }
+
+  weather(): WeatherSystem | null {
+    return this._weather;
+  }
+
+  setWeather(weather: WeatherSystem): void {
+    this._weather = weather;
+  }
+
+  mudTileCostMultiplier(tile: TileRef): number {
+    return this._weather?.attackTileCostMultiplier(tile) ?? 1;
   }
 
   endSpawnPhase(): void {
@@ -1259,7 +1275,7 @@ export class GameImpl implements Game {
     );
   }
 
-  private ticksSinceStart(): number {
+  ticksSinceStart(): number {
     if (this.inSpawnPhase()) {
       return 0;
     }
@@ -1826,6 +1842,12 @@ export class GameImpl implements Game {
     this.startTick = s.startTick;
     this.execs = s.execs.map((i) => r.exec(i));
     this.unInitExecs = s.unInitExecs.map((i) => r.exec(i));
+    // weather-seasons: the WeatherExecution registers itself on init, so the
+    // live game points at it exactly when it is in the inited exec list.
+    this._weather =
+      (this.execs.find((e) => isWeatherSystem(e)) as
+        | WeatherSystem
+        | undefined) ?? null;
     this.allianceRequests = s.allianceRequests.map((i) =>
       r.allianceRequest<AllianceRequestImpl>(i),
     );

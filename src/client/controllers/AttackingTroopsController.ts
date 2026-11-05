@@ -16,7 +16,7 @@ import { AlternateViewEvent } from "../InputHandler";
 import { MapRenderer } from "../render/gl";
 import type { AttackTroopLabel } from "../render/gl/passes/WorldTextPass";
 import { UserSettings } from "../UserSettings";
-import { GameView } from "../view";
+import { GameView, PlayerView } from "../view";
 
 // Aquarius (#3fa9f5) for outgoing, red-400 (#f87171) for incoming.
 const OUTGOING_R = 0x3f / 255;
@@ -48,8 +48,13 @@ export interface Slot {
 interface AttackEntry {
   text: string;
   isIncoming: boolean;
+  /** The attacker's smallID for incoming attacks, else 0. */
+  attackerID: number;
   slots: Slot[];
 }
+
+/** What an incoming attack's label shows inside fog. */
+const FOG_TROOP_TEXT = "?";
 
 export function alignClusterOrder(next: Cell[], prev: Slot[]): void {
   if (next.length !== 2 || prev.length !== 2) return;
@@ -115,7 +120,7 @@ export class AttackingTroopsController implements Controller {
       const defender = this.game.playerBySmallID(attack.targetID);
       if (!defender || !defender.isPlayer()) continue;
       activeIDs.add(attack.id);
-      this.ensureEntry(attack.id, attack.troops, false);
+      this.ensureEntry(attack.id, attack.troops, 0);
     }
 
     // Incoming: only label attacks coming from another player; skip tribes.
@@ -129,7 +134,7 @@ export class AttackingTroopsController implements Controller {
         continue;
       }
       activeIDs.add(attack.id);
-      this.ensureEntry(attack.id, attack.troops, true);
+      this.ensureEntry(attack.id, attack.troops, attack.attackerID);
     }
 
     for (const id of this.attacks.keys()) {
@@ -159,15 +164,31 @@ export class AttackingTroopsController implements Controller {
       });
   }
 
-  private ensureEntry(attackID: string, troops: number, isIncoming: boolean) {
+  /** `attackerID` is the attacker's smallID for an incoming attack, else 0. */
+  private ensureEntry(attackID: string, troops: number, attackerID: number) {
     const text = renderTroops(troops);
+    const isIncoming = attackerID !== 0;
     const existing = this.attacks.get(attackID);
     if (existing) {
       existing.text = text;
       existing.isIncoming = isIncoming;
+      existing.attackerID = attackerID;
       return;
     }
-    this.attacks.set(attackID, { text, isIncoming, slots: [] });
+    this.attacks.set(attackID, { text, isIncoming, attackerID, slots: [] });
+  }
+
+  /** Fog hides an incoming attack's troops where its label sits. */
+  private fogged(entry: AttackEntry, x: number, y: number): boolean {
+    if (!entry.isIncoming) return false;
+    const tx = Math.floor(x);
+    const ty = Math.floor(y);
+    if (!this.game.isValidCoord(tx, ty)) return false;
+    const attacker = this.game.playerBySmallID(entry.attackerID);
+    return (
+      attacker.isPlayer() &&
+      this.game.fogHidesTroops(this.game.ref(tx, ty), attacker as PlayerView)
+    );
   }
 
   private reconcileSlots(
@@ -261,7 +282,9 @@ export class AttackingTroopsController implements Controller {
         }
         item.x = slot.curX;
         item.y = slot.curY;
-        item.text = entry.text;
+        item.text = this.fogged(entry, slot.curX, slot.curY)
+          ? FOG_TROOP_TEXT
+          : entry.text;
         item.colorR = r;
         item.colorG = g;
         item.colorB = b;

@@ -129,8 +129,10 @@ describe("PlayerInfoOverlay attack forecast", () => {
       inSpawnPhase: () => false,
       isLand: () => true,
       isImpassable: () => false,
-      // No unclaimed ruins near the cursor (world features).
+      // No unclaimed ruins near the cursor (world features), no weather.
       ruins: () => [],
+      weatherAt: () => null,
+      fogHidesTroops: () => false,
       config: () => ({
         isUnitDisabled: () => true,
         maxTroops: () => 1000,
@@ -200,7 +202,22 @@ describe("PlayerInfoOverlay attack forecast", () => {
     expect(out).toContain('attack_forecast.defense_post_reduced{"level":"2"}');
   });
 
-  it("keeps one decimal on small losses", async () => {
+  it("hides the troop-derived numbers under fog, not the post's cover", async () => {
+    forecastMock.result = { ...forecastMock.result, defensePostLevel: 1 };
+    const fog = vi.fn(() => true);
+    const out = await hover(game(enemy, me(), { fogHidesTroops: fog }));
+    expect(out).toContain('attack_forecast.loss{"troops":"?"}');
+    expect(out).toContain('attack_forecast.speed{"speed":"?"}');
+    expect(out).not.toContain('"troops":"12"');
+    expect(out).toContain('attack_forecast.defense_post{"level":"1"}');
+    expect(fog).toHaveBeenCalledWith(42, enemy);
+
+    // Unclaimed land has no troops for fog to hide.
+    const free = await hover(game(terraNullius, me(), { fogHidesTroops: fog }));
+    expect(free).toContain('attack_forecast.loss{"troops":"12"}');
+  });
+
+    it("keeps one decimal on small losses", async () => {
     forecastMock.result = { ...forecastMock.result, lossPerTile: 45 };
     expect(await hover(game(enemy, me()))).toContain(
       'attack_forecast.loss{"troops":"4.5"}',

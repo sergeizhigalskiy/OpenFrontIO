@@ -34,13 +34,14 @@ import {
   COASTAL_BATTERY_HEALTH_PERCENT_OF_WARSHIP,
   MINEFIELD_MAX_DENSITY,
 } from "../game/NavalDefense";
+import { isInfected } from "../game/Plague";
+import { isWinterAt, seasonTroopGrowthMultiplier } from "../game/Seasons";
 import {
   DEFENSE_POST_MAX_LEVEL,
   defensePostRange,
   SIEGE_CAMP_CONSTRUCTION_TICKS,
 } from "../game/Siege";
 import { cityStateTroopCap } from "../game/WorldFeatures";
-import { isInfected } from "../game/Plague";
 import { assertNever } from "../Util";
 
 export interface NukeMagnitude {
@@ -281,6 +282,21 @@ export class Config implements AttackRules {
   /** Zombie plague mode (see game/Plague.ts), off by default. */
   plague(): boolean {
     return this._gameConfig.plague ?? false;
+  }
+
+  /** Seasons (see game/Seasons.ts). On unless the game config turns it off. */
+  seasonsEnabled(): boolean {
+    return this._gameConfig.seasons ?? true;
+  }
+
+  /** Weather systems (see game/Weather.ts). On unless turned off. */
+  weatherEnabled(): boolean {
+    return this._gameConfig.weather ?? true;
+  }
+
+  /** True while a winter lasts, `ticksSinceStart` after the spawn phase. */
+  isWinter(ticksSinceStart: Tick): boolean {
+    return this.seasonsEnabled() && isWinterAt(ticksSinceStart);
   }
 
   isUnitDisabled(unitType: UnitType): boolean {
@@ -592,7 +608,11 @@ export class Config implements AttackRules {
     return (maxTroops * bossMaxTroopsPercent(this.bossRaidRaiders())) / 100;
   }
 
-  troopIncreaseRate(player: PlayerLike): number {
+  /**
+   * Troops `player` grows this tick. `ticksSinceStart` (the game clock since
+   * the spawn phase) applies the season; without it there is no winter.
+   */
+  troopIncreaseRate(player: PlayerLike, ticksSinceStart?: Tick): number {
     // The plague's Infected never regrows: it only grows by infecting.
     if (this.plague() && isInfected(player)) return 0;
     const max = this.maxTroops(player);
@@ -629,6 +649,10 @@ export class Config implements AttackRules {
     if (isBossRaidBoss(this._gameConfig, player)) {
       toAdd = (toAdd * bossTroopGrowthPercent(this.bossRaidRaiders())) / 100;
     }
+    // weather-seasons hook: winter slows troop growth (game/Seasons.ts).
+    toAdd *= seasonTroopGrowthMultiplier(
+      ticksSinceStart !== undefined && this.isWinter(ticksSinceStart),
+    );
 
     return Math.min(player.troops() + toAdd, max) - player.troops();
   }

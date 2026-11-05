@@ -73,6 +73,10 @@ import { fightSurvivalThreat } from "./NationSurvivalBehavior";
 import { findJuiciestTarget, findRunawayLeader } from "./NationUtils";
 import type { NationWarshipBehavior } from "./NationWarshipBehavior";
 import {
+  holdsOffWinterAttack,
+  routeCrossesStorm,
+} from "./NationWeatherBehavior";
+import {
   cityStateAttackOdds,
   cityStateToAttack,
   ruinToSeek,
@@ -339,7 +343,8 @@ export class NationAttackBehavior extends AiAttackBehavior {
       }
     }
     const { tile: dst, launch } = found;
-    if (this.sail(launch, dst).blocker !== null) return;
+    const sailed = this.sail(launch, dst);
+    if (sailed.blocker !== null || sailed.stormy === true) return;
 
     const owner = this.game.owner(dst);
     if (this.landsBeachheads()) {
@@ -1330,6 +1335,11 @@ export class NationAttackBehavior extends AiAttackBehavior {
       return null;
     }
 
+    // weather-seasons hook: hold off big attacks into snow land in winter.
+    if (holdsOffWinterAttack(this.game, this.player, target, troops)) {
+      return null;
+    }
+
     // Hard & Impossible: don't attack if we'd send less than 20% of target's troops
     const pileOn =
       target.isPlayer() && target === opponent
@@ -1356,6 +1366,8 @@ export class NationAttackBehavior extends AiAttackBehavior {
     if (!this.landsBeachheads()) return super.sendBoatAttack(target);
     const route = this.boatRoute(target);
     if (route === null) return false;
+    // weather-seasons hook: wait out a storm on the only route.
+    if (route.stormy === true) return false;
     if (
       route.blocker !== null &&
       this.player.unitCount(UnitType.TransportShip) > 0
@@ -1415,6 +1427,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
     return (
       route !== null &&
       route.blocker === null &&
+      route.stormy !== true &&
       route.length <= this.maxBoatRoute()
     );
   }
@@ -1427,13 +1440,18 @@ export class NationAttackBehavior extends AiAttackBehavior {
     launch: TileRef,
     target: TileRef,
     warships: Unit[] = this.hostileWarships(),
-  ): { length: number; blocker: Unit | null } {
+  ): { length: number; blocker: Unit | null; stormy: boolean } {
     const landing =
       targetTransportTile(this.game, this.player, target) ?? target;
     const direct = this.game.manhattanDist(launch, landing);
     const { difficulty } = this.game.config().gameConfig();
     if (difficulty === Difficulty.Easy) {
-      return { length: direct, blocker: null };
+      return {
+        length: direct,
+        blocker: null,
+        // weather-seasons hook: a sea storm on the way.
+        stormy: routeCrossesStorm(this.game, [launch, landing]),
+      };
     }
 
     const path =
@@ -1442,6 +1460,8 @@ export class NationAttackBehavior extends AiAttackBehavior {
         : PathFinding.Water(this.game).findPath(launch, landing);
     const route = path ?? [launch, landing];
     const length = path?.length ?? direct;
+    // weather-seasons hook: a sea storm on the way.
+    const stormy = routeCrossesStorm(this.game, route);
     // Without a path, assume the warship can fire as soon as we launch
     const sailed = (i: number) => (path === null ? 0 : i);
 
@@ -1477,12 +1497,12 @@ export class NationAttackBehavior extends AiAttackBehavior {
         // Shell and boat close in by at most 4 tiles a tick; 10 tiles spare for its reaction
         const ticksLeft = length - sailed(i);
         if (4 * ticksLeft >= this.game.manhattanDist(w.tile(), route[i]) - 10) {
-          return { length, blocker: w };
+          return { length, blocker: w, stormy };
         }
         break;
       }
     }
-    return { length, blocker: null };
+    return { length, blocker: null, stormy };
   }
 
   // Hard & Impossible don't sail further than this to attack someone

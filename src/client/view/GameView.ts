@@ -17,6 +17,8 @@ import {
   GameUpdateViewData,
   SpawnPhaseEndUpdate,
   UnitUpdate,
+  WeatherCell,
+  WeatherKind,
 } from "@openfront/engine-api/game/GameUpdates";
 import {
   GameLike,
@@ -38,6 +40,11 @@ import {
 import { TerrainMapData } from "@openfront/engine-lib/game/TerrainMapLoader";
 import { TerraNulliusImpl } from "@openfront/engine-lib/game/TerraNulliusImpl";
 import { UnitGrid } from "@openfront/engine-lib/game/UnitGrid";
+import {
+  fogHidesTroops,
+  mudTileCostMultiplier,
+  weatherKindAt,
+} from "@openfront/engine-lib/game/Weather";
 import { PlayerCosmetics, WirePlayer } from "@openfront/shared/WireSchemas";
 import { computeAllianceClusters } from "../render/frame/derive/AllianceClusters";
 import { extractAttackRings } from "../render/frame/derive/AttackRings";
@@ -152,6 +159,8 @@ export class GameView implements GameLike {
   };
 
   private toDelete = new Set<number>();
+  /** The live weather cells, from the last WeatherUpdate. */
+  private _weatherCells: WeatherCell[] = [];
 
   /** The unclaimed ruins' tiles, as of the last Ruins update. */
   private _ruins: readonly TileRef[] = [];
@@ -303,6 +312,10 @@ export class GameView implements GameLike {
       this._ruins = ruinUpdates[ruinUpdates.length - 1].tiles;
     }
     this._cataclysm.apply(gu.updates[GameUpdateType.Cataclysm]);
+    const weatherUpdates = gu.updates[GameUpdateType.Weather] ?? [];
+    if (weatherUpdates.length > 0) {
+      this._weatherCells = weatherUpdates[weatherUpdates.length - 1].cells;
+    }
 
     const myDisplayName = formatPlayerDisplayName(
       this._myUsername,
@@ -965,6 +978,55 @@ export class GameView implements GameLike {
   config(): Config {
     return this._config;
   }
+
+  /** Every live weather cell, forecasts included. */
+  weatherCells(): readonly WeatherCell[] {
+    return this._weatherCells;
+  }
+
+  /**
+   * Mud's tick-cost multiplier for taking `tile` from a player, as the
+   * engine's WeatherExecution reads it (the attack forecast uses it).
+   */
+  mudTileCostMultiplier(tile: TileRef): number {
+    if (this._weatherCells.length === 0) return 1;
+    return mudTileCostMultiplier(
+      this._weatherCells,
+      this.ticks(),
+      this.x(tile),
+      this.y(tile),
+    );
+  }
+
+  /** The weather in effect over `tile`, or null. */
+  weatherAt(tile: TileRef): WeatherKind | null {
+    if (this._weatherCells.length === 0) return null;
+    return weatherKindAt(
+      this._weatherCells,
+      this.ticks(),
+      this.x(tile),
+      this.y(tile),
+    );
+  }
+
+  /**
+   * Fog: whether a troop count of `owner`'s shown at `tile` is hidden from
+   * this viewer. Only what the viewer owns or is friendly with shows through.
+   */
+  fogHidesTroops(tile: TileRef, owner: PlayerView | null): boolean {
+    if (this._weatherCells.length === 0) return false;
+    const me = this.myPlayer();
+    const seesThrough =
+      owner !== null && me !== null && (owner === me || me.isFriendly(owner));
+    return fogHidesTroops(
+      this._weatherCells,
+      this.ticks(),
+      this.x(tile),
+      this.y(tile),
+      seesThrough,
+    );
+  }
+
   isSpectator(): boolean {
     return !this.myPlayer()?.isAlive() || this._config.isReplay();
   }
