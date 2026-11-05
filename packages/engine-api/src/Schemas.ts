@@ -11,6 +11,10 @@ import {
   GameType,
   HumansVsNations,
   MAX_UPGRADE_AMOUNT,
+  DRONE_SWARM_MAX,
+  DRONE_SWARM_MIN,
+  MINEFIELD_MAX_DENSITY,
+  MINEFIELD_MIN_DENSITY,
   Quads,
   RankedType,
   Trios,
@@ -342,6 +346,10 @@ export const GameConfigSchema = z.object({
   // Stripped from gameStartInfo and from the advertised lobby config: sibling
   // ids are private lobby ids, which are join secrets.
   pool: PoolConfigSchema.optional(),
+  // Conventional war mode: atom bombs, hydrogen bombs and MIRVs can't be
+  // built, and airbases, airstrikes, airdrops, cruise missiles and capitals
+  // are on (see engine-lib/game/ConventionalWar.ts). Off when absent.
+  conventionalWar: z.boolean().optional(),
 });
 
 // What a host sends in update_game_config. maxPlayers is the private-lobby
@@ -422,6 +430,10 @@ export const AttackIntentSchema = z.object({
   type: z.literal("attack"),
   targetID: MappedID.nullable(),
   troops: zb.float({ min: 0 }).nullable(),
+  // Spearhead: the tile the player clicked. The front pushes toward it first
+  // instead of advancing evenly along the whole border. Same TileRef rules as
+  // every other tile field.
+  focusTile: zb.uint().nullable().optional(),
 });
 
 export const SpawnIntentSchema = z.object({
@@ -496,6 +508,17 @@ export const BuildUnitIntentSchema = z.object({
   tile: zb.uint(),
   rocketDirectionUp: z.boolean().optional(),
   amount: zb.uint({ min: 1, max: MAX_UPGRADE_AMOUNT }).optional(),
+  // Minefields only: the field's density as an integer percent. Other units
+  // ignore it; a minefield sent without one gets the default density.
+  density: zb
+    .uint({ min: MINEFIELD_MIN_DENSITY, max: MINEFIELD_MAX_DENSITY })
+    .optional(),
+  // Airdrops only: the troops to drop (the sender's attack-ratio share). The
+  // engine caps it; other units ignore it.
+  troops: zb.float({ min: 0 }).optional(),
+  // Drones only: how many drones the swarm launches. Absent means one; other
+  // units ignore it.
+  count: zb.uint({ min: DRONE_SWARM_MIN, max: DRONE_SWARM_MAX }).optional(),
 });
 
 export const UpgradeStructureIntentSchema = z.object({

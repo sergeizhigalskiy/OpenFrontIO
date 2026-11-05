@@ -34,6 +34,10 @@ import {
 import { ReadonlyTileSet } from "@openfront/engine-api/game/ReadViews";
 import { ClientID } from "@openfront/engine-api/Schemas";
 import { andFN, manhattanDistFN } from "@openfront/engine-lib/game/GameMapImpl";
+import {
+  MINEFIELD_MIN_DENSITY,
+  MINEFIELD_PLACEMENT_RANGE,
+} from "@openfront/engine-lib/game/NavalDefense";
 import { TileSet } from "@openfront/engine-lib/game/TileSet";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import {
@@ -65,6 +69,14 @@ import type {
   SnapshotReader,
   SnapshotWriter,
 } from "../snapshot/SnapshotContext";
+import {
+  airdropSpawn,
+  airstrikeSpawn,
+  ballisticMissileSpawn,
+  clusterMissileSpawn,
+  cruiseMissileSpawn,
+  droneSpawn,
+} from "./AirOps";
 import { AttackImpl } from "./AttackImpl";
 import {
   Alliance,
@@ -197,6 +209,10 @@ export class PlayerImpl implements Player {
   public _alliances: MutableAlliance[] = [];
 
   private _spawnTile: TileRef | undefined;
+  // Conventional war capitals (see Capital.ts): unset until the capital first
+  // moves away from the spawn tile.
+  public _capitalTile: TileRef | undefined;
+  private _capitalMovedTick: Tick | null = null;
   private _isDisconnected = false;
   private _disconnectSnapshot: DisconnectSnapshot | null = null;
 
@@ -416,6 +432,7 @@ export class PlayerImpl implements Player {
       betrayals: this._betrayalCount,
       lastDeleteUnitTick: this.lastDeleteUnitTick,
       isLobbyCreator: this.isLobbyCreator(),
+      capitalTile: this.capitalTile(),
     };
   }
 
@@ -751,6 +768,22 @@ export class PlayerImpl implements Player {
 
   spawnTile(): TileRef | undefined {
     return this._spawnTile;
+  }
+
+  capitalTile(): TileRef | undefined {
+    if (!this.mg.config().conventionalWar() || this.type() === PlayerType.Bot) {
+      return undefined;
+    }
+    return this._capitalTile ?? this._spawnTile;
+  }
+
+  capitalMovedTick(): Tick | null {
+    return this._capitalMovedTick;
+  }
+
+  moveCapital(tile: TileRef, tick: Tick): void {
+    this._capitalTile = tile;
+    this._capitalMovedTick = tick;
   }
 
   incomingAllianceRequests(): AllianceRequest[] {
@@ -1147,24 +1180,24 @@ export class PlayerImpl implements Player {
     return true;
   }
 
-  donateTroops(recipient: Player, troops: number): boolean {
-    // Defense-in-depth: canDonateTroops already checks this, but guard here too
-    // to prevent self-donation if the method is called directly.
-    if (recipient === this) return false;
-    if (troops <= 0) return false;
-    const removed = this.removeTroops(troops);
-    if (removed === 0) return false;
-    recipient.addTroops(removed);
-
+  recordTroopDonation(recipient: Player): void {
     this.sentDonations.push(new Donation(recipient, this.mg.ticks()));
+  }
+
+  receiveTroopDonation(sender: Player, troops: number): void {
+    // Defense-in-depth: a convoy never targets its own sender, but guard here
+    // too so a direct call cannot mint a self-donation event.
+    if (sender === this) return;
+    const amount = Math.floor(troops);
+    if (amount <= 0) return;
+    this.addTroops(amount);
     this.mg.addUpdate({
       type: GameUpdateType.DonateEvent,
       donationType: "troops",
-      senderId: this.id(),
-      recipientId: recipient.id(),
-      amount: BigInt(removed),
+      senderId: sender.id(),
+      recipientId: this.id(),
+      amount: BigInt(amount),
     });
-    return true;
   }
 
   donateGold(recipient: Player, gold: Gold): boolean {
@@ -1410,7 +1443,11 @@ export class PlayerImpl implements Player {
       );
     }
 
-    const cost = this.mg.unitInfo(type).cost(this.mg, this);
+    // A minefield is priced by the density it is laid with.
+    const cost =
+      type === UnitType.Minefield && "density" in params
+        ? this.mg.config().minefieldCost(this.mg, this, params.density)
+        : this.mg.unitInfo(type).cost(this.mg, this);
     const b = new UnitImpl(
       type,
       this.mg,
@@ -1534,8 +1571,19 @@ export class PlayerImpl implements Player {
       const cost = config.unitInfo(u).cost(mg, this);
       let canUpgrade: number | false = false;
       let canBuild: TileRef | false = false;
+      // `cost` is a minefield's price at the default density; the player
+      // picks the density, so it is buildable as soon as the thinnest field
+      // is affordable. The client prices the chosen density itself.
+      const affordCost =
+        u === UnitType.Minefield
+          ? config.minefieldCost(mg, this, MINEFIELD_MIN_DENSITY)
+          : cost;
 
-      if (tile !== null && this.canBuildUnitType(u, cost) && !inSpawnPhase) {
+      if (
+        tile !== null &&
+        this.canBuildUnitType(u, affordCost) &&
+        !inSpawnPhase
+      ) {
         if (this.canUpgradeUnitType(u)) {
           const existingUnit = this.findExistingUnitToUpgrade(u, tile);
           if (
@@ -1588,8 +1636,9 @@ export class PlayerImpl implements Player {
     unitType: UnitType,
     targetTile: TileRef,
     validTiles: TileRef[] | null = null,
+    knownCost: Gold | null = null,
   ): TileRef | false {
-    if (!this.canBuildUnitType(unitType)) {
+    if (!this.canBuildUnitType(unitType, knownCost)) {
       return false;
     }
 
@@ -1625,6 +1674,30 @@ export class PlayerImpl implements Player {
         return this.tradeShipSpawn(targetTile);
       case UnitType.Train:
         return this.landBasedUnitSpawn(targetTile);
+      case UnitType.Convoy:
+        // Only troop donations create convoys (DonateTroopsExecution).
+        return false;
+      case UnitType.Minefield:
+        return this.minefieldSpawn(targetTile);
+      case UnitType.CoastalBattery:
+        return this.coastalBatterySpawn(targetTile, validTiles);
+      case UnitType.Airstrike:
+        return airstrikeSpawn(this.mg, this, targetTile);
+      case UnitType.Airdrop:
+        return airdropSpawn(this.mg, this, targetTile);
+      case UnitType.CruiseMissile:
+        return cruiseMissileSpawn(this.mg, this, targetTile);
+      case UnitType.Drone:
+        return droneSpawn(this.mg, this, targetTile);
+      case UnitType.BallisticMissile:
+        return ballisticMissileSpawn(this.mg, this, targetTile);
+      case UnitType.ClusterMissile:
+        return clusterMissileSpawn(this.mg, this, targetTile);
+      case UnitType.ClusterWarhead:
+        // Only a cluster missile splitting creates them.
+        return targetTile;
+      case UnitType.Airbase:
+      case UnitType.FlakGun:
       case UnitType.MissileSilo:
       case UnitType.DefensePost:
       case UnitType.SAMLauncher:
@@ -1692,6 +1765,47 @@ export class PlayerImpl implements Player {
     const tiles = validTiles ?? this.validStructureSpawnTiles(tile);
     for (const t of tiles) {
       if (this.mg.isShore(t)) {
+        return t;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * A minefield is laid on the ocean tile clicked, when a tile this player
+   * owns is within MINEFIELD_PLACEMENT_RANGE of it.
+   */
+  minefieldSpawn(tile: TileRef): TileRef | false {
+    const map = this.mg.map();
+    if (!map.isValidRef(tile) || !map.isOcean(tile)) {
+      return false;
+    }
+    const range = MINEFIELD_PLACEMENT_RANGE;
+    const rangeSquared = range * range;
+    const cx = map.x(tile);
+    const cy = map.y(tile);
+    const smallID = this.smallID();
+    for (let dy = -range; dy <= range; dy++) {
+      const y = cy + dy;
+      if (y < 0 || y >= map.height()) continue;
+      for (let dx = -range; dx <= range; dx++) {
+        if (dx * dx + dy * dy > rangeSquared) continue;
+        const x = cx + dx;
+        if (x < 0 || x >= map.width()) continue;
+        if (map.ownerID(map.ref(x, y)) === smallID) return tile;
+      }
+    }
+    return false;
+  }
+
+  /** A coastal battery goes on one of this player's land tiles next to ocean. */
+  coastalBatterySpawn(
+    tile: TileRef,
+    validTiles: TileRef[] | null,
+  ): TileRef | false {
+    const tiles = validTiles ?? this.validStructureSpawnTiles(tile);
+    for (const t of tiles) {
+      if (this.mg.map().isOceanShore(t)) {
         return t;
       }
     }
@@ -2017,6 +2131,8 @@ export class PlayerImpl implements Player {
       outgoingLandAttacks: this._outgoingLandAttacks.map((a) => w.attack(a)),
       alliances: this._alliances.map((a) => w.alliance(a)),
       spawnTile: this._spawnTile ?? null,
+      capitalTile: this._capitalTile ?? null,
+      capitalMovedTick: this._capitalMovedTick,
       isDisconnected: this._isDisconnected,
       disconnectSnapshot: this._disconnectSnapshot
         ? { ...this._disconnectSnapshot }
@@ -2094,6 +2210,8 @@ export class PlayerImpl implements Player {
     this._outgoingLandAttacks = s.outgoingLandAttacks.map((i) => r.attack(i));
     this._alliances = s.alliances.map((i) => r.alliance(i));
     this._spawnTile = s.spawnTile ?? undefined;
+    this._capitalTile = s.capitalTile ?? undefined;
+    this._capitalMovedTick = s.capitalMovedTick;
     this._isDisconnected = s.isDisconnected;
     this._disconnectSnapshot = s.disconnectSnapshot
       ? { ...s.disconnectSnapshot }
@@ -2113,7 +2231,15 @@ export class PlayerImpl implements Player {
 
 export const PlayerSnapshot = snapshotType({
   name: "Player",
-  version: 1,
+  // v2 added the conventional war capital (capitalTile, capitalMovedTick).
+  version: 2,
+  migrations: {
+    1: (d) => ({
+      ...(d as Record<string, unknown>),
+      capitalTile: null,
+      capitalMovedTick: null,
+    }),
+  },
   schema: z.object({
     smallID: zInt(),
     info: PlayerInfoSchema,
@@ -2163,6 +2289,8 @@ export const PlayerSnapshot = snapshotType({
     outgoingLandAttacks: z.array(zRef()),
     alliances: z.array(zRef()),
     spawnTile: zTile().nullable(),
+    capitalTile: zTile().nullable(),
+    capitalMovedTick: zInt().nullable(),
     isDisconnected: z.boolean(),
     disconnectSnapshot: z
       .object({

@@ -85,6 +85,7 @@ import type {
 } from "../snapshot/SnapshotContext";
 import { AllianceImpl } from "./AllianceImpl";
 import { AllianceRequestImpl } from "./AllianceRequestImpl";
+import { onCapitalConquered } from "./Capital";
 import {
   Alliance,
   AllianceRequest,
@@ -168,6 +169,9 @@ export class GameImpl implements Game {
   private nextAllianceID: number = 0;
 
   private _mirvsLaunched = 0;
+  // Conventional war: cluster missiles launched by anyone (their own price
+  // escalation, kept apart from MIRVs).
+  private _clusterMissilesLaunched = 0;
   private shipStaggers = { tradeShip: 0, transportShip: 0 };
   private _nationMirvTargets = new Map<PlayerID, Tick>();
 
@@ -1006,6 +1010,16 @@ export class GameImpl implements Game {
     this.updateBorders(tile);
     this._map.setFallout(tile, false);
     this.recordTileUpdate(tile);
+    // Conventional war: taking a capital costs its owner (Capital.ts). The
+    // tile compare comes first so the common case stays one comparison.
+    if (
+      previousOwner.isPlayer() &&
+      tile === (previousOwner._capitalTile ?? previousOwner.spawnTile()) &&
+      !this.inSpawnPhase() &&
+      previousOwner.capitalTile() === tile
+    ) {
+      onCapitalConquered(this, previousOwner, owner);
+    }
   }
 
   relinquish(tile: TileRef) {
@@ -1609,6 +1623,12 @@ export class GameImpl implements Game {
   recordMirvLaunch(): void {
     this._mirvsLaunched++;
   }
+  clusterMissilesLaunched(): number {
+    return this._clusterMissilesLaunched;
+  }
+  recordClusterMissileLaunch(): void {
+    this._clusterMissilesLaunched++;
+  }
   nextShipStagger(kind: "tradeShip" | "transportShip"): number {
     return this.shipStaggers[kind]++ % WaterPathFinder.STAGGER_SPREAD;
   }
@@ -1683,6 +1703,7 @@ export class GameImpl implements Game {
       shipStaggers: { ...this.shipStaggers },
       nationMirvTargets: [...this._nationMirvTargets],
       mirvsLaunched: this._mirvsLaunched,
+      clusterMissilesLaunched: this._clusterMissilesLaunched,
       rail: w.versioned(
         RailNetworkSnapshot,
         (this._railNetwork as RailNetworkImpl).snapshot(w),
@@ -1741,6 +1762,7 @@ export class GameImpl implements Game {
     this.shipStaggers = { ...s.shipStaggers };
     this._nationMirvTargets = new Map(s.nationMirvTargets);
     this._mirvsLaunched = s.mirvsLaunched;
+    this._clusterMissilesLaunched = s.clusterMissilesLaunched;
     (this._railNetwork as RailNetworkImpl).restoreSnapshot(
       readVersioned(RailNetworkSnapshot, s.rail),
       r,
@@ -1843,7 +1865,14 @@ export class GameImpl implements Game {
 
 export const GameSnapshot = snapshotType({
   name: "Game",
-  version: 1,
+  // v2 added clusterMissilesLaunched (conventional war).
+  version: 2,
+  migrations: {
+    1: (d) => ({
+      ...(d as Record<string, unknown>),
+      clusterMissilesLaunched: 0,
+    }),
+  },
   schema: z.object({
     ticks: zInt(),
     startTick: zInt().nullable(),
@@ -1873,6 +1902,7 @@ export const GameSnapshot = snapshotType({
     shipStaggers: z.object({ tradeShip: zInt(), transportShip: zInt() }),
     nationMirvTargets: z.array(z.tuple([z.string(), zInt()])),
     mirvsLaunched: zInt(),
+    clusterMissilesLaunched: zInt(),
     rail: VersionedSchema,
     water: VersionedSchema,
     sharedWaterCache: VersionedSchema,

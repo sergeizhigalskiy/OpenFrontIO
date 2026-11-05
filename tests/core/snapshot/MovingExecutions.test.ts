@@ -5,6 +5,7 @@ import {
 } from "@openfront/engine-api/game/GameTypes";
 import { AttackExecution } from "@openfront/engine/execution/AttackExecution";
 import { BoatRetreatExecution } from "@openfront/engine/execution/BoatRetreatExecution";
+import { DonateTroopsExecution } from "@openfront/engine/execution/DonateTroopExecution";
 import { FactoryExecution } from "@openfront/engine/execution/FactoryExecution";
 import { RetreatExecution } from "@openfront/engine/execution/RetreatExecution";
 import { SpawnExecution } from "@openfront/engine/execution/SpawnExecution";
@@ -137,6 +138,42 @@ describe("snapshot: transport ships", () => {
     executeTicks(game, 2);
     expect(boat.transportShipState().isRetreating).toBe(true);
     await expectSnapshotRoundTrip(game, MAP, 40);
+  });
+});
+
+describe("snapshot: troop convoys", () => {
+  const MAP = "plains";
+
+  test("donation pending, convoy mid-route through hostile land, delivered", async () => {
+    const game = await setup(
+      MAP,
+      { donateTroops: true },
+      humans("sender", "recipient", "hostile"),
+    );
+    const sender = game.player("sender");
+    const recipient = game.player("recipient");
+    const hostile = game.player("hostile");
+    conquerRect(game, sender, 0, 40, 10, 60);
+    conquerRect(game, recipient, 50, 40, 60, 60);
+    // A wall the convoy has to cross, losing troops to ambushes.
+    conquerRect(game, hostile, 25, 0, 35, 100);
+    sender.createAllianceRequest(recipient)!.accept();
+    sender.setTroops(100_000);
+    recipient.setTroops(0);
+    hostile.setTroops(50_000);
+
+    game.addExecution(
+      new DonateTroopsExecution(sender, recipient.id(), 40_000),
+    );
+    // Pending, then dispatched.
+    await expectSnapshotRoundTrip(game, MAP, 2);
+    expect(sender.units(UnitType.Convoy)).toHaveLength(1);
+    // On the road, then through the wall and delivered.
+    await expectSnapshotRoundTrip(game, MAP, 10);
+    await expectSnapshotRoundTrip(game, MAP, 50);
+    expect(sender.units(UnitType.Convoy)).toHaveLength(0);
+    expect(recipient.troops()).toBeGreaterThan(0);
+    expect(recipient.troops()).toBeLessThan(40_000);
   });
 });
 

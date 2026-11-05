@@ -1563,9 +1563,17 @@ export class NationAttackBehavior extends AiAttackBehavior {
       })
       .sort((a, b) => a.troopPercentage - b.troopPercentage);
 
+    // Donated troops travel as a convoy, so a teammate's troop count does not
+    // show what is already on its way: skip teammates we have a convoy
+    // heading to, or we would keep sending to the same one.
+    const convoysEnRoute = new Set(
+      this.player.units(UnitType.Convoy).map((convoy) => convoy.targetPlayer()),
+    );
+
     // Try to donate to teammates in order of lowest troop percentage
     let selectedTeammate: Player | null = null;
     for (const entry of teammatesWithTroopPercentage) {
+      if (convoysEnRoute.has(entry.teammate)) continue;
       if (this.player.canDonateTroops(entry.teammate)) {
         selectedTeammate = entry.teammate;
         break;

@@ -26,6 +26,12 @@ import {
 } from "../../Transport";
 import { UIState } from "../../UIState";
 import { GameView } from "../../view";
+import { airOrderExtras, droneSwarmSlider } from "./AirOrders";
+import {
+  chosenMinefieldDensity,
+  displayedCost,
+  minefieldDensitySlider,
+} from "./MinefieldDensity";
 const warshipIcon = assetUrl("images/BattleshipIconWhite.svg");
 const cityIcon = assetUrl("images/CityIconWhite.svg");
 const factoryIcon = assetUrl("images/FactoryIconWhite.svg");
@@ -37,6 +43,17 @@ const atomBombIcon = assetUrl("images/NukeIconWhite.svg");
 const portIcon = assetUrl("images/PortIcon.svg");
 const samlauncherIcon = assetUrl("images/SamLauncherIconWhite.svg");
 const shieldIcon = assetUrl("images/ShieldIconWhite.svg");
+const minefieldIcon = assetUrl("images/ExplosionIconWhite.svg");
+const coastalBatteryIcon = assetUrl("images/TargetIconWhite.svg");
+// Conventional war: existing icons reused.
+const airbaseIcon = assetUrl("images/FastForwardIconSolidWhite.svg");
+const flakGunIcon = assetUrl("images/HighlightIconWhite.svg");
+const airstrikeIcon = assetUrl("images/FocusIconWhite.svg");
+const airdropIcon = assetUrl("images/TroopIconWhite.svg");
+const cruiseMissileIcon = assetUrl("images/NukeIconWhite.svg");
+const ballisticMissileIcon = assetUrl("images/MushroomCloudIconWhite.svg");
+const clusterMissileIcon = assetUrl("images/MIRVIcon.svg");
+const droneIcon = assetUrl("images/SwordIconWhite.svg");
 
 export interface BuildItemDisplay {
   unitType: PlayerBuildableUnitType;
@@ -48,6 +65,49 @@ export interface BuildItemDisplay {
 
 const buildTable: BuildItemDisplay[][] = [
   [
+    // Conventional war only (hidden otherwise, like every disabled unit).
+    {
+      unitType: UnitType.CruiseMissile,
+      icon: cruiseMissileIcon,
+      description: "build_menu.desc.cruise_missile",
+      key: "unit_type.cruise_missile",
+      countable: false,
+    },
+    {
+      unitType: UnitType.BallisticMissile,
+      icon: ballisticMissileIcon,
+      description: "build_menu.desc.ballistic_missile",
+      key: "unit_type.ballistic_missile",
+      countable: false,
+    },
+    {
+      unitType: UnitType.ClusterMissile,
+      icon: clusterMissileIcon,
+      description: "build_menu.desc.cluster_missile",
+      key: "unit_type.cluster_missile",
+      countable: false,
+    },
+    {
+      unitType: UnitType.Airstrike,
+      icon: airstrikeIcon,
+      description: "build_menu.desc.airstrike",
+      key: "unit_type.airstrike",
+      countable: false,
+    },
+    {
+      unitType: UnitType.Airdrop,
+      icon: airdropIcon,
+      description: "build_menu.desc.airdrop",
+      key: "unit_type.airdrop",
+      countable: false,
+    },
+    {
+      unitType: UnitType.Drone,
+      icon: droneIcon,
+      description: "build_menu.desc.drone",
+      key: "unit_type.drone",
+      countable: false,
+    },
     {
       unitType: UnitType.AtomBomb,
       icon: atomBombIcon,
@@ -102,6 +162,34 @@ const buildTable: BuildItemDisplay[][] = [
       icon: shieldIcon,
       description: "build_menu.desc.defense_post",
       key: "unit_type.defense_post",
+      countable: true,
+    },
+    {
+      unitType: UnitType.CoastalBattery,
+      icon: coastalBatteryIcon,
+      description: "build_menu.desc.coastal_battery",
+      key: "unit_type.coastal_battery",
+      countable: true,
+    },
+    {
+      unitType: UnitType.Minefield,
+      icon: minefieldIcon,
+      description: "build_menu.desc.minefield",
+      key: "unit_type.minefield",
+      countable: true,
+    },
+    {
+      unitType: UnitType.Airbase,
+      icon: airbaseIcon,
+      description: "build_menu.desc.airbase",
+      key: "unit_type.airbase",
+      countable: true,
+    },
+    {
+      unitType: UnitType.FlakGun,
+      icon: flakGunIcon,
+      description: "build_menu.desc.flak_gun",
+      key: "unit_type.flak_gun",
       countable: true,
     },
     {
@@ -361,6 +449,14 @@ export class BuildMenu extends LitElement implements Controller {
       return false;
     }
     const unit = this.playerBuildables.find((u) => u.type === item.unitType);
+    // Buildable once the thinnest field is affordable: check the density set.
+    if (
+      unit !== undefined &&
+      unit.type === UnitType.Minefield &&
+      (this.game.myPlayer()?.gold() ?? 0n) < this.cost(item)
+    ) {
+      return false;
+    }
     if (this.uiState.preventStacking) return !!unit && unit.canBuild !== false;
     return unit ? unit.canBuild !== false || unit.canUpgrade !== false : false;
   }
@@ -368,7 +464,7 @@ export class BuildMenu extends LitElement implements Controller {
   public cost(item: BuildItemDisplay): Gold {
     for (const bu of this.playerBuildables ?? []) {
       if (bu.type === item.unitType) {
-        return bu.cost;
+        return displayedCost(bu.type, bu.cost, this.uiState);
       }
     }
     return 0n;
@@ -397,8 +493,25 @@ export class BuildMenu extends LitElement implements Controller {
         buildableUnit.type === UnitType.HydrogenBomb
           ? this.uiState.rocketDirectionUp
           : undefined;
+      const density =
+        buildableUnit.type === UnitType.Minefield
+          ? chosenMinefieldDensity(this.uiState)
+          : undefined;
+      const extras = airOrderExtras(
+        buildableUnit.type,
+        this.uiState,
+        this.game?.myPlayer(),
+      );
       this.eventBus.emit(
-        new BuildUnitIntentEvent(buildableUnit.type, tile, rocketDirectionUp),
+        new BuildUnitIntentEvent(
+          buildableUnit.type,
+          tile,
+          rocketDirectionUp,
+          undefined,
+          density,
+          extras.troops,
+          extras.count,
+        ),
       );
     }
     this.hideMenu();
@@ -472,8 +585,25 @@ export class BuildMenu extends LitElement implements Controller {
             </div>
           `,
         )}
+        ${
+          this.playerBuildables?.some(
+            (bu) => bu.type === UnitType.Minefield && bu.canBuild !== false,
+          )
+            ? minefieldDensitySlider(this.uiState, () => this.requestUpdate())
+            : ""
+        }
+        ${this.renderDroneSwarmSlider()}
       </div>
     `;
+  }
+
+  private renderDroneSwarmSlider() {
+    const drone = this.playerBuildables?.find(
+      (bu) => bu.type === UnitType.Drone && bu.canBuild !== false,
+    );
+    return drone === undefined
+      ? ""
+      : droneSwarmSlider(this.uiState, drone.cost, () => this.requestUpdate());
   }
 
   hideMenu() {

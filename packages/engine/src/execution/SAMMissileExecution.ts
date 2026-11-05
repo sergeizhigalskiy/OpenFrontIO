@@ -1,6 +1,7 @@
 import { TileRef } from "@openfront/engine-api/game/GameMap";
 import { MessageType, UnitType } from "@openfront/engine-api/game/GameTypes";
 import { NukeType } from "@openfront/engine-api/StatsSchemas";
+import { SAM_TARGET_FLIGHT_TYPES } from "@openfront/engine-lib/game/ConventionalWar";
 import {
   zNum,
   zPlayerRef,
@@ -27,6 +28,9 @@ const INTERCEPTED_UNIT_TRANSLATION_KEYS: Partial<Record<UnitType, string>> = {
   [UnitType.AtomBomb]: "unit_type.atom_bomb",
   [UnitType.HydrogenBomb]: "unit_type.hydrogen_bomb",
   [UnitType.MIRVWarhead]: "unit_type.mirv",
+  [UnitType.Airstrike]: "unit_type.airstrike",
+  [UnitType.Airdrop]: "unit_type.airdrop",
+  [UnitType.CruiseMissile]: "unit_type.cruise_missile",
 };
 
 export class SAMMissileExecution implements Execution {
@@ -59,11 +63,13 @@ export class SAMMissileExecution implements Execution {
       this.active = false;
       return;
     }
-    // The MIRV carrier itself can't be intercepted, only its warheads
+    // The MIRV carrier itself can't be intercepted, only its warheads.
+    // Conventional war planes and cruise missiles are shot down the same way.
     const nukesWhitelist = [
       UnitType.AtomBomb,
       UnitType.HydrogenBomb,
       UnitType.MIRVWarhead,
+      ...SAM_TARGET_FLIGHT_TYPES,
     ];
     if (
       !this.target.isActive() ||
@@ -100,6 +106,24 @@ export class SAMMissileExecution implements Execution {
         this.target.delete(true, this._owner);
         this.SAMMissile.delete(false);
 
+        if (SAM_TARGET_FLIGHT_TYPES.includes(this.target.type())) {
+          // A conventional war flight: tell its owner too. Not a bomb stat.
+          this.mg.displayMessage(
+            "events_display.air_shot_down_by_sam",
+            MessageType.SAM_HIT,
+            this.target.owner().id(),
+            undefined,
+            {
+              unit:
+                INTERCEPTED_UNIT_TRANSLATION_KEYS[this.target.type()] ??
+                this.target.type(),
+              name: this._owner.displayName(),
+            },
+            undefined,
+            this._owner.id(),
+          );
+          return;
+        }
         // Record stats
         this.mg
           .stats()

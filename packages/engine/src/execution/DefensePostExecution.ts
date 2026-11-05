@@ -1,3 +1,4 @@
+import { UnitType } from "@openfront/engine-api/game/GameTypes";
 import { zInt, zRef } from "@openfront/engine-lib/snapshot/SnapshotType";
 import { z } from "zod";
 import { Execution, Game, Unit } from "../game/Game";
@@ -7,6 +8,7 @@ import type {
   SnapshotReader,
   SnapshotWriter,
 } from "../snapshot/SnapshotContext";
+import { isConvoyHostile } from "./ConvoyExecution";
 import { ShellExecution } from "./ShellExecution";
 
 export class DefensePostExecution implements Execution {
@@ -57,8 +59,15 @@ export class DefensePostExecution implements Execution {
       return;
     }
 
-    if (this.target !== null && !this.target.isActive()) {
-      this.target = null;
+    // Hostile troop convoys in range get shelled, one shell each (a shell
+    // costs a convoy a share of its troops, see ConvoyExecution).
+    for (const unit of this.alreadySentShell) {
+      if (!unit.isActive()) this.alreadySentShell.delete(unit);
+    }
+    this.target = this.findConvoyTarget();
+    if (this.target !== null) {
+      this.shoot();
+      return;
     }
 
     // TODO: Reconsider how/if defense posts target ships.
@@ -104,6 +113,28 @@ export class DefensePostExecution implements Execution {
     //   this.shoot();
     //   return;
     // }
+  }
+
+  /** The nearest hostile convoy within the post's range not yet shelled. */
+  private findConvoyTarget(): Unit | null {
+    let best: Unit | null = null;
+    let bestDist = Infinity;
+    const owner = this.post.owner();
+    for (const { unit, distSquared } of this.mg.nearbyUnits(
+      this.post.tile(),
+      this.mg.config().defensePostRange(),
+      UnitType.Convoy,
+    )) {
+      if (
+        distSquared < bestDist &&
+        !this.alreadySentShell.has(unit) &&
+        isConvoyHostile(unit, owner)
+      ) {
+        best = unit;
+        bestDist = distSquared;
+      }
+    }
+    return best;
   }
 
   isActive(): boolean {

@@ -1,12 +1,30 @@
-import { PlayerType } from "@openfront/engine-api/game/GameTypes";
+import { PlayerType, UnitType } from "@openfront/engine-api/game/GameTypes";
 import { AllianceRequestExecution } from "@openfront/engine/execution/alliance/AllianceRequestExecution";
 import { DonateGoldExecution } from "@openfront/engine/execution/DonateGoldExecution";
+import { DonateTroopsExecution } from "@openfront/engine/execution/DonateTroopExecution";
 import { Game, Player } from "@openfront/engine/game/Game";
 import { playerInfo, setup } from "./util/Setup";
+import { executeTicks } from "./util/utils";
 
 let game: Game;
 let player1: Player;
 let player2: Player;
+
+// Donated troops leave player1 at once and reach player2 by convoy, which on
+// these adjacent tiles takes a single step.
+function expectTroopDonationArrives(troops: number) {
+  const senderBefore = player1.troops();
+  const recipientBefore = player2.troops();
+  game.addExecution(new DonateTroopsExecution(player1, player2.id(), troops));
+  executeTicks(game, 2);
+  expect(player1.troops()).toBe(senderBefore - troops);
+  expect(player2.troops()).toBe(recipientBefore);
+  expect(player1.units(UnitType.Convoy)).toHaveLength(1);
+
+  executeTicks(game, 1);
+  expect(player1.units(UnitType.Convoy)).toHaveLength(0);
+  expect(player2.troops()).toBe(recipientBefore + troops);
+}
 
 describe("Alliance Donation", () => {
   beforeEach(async () => {
@@ -66,10 +84,7 @@ describe("Alliance Donation", () => {
     expect(player2.isAlliedWith(player1)).toBeTruthy();
 
     expect(player1.canDonateTroops(player2)).toBeTruthy();
-    const troopsBefore = player2.troops();
-    const success = player1.donateTroops(player2, 100);
-    expect(success).toBeTruthy();
-    expect(player2.troops()).toBe(troopsBefore + 100);
+    expectTroopDonationArrives(100);
   });
 
   test("Can donate gold after alliance formed by mutual request", () => {
@@ -102,10 +117,7 @@ describe("Alliance Donation", () => {
     expect(player2.isAlliedWith(player1)).toBeTruthy();
 
     expect(player1.canDonateTroops(player2)).toBeTruthy();
-    const troopsBefore = player2.troops();
-    const success = player1.donateTroops(player2, 100);
-    expect(success).toBeTruthy();
-    expect(player2.troops()).toBe(troopsBefore + 100);
+    expectTroopDonationArrives(100);
   });
 
   test("Can donate immediately after accepting alliance (race condition)", () => {

@@ -124,7 +124,19 @@ const VARIANTS: [string, Partial<GameConfig>][] = [
   // Water nukes rewrite terrain and the water graph mid-game.
   ["water nukes", { waterNukes: true }],
   ["teams", { gameMode: GameMode.Team, playerTeams: 2 }],
+  // Airbases, flak guns and every air weapon (no nukes in this mode).
+  ["conventional war", { conventionalWar: true }],
 ];
+
+// Executions that exist only in conventional war: the conventional variant
+// checks them instead of free for all.
+const CONVENTIONAL_WAR_EXECS = new Set([
+  "Airbase",
+  "AirMission",
+  "Drone",
+  "DroneSwarm",
+  "FlakGun",
+]);
 
 describe.each(VARIANTS)("full game snapshots: %s", (_, overrides) => {
   const start = scriptedGameStart(overrides);
@@ -193,12 +205,22 @@ describe.each(VARIANTS)("full game snapshots: %s", (_, overrides) => {
   test(
     "the game exercised every execution type",
     () => {
+      if (overrides.conventionalWar) {
+        const missing = [...CONVENTIONAL_WAR_EXECS].filter(
+          (name) => !reference.execTypes.has(name),
+        );
+        expect(missing).toEqual([]);
+        return;
+      }
       if (Object.keys(overrides).length > 0) return; // checked once, on FFA
       // Runs during the spawn phase and finishes inside init, so it is never
       // alive at a tick boundary. BasicExecutions.test.ts covers it directly.
       const neverStored = new Set(["Pause"]);
       const missing = EXECUTION_SNAPSHOT_TYPES.map((t) => t.name).filter(
-        (name) => !reference.execTypes.has(name) && !neverStored.has(name),
+        (name) =>
+          !reference.execTypes.has(name) &&
+          !neverStored.has(name) &&
+          !CONVENTIONAL_WAR_EXECS.has(name),
       );
       expect(missing).toEqual([]);
     },

@@ -15,6 +15,21 @@ import { NukeType } from "@openfront/engine-api/StatsSchemas";
 import { Config } from "@openfront/engine-lib/configuration/Config";
 import { exp, log, pow2 } from "@openfront/engine-lib/DetMath";
 import {
+  AIRDROP_COST,
+  BALLISTIC_MISSILE_COST,
+  clusterMissileCost,
+  airbaseCost,
+  AIRSTRIKE_COST,
+  CRUISE_MISSILE_COST,
+  DRONE_COST,
+  flakGunCost,
+} from "@openfront/engine-lib/game/ConventionalWar";
+import {
+  coastalBatteryCost,
+  MINEFIELD_DEFAULT_DENSITY,
+  minefieldCost,
+} from "@openfront/engine-lib/game/NavalDefense";
+import {
   assertNever,
   sigmoid,
   toInt,
@@ -395,12 +410,65 @@ export class EngineConfig extends Config {
           UnitType.Factory,
           UnitType.Port,
         );
+      case UnitType.Minefield:
+        // The price at the default density, for menus and nations. A real
+        // placement is charged for its own density (minefieldCost below).
+        return this.costWrapper(
+          (numUnits: number) =>
+            minefieldCost(MINEFIELD_DEFAULT_DENSITY, numUnits),
+          UnitType.Minefield,
+        );
+      case UnitType.CoastalBattery:
+        return this.costWrapper(
+          (numUnits: number) => coastalBatteryCost(numUnits),
+          UnitType.CoastalBattery,
+        );
+      case UnitType.Airbase:
+        return this.costWrapper(
+          (numUnits: number) => airbaseCost(numUnits),
+          UnitType.Airbase,
+        );
+      case UnitType.FlakGun:
+        return this.costWrapper(
+          (numUnits: number) => flakGunCost(numUnits),
+          UnitType.FlakGun,
+        );
+      case UnitType.Airstrike:
+        return this.costWrapper(() => AIRSTRIKE_COST, UnitType.Airstrike);
+      case UnitType.Airdrop:
+        return this.costWrapper(() => AIRDROP_COST, UnitType.Airdrop);
+      case UnitType.CruiseMissile:
+        return this.costWrapper(
+          () => CRUISE_MISSILE_COST,
+          UnitType.CruiseMissile,
+        );
+      case UnitType.Drone:
+        return this.costWrapper(() => DRONE_COST, UnitType.Drone);
+      case UnitType.BallisticMissile:
+        return this.costWrapper(
+          () => BALLISTIC_MISSILE_COST,
+          UnitType.BallisticMissile,
+        );
+      case UnitType.ClusterMissile:
+        // Escalates with every cluster missile launched this game (by anyone).
+        return (game: Game, player: Player) => {
+          if (
+            player.type() === PlayerType.Human &&
+            this.hasInfiniteGoldFor(player)
+          ) {
+            return 0n;
+          }
+          return BigInt(clusterMissileCost(game.clusterMissilesLaunched()));
+        };
+      case UnitType.ClusterWarhead:
+        return () => 0n;
       case UnitType.TransportShip:
       case UnitType.Shell:
       case UnitType.SAMMissile:
       case UnitType.MIRVWarhead:
       case UnitType.TradeShip:
       case UnitType.Train:
+      case UnitType.Convoy:
         return () => 0n;
       default:
         assertNever(type);
@@ -442,6 +510,17 @@ export class EngineConfig extends Config {
       return base + BigInt(hc.startingGold);
     }
     return base;
+  }
+
+  /**
+   * What `player` pays for a minefield of `density` percent: scales with the
+   * density and with the minefields they already own (see NavalDefense.ts).
+   */
+  minefieldCost(game: Game, player: Player, density: number): Gold {
+    return this.costWrapper(
+      (numUnits: number) => minefieldCost(density, numUnits),
+      UnitType.Minefield,
+    )(game, player);
   }
 
   private costWrapper(

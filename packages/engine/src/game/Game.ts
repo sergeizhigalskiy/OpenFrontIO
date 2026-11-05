@@ -108,6 +108,66 @@ export interface UnitParamsMap {
 
   [UnitType.Factory]: Record<string, never>;
 
+  // Donated troops travelling to `targetPlayer`; `targetTile` is the end of
+  // the route.
+  [UnitType.Convoy]: {
+    troops: number;
+    targetTile: TileRef;
+    targetPlayer: Player;
+  };
+
+  // `density` is the integer percent it is laid with (see NavalDefense.ts).
+  [UnitType.Minefield]: {
+    density: number;
+  };
+
+  [UnitType.CoastalBattery]: Record<string, never>;
+
+  [UnitType.Airbase]: Record<string, never>;
+
+  [UnitType.FlakGun]: Record<string, never>;
+
+  // Conventional war flights (see AirMissionExecution). The trajectory is the
+  // flat flight path, kept like a nuke's so SAM missiles can chase it; an
+  // airdrop carries `troops`.
+  [UnitType.Airstrike]: {
+    targetTile: TileRef;
+    trajectory: TileRef[];
+  };
+
+  [UnitType.Airdrop]: {
+    targetTile: TileRef;
+    trajectory: TileRef[];
+    troops: number;
+  };
+
+  [UnitType.CruiseMissile]: {
+    targetTile: TileRef;
+    trajectory: TileRef[];
+  };
+
+  // A loitering munition homing on `targetUnit` (see DroneExecution).
+  [UnitType.Drone]: {
+    targetUnit: Unit;
+  };
+
+  [UnitType.BallisticMissile]: {
+    targetTile: TileRef;
+    trajectory: TileRef[];
+  };
+
+  // The carrier. SAMs never target it (only its warheads), but it keeps a
+  // trajectory like every flight.
+  [UnitType.ClusterMissile]: {
+    targetTile: TileRef;
+    trajectory: TileRef[];
+  };
+
+  [UnitType.ClusterWarhead]: {
+    targetTile: TileRef;
+    trajectory: TileRef[];
+  };
+
   [UnitType.MissileSilo]: Record<string, never>;
 
   [UnitType.DefensePost]: Record<string, never>;
@@ -280,6 +340,9 @@ export interface Unit extends UnitLike {
   // SAMs & Missile Silos
   launch(): void;
   reloadMissile(): void;
+  /** Airbases: the tick the last drone took off, null if none has. */
+  lastDroneLaunchTick(): Tick | null;
+  recordDroneLaunch(): void;
   isInCooldown(): boolean;
   missileTimerQueue(): number[];
   samLauncherState(): SamLauncherState | undefined;
@@ -355,6 +418,17 @@ export interface Player extends PlayerLike {
   setSpawnTile(spawnTile: TileRef): void;
   spawnTile(): TileRef | undefined;
 
+  /**
+   * Conventional war only (see Capital.ts): the capital tile, the spawn tile
+   * until it first moves. Undefined outside conventional war, for tribes, and
+   * before spawning.
+   */
+  capitalTile(): TileRef | undefined;
+  /** The tick the capital last moved, or null if it never has. */
+  capitalMovedTick(): Tick | null;
+  /** Moves the capital to `tile` at `tick`. */
+  moveCapital(tile: TileRef, tick: Tick): void;
+
   // Territory
   tiles(): ReadonlyTileSet;
   borderTiles(): ReadonlyTileSet;
@@ -404,10 +478,16 @@ export interface Player extends PlayerLike {
     units?: readonly PlayerBuildableUnitType[],
     includeBuildPreview?: boolean,
   ): BuildableUnit[];
+  /**
+   * Where a `type` ordered at `targetTile` would spawn, or false. `knownCost`
+   * replaces the type's list price in the gold check (a minefield's price
+   * depends on its density).
+   */
   canBuild(
     type: UnitType,
     targetTile: TileRef,
     validTiles?: TileRef[] | null,
+    knownCost?: Gold | null,
   ): TileRef | false;
   buildUnit<T extends UnitType>(
     type: T,
@@ -465,7 +545,14 @@ export interface Player extends PlayerLike {
   // Donation
   canDonateGold(recipient: Player): boolean;
   canDonateTroops(recipient: Player): boolean;
-  donateTroops(recipient: Player, troops: number): boolean;
+  /**
+   * Starts the donation cooldown for troops just sent to `recipient`. The
+   * troops travel as a convoy (ConvoyExecution) and land through
+   * receiveTroopDonation.
+   */
+  recordTroopDonation(recipient: Player): void;
+  /** Gives this player `troops` that `sender` donated, and reports it. */
+  receiveTroopDonation(sender: Player, troops: number): void;
   donateGold(recipient: Player, gold: Gold): boolean;
   canDeleteUnit(): boolean;
   recordDeleteUnit(): void;
@@ -661,6 +748,9 @@ export interface Game extends GameLike {
   /** MIRVs launched so far by anyone; each one raises the next one's price. */
   mirvsLaunched(): number;
   recordMirvLaunch(): void;
+  /** Cluster missiles launched so far by anyone (their price escalates). */
+  clusterMissilesLaunched(): number;
+  recordClusterMissileLaunch(): void;
   /**
    * Round-robin counter per ship kind, used to spread the ships' water
    * pathfinder rebuilds over WaterPathFinder.STAGGER_SPREAD ticks.

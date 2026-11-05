@@ -16,7 +16,12 @@ import { UnitType } from "@openfront/engine-api/game/GameTypes";
 import type { Config } from "@openfront/engine-lib/configuration/Config";
 import { maxHealthWithVeterancy } from "@openfront/engine-lib/game/Veterancy";
 import type { RendererConfig, UnitState } from "../../types";
-import { UT_MISSILE_SILO, UT_SAM_LAUNCHER } from "../../types";
+import {
+  UT_MINEFIELD,
+  UT_MISSILE_SILO,
+  UT_SAM_LAUNCHER,
+  UT_WARSHIP,
+} from "../../types";
 import type { RenderSettings } from "../RenderSettings";
 import { createProgram } from "../utils/GlUtils";
 
@@ -66,6 +71,7 @@ export class BarPass {
   private mapW: number;
   private warshipMaxHealth: number;
   private veterancyHealthBonus: number;
+  private maxHealthByType = new Map<string, number>();
 
   constructor(
     gl: WebGL2RenderingContext,
@@ -139,18 +145,23 @@ export class BarPass {
     this.progressCount = 0;
     this.veterancyCount = 0;
 
-    // --- Health bars + veterancy pips (warships) ---
-    // Only warships carry health among mobile units, so this loop is effectively
-    // warship-only.
+    // --- Health bars + veterancy pips (warships, coastal batteries) ---
     for (const unit of mobileUnits.values()) {
       if (unit.health === null || unit.health <= 0) continue;
+      // A minefield's health is its density, and a bar would show the field
+      // to every player.
+      if (unit.unitType === UT_MINEFIELD) continue;
       // Veteran warships have a higher effective max health, so a full veteran
       // ship reads as full. Shared with the engine's UnitImpl.maxHealth().
-      const maxHealth = maxHealthWithVeterancy(
-        this.warshipMaxHealth,
-        unit.veterancy,
-        this.veterancyHealthBonus,
-      );
+      const maxHealth =
+        unit.unitType === UT_WARSHIP
+          ? maxHealthWithVeterancy(
+              this.warshipMaxHealth,
+              unit.veterancy,
+              this.veterancyHealthBonus,
+            )
+          : this.maxHealthOf(unit.unitType);
+      if (maxHealth <= 0) continue;
       if (unit.health < maxHealth) {
         this.pushHealth(unit, unit.health / maxHealth);
       }
@@ -165,6 +176,16 @@ export class BarPass {
       const progress = this.computeStructureProgress(unit, gameTick);
       if (progress !== null) this.pushProgress(unit, progress);
     }
+  }
+
+  /** Base max health of a unit type, 0 when it has none (cached). */
+  private maxHealthOf(unitType: string): number {
+    let max = this.maxHealthByType.get(unitType);
+    if (max === undefined) {
+      max = this.config.unitInfo(unitType as UnitType).maxHealth ?? 0;
+      this.maxHealthByType.set(unitType, max);
+    }
+    return max;
   }
 
   /** Render bars. Call once per frame after FX, before names. */

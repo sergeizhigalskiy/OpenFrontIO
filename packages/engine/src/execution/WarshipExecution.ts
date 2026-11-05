@@ -127,15 +127,24 @@ export class WarshipExecution implements Execution {
 
     this.warship.setTargetUnit(this.findTargetUnit());
 
-    // Priority 1: Shoot transport ship if in range
-    if (this.warship.targetUnit()?.type() === UnitType.TransportShip) {
+    // Priority 1: Shoot transport ship or troop convoy if in range
+    const targetType = this.warship.targetUnit()?.type();
+    if (
+      targetType === UnitType.TransportShip ||
+      targetType === UnitType.Convoy
+    ) {
       this.shootTarget();
       this.patrol();
       return;
     }
 
-    // Priority 2: Fight enemy warship if in range
-    if (this.warship.targetUnit()?.type() === UnitType.Warship) {
+    // Priority 2: Fight enemy warship, then shell a hostile coastal battery,
+    // then a hostile drone (conventional war), if in range
+    if (
+      targetType === UnitType.Warship ||
+      targetType === UnitType.CoastalBattery ||
+      targetType === UnitType.Drone
+    ) {
       this.shootTarget();
       this.patrol();
       return;
@@ -247,12 +256,24 @@ export class WarshipExecution implements Execution {
   }
 
   private findRetreatAggroTarget(): Unit | undefined {
-    return this.findBestTarget([UnitType.TransportShip, UnitType.Warship]);
+    return this.findBestTarget([
+      UnitType.TransportShip,
+      UnitType.Convoy,
+      UnitType.Warship,
+      UnitType.CoastalBattery,
+    ]);
   }
 
   private findTargetUnit(): Unit | undefined {
     return this.findBestTarget(
-      [UnitType.TransportShip, UnitType.Warship, UnitType.TradeShip],
+      [
+        UnitType.TransportShip,
+        UnitType.Convoy,
+        UnitType.Warship,
+        UnitType.CoastalBattery,
+        UnitType.Drone,
+        UnitType.TradeShip,
+      ],
       true,
     );
   }
@@ -303,6 +324,11 @@ export class WarshipExecution implements Execution {
 
       const type = unit.type();
 
+      // Warships only reach troop convoys at sea.
+      if (type === UnitType.Convoy && !mg.isWater(unit.tile())) {
+        continue;
+      }
+
       if (includeTradeShips && type === UnitType.TradeShip) {
         if (warshipComponent === undefined) {
           warshipComponent = mg.getWaterComponent(this.warship.tile());
@@ -337,7 +363,15 @@ export class WarshipExecution implements Execution {
       }
 
       const typePriority =
-        type === UnitType.TransportShip ? 0 : type === UnitType.Warship ? 1 : 2;
+        type === UnitType.TransportShip || type === UnitType.Convoy
+          ? 0
+          : type === UnitType.Warship
+            ? 1
+            : type === UnitType.CoastalBattery
+              ? 2
+              : type === UnitType.Drone
+                ? 3
+                : 4;
 
       if (
         bestUnit === undefined ||
@@ -652,8 +686,13 @@ export class WarshipExecution implements Execution {
     this.warship.updateWarshipState({ isInCombat: true });
     const shellAttackRate = this.mg.config().warshipShellAttackRate();
     if (this.mg.ticks() - this.lastShellAttack > shellAttackRate) {
-      if (this.warship.targetUnit()?.type() !== UnitType.TransportShip) {
-        // Warships don't need to reload when attacking transport ships.
+      const targetType = this.warship.targetUnit()?.type();
+      if (
+        targetType !== UnitType.TransportShip &&
+        targetType !== UnitType.Convoy
+      ) {
+        // Warships don't need to reload when attacking transport ships or
+        // troop convoys.
         this.lastShellAttack = this.mg.ticks();
       }
       this.mg.addExecution(
@@ -664,7 +703,12 @@ export class WarshipExecution implements Execution {
           this.warship.targetUnit()!,
         ),
       );
-      if (!this.warship.targetUnit()!.hasHealth()) {
+      // A drone may survive its shell (ShellExecution), so it can be shot
+      // at again after the reload.
+      if (
+        !this.warship.targetUnit()!.hasHealth() &&
+        targetType !== UnitType.Drone
+      ) {
         // Don't send multiple shells to target that can be oneshotted
         this.alreadySentShell.add(this.warship.targetUnit()!);
         this.warship.setTargetUnit(undefined);

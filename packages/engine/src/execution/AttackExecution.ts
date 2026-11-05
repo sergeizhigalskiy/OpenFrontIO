@@ -33,6 +33,14 @@ import type {
 import { FlatBinaryHeap } from "./utils/FlatBinaryHeap"; // adjust path if needed
 
 const malusForRetreat = 25;
+/**
+ * Spearhead attacks: when the player clicks a tile, each border tile is delayed
+ * by this many ticks of queue priority per tile it lies further from the click
+ * than the tip of the front does. The tip goes first, the flanks follow later.
+ */
+export const SPEARHEAD_DELAY_PER_TILE = 2.5;
+/** Cap on the delay, so flanks still move eventually instead of stalling. */
+export const SPEARHEAD_MAX_DELAY = 120;
 export class AttackExecution implements Execution {
   private active: boolean = true;
   private toConquer = new FlatBinaryHeap();
@@ -60,7 +68,11 @@ export class AttackExecution implements Execution {
     private _targetID: PlayerID | null,
     private sourceTile: TileRef | null = null,
     private removeTroops: boolean = true,
+    private focusTile: TileRef | null = null,
   ) {}
+
+  /** Closest any queued tile has come to the focus tile: the tip of the spear. */
+  private focusBest = Number.MAX_SAFE_INTEGER;
 
   public targetID(): PlayerID | null {
     return this._targetID;
@@ -76,6 +88,11 @@ export class AttackExecution implements Execution {
     }
     this.mg = mg;
     this.map = mg.map();
+
+    // A focus tile from the wire is untrusted: drop it rather than index with it.
+    if (this.focusTile !== null && !this.map.isValidRef(this.focusTile)) {
+      this.focusTile = null;
+    }
 
     if (this._targetID !== null && !mg.hasPlayer(this._targetID)) {
       console.warn(`target ${this._targetID} not found`);
@@ -454,9 +471,17 @@ export class AttackExecution implements Execution {
           break;
       }
 
-      const priority =
+      let priority =
         (this.random.nextInt(0, 7) + 10) * (1 - numOwnedByMe * 0.5 + mag / 2) +
         tickNow;
+      if (this.focusTile !== null) {
+        const d = this.map.manhattanDist(neighbor, this.focusTile);
+        if (d < this.focusBest) this.focusBest = d;
+        priority += Math.min(
+          SPEARHEAD_MAX_DELAY,
+          (d - this.focusBest) * SPEARHEAD_DELAY_PER_TILE,
+        );
+      }
 
       this.toConquer.enqueue(neighbor, priority);
     }
@@ -519,6 +544,8 @@ export class AttackExecution implements Execution {
       targetID: this._targetID,
       sourceTile: this.sourceTile,
       removeTroops: this.removeTroops,
+      focusTile: this.focusTile,
+      focusBest: this.focusBest,
     });
   }
 
@@ -545,6 +572,8 @@ export class AttackExecution implements Execution {
     this._targetID = s.targetID;
     this.sourceTile = s.sourceTile;
     this.removeTroops = s.removeTroops;
+    this.focusTile = s.focusTile ?? null;
+    this.focusBest = s.focusBest ?? Number.MAX_SAFE_INTEGER;
   }
 }
 
@@ -569,6 +598,9 @@ const AttackExecutionStateSchema = z.object({
   targetID: z.string().nullable(),
   sourceTile: zTile().nullable(),
   removeTroops: z.boolean(),
+  /** Spearhead target. Absent in snapshots taken before spearheads existed. */
+  focusTile: zTile().nullable().optional(),
+  focusBest: zNum().optional(),
 });
 type AttackExecutionState = z.infer<typeof AttackExecutionStateSchema>;
 

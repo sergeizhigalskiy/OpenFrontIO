@@ -85,6 +85,37 @@ function dispatchTouch(target: EventTarget, type: string, identifier: number) {
   target.dispatchEvent(event);
 }
 
+describe("minefield density slider", () => {
+  test("shows while a minefield is being placed and stores the density", async () => {
+    const { display } = makeDisplay(UnitType.Minefield);
+    try {
+      await display.updateComplete;
+      const slider = display.querySelector<HTMLInputElement>(
+        ".minefield-density input[type=range]",
+      );
+      expect(slider).not.toBeNull();
+      expect(slider!.min).toBe("10");
+      expect(slider!.max).toBe("100");
+      expect(slider!.value).toBe("50");
+      slider!.value = "80";
+      slider!.dispatchEvent(new Event("input", { bubbles: true }));
+      expect(display.uiState.minefieldDensity).toBe(80);
+    } finally {
+      display.remove();
+    }
+  });
+
+  test("is hidden for every other unit", async () => {
+    const { display } = makeDisplay(UnitType.City);
+    try {
+      await display.updateComplete;
+      expect(display.querySelector(".minefield-density")).toBeNull();
+    } finally {
+      display.remove();
+    }
+  });
+});
+
 describe("mobile UnitDisplay layout", () => {
   test("keeps the quick-build items in one horizontally scrollable row", async () => {
     const { display } = makeDisplay();
@@ -106,8 +137,12 @@ describe("mobile UnitDisplay layout", () => {
       expect(grid?.classList.contains("max-[360px]:auto-cols-[44px]")).toBe(
         true,
       );
-      expect(grid?.children).toHaveLength(10);
-      expect(grid?.style.getPropertyValue("--unit-display-columns")).toBe("10");
+      // Every build-menu unit the (mocked) config enables: coastal battery,
+      // minefield and the conventional war units included.
+      expect(grid?.children).toHaveLength(BuildMenus.types.length);
+      expect(grid?.style.getPropertyValue("--unit-display-columns")).toBe(
+        String(BuildMenus.types.length),
+      );
     } finally {
       display.remove();
     }

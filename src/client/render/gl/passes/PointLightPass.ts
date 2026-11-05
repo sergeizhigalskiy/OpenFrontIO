@@ -11,6 +11,8 @@ import {
   SMOOTHED_NUKE_TYPES,
   UT_ATOM_BOMB,
   UT_CITY,
+  UT_COASTAL_BATTERY,
+  UT_CONVOY,
   UT_DEFENSE_POST,
   UT_FACTORY,
   UT_HYDROGEN_BOMB,
@@ -47,6 +49,7 @@ const LIGHT_CONFIGS: Record<string, LightConfig> = {
   [UT_PORT]: { r: 1.0, g: 0.75, b: 0.4, radius: 18, intensity: 1.2 },
   [UT_FACTORY]: { r: 1.0, g: 0.6, b: 0.3, radius: 18, intensity: 1.2 },
   [UT_DEFENSE_POST]: { r: 0.8, g: 0.85, b: 1.0, radius: 18, intensity: 1.2 },
+  [UT_COASTAL_BATTERY]: { r: 0.8, g: 0.85, b: 1.0, radius: 18, intensity: 1.2 },
   [UT_SAM_LAUNCHER]: { r: 0.8, g: 0.85, b: 1.0, radius: 18, intensity: 1.2 },
   [UT_MISSILE_SILO]: { r: 1.0, g: 0.4, b: 0.2, radius: 18, intensity: 1.2 },
   [UT_TRANSPORT]: { r: 0.9, g: 0.8, b: 0.6, radius: 6, intensity: 2.7 },
@@ -60,6 +63,7 @@ const LIGHT_CONFIGS: Record<string, LightConfig> = {
   // lights blend additively — keep per-unit intensity low (~a trade ship's
   // brightness ÷ car count) so the train corridor doesn't blow out.
   [UT_TRAIN]: { r: 1.0, g: 0.85, b: 0.5, radius: 6, intensity: 0.5 },
+  [UT_CONVOY]: { r: 0.9, g: 0.8, b: 0.6, radius: 6, intensity: 2.0 },
 };
 
 const FLOATS_PER_LIGHT = 6;

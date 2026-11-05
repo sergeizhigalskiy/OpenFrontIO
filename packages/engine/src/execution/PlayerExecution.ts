@@ -9,6 +9,7 @@ import { zInt, zPlayerRef } from "@openfront/engine-lib/snapshot/SnapshotType";
 import { getMode, simpleHash } from "@openfront/engine-lib/Util";
 import { z } from "zod";
 import { EngineConfig } from "../configuration/EngineConfig";
+import { maybeRelocateCapital } from "../game/Capital";
 import { Execution, Game, Player } from "../game/Game";
 import {
   bumpTraversalGeneration,
@@ -95,6 +96,9 @@ export class PlayerExecution implements Execution {
       this.mg.stats().playerKilled(this.player, ticks);
       return;
     }
+
+    // Conventional war: a capital lost within its move window moves later.
+    maybeRelocateCapital(this.mg, this.player);
 
     const troopInc = this.config.troopIncreaseRate(this.player);
     this.player.addTroops(troopInc);
@@ -183,22 +187,25 @@ export class PlayerExecution implements Execution {
 
     const clusterRemoved = new Uint8Array(clusters.length);
 
-    // Pass 0: Sovereign main body removal if fully enclosed by a single enemy
-    const surroundedBy = this.surroundedBySamePlayer(
+    // Pass 0: Sovereign main body removal if fully enclosed by a single enemy,
+    // or by a coalition of enemies allied with each other.
+    const ring = this.surroundedBySamePlayer(
       largestCluster,
       lMinX,
       lMinY,
       lMaxX,
       lMaxY,
     );
-    if (surroundedBy && !surroundedBy.isFriendly(this.player)) {
+    if (ring && !ring.enemy.isFriendly(this.player)) {
       const removed = this.removeCluster(
         largestCluster,
         lMinX,
         lMinY,
         lMaxX,
         lMaxY,
-        surroundedBy,
+        // A coalition ring has no single captor: let getCapturingPlayer pick
+        // the member pressing hardest.
+        ring.coalition ? undefined : ring.enemy,
         Boolean(isPinched[largestIndex]),
       );
       if (removed) clusterRemoved[largestIndex] = 1;
@@ -630,14 +637,21 @@ export class PlayerExecution implements Execution {
   }
 
   // Perf: Accepts raw bounds to skip allocating {min, max} Box objects for every target evaluated.
+  // Returns the enclosing enemy, or the first member of an enclosing coalition: enemies of this
+  // player who are all friendly with each other (allies or teammates) and with none of them
+  // friendly to this player. Joint encirclement by allies counts. `coalition` says which it was.
+  // Nothing is kept on the instance, so snapshots don't need to carry it.
   private surroundedBySamePlayer(
     cluster: readonly TileRef[],
     clusterBoxMinX: number,
     clusterBoxMinY: number,
     clusterBoxMaxX: number,
     clusterBoxMaxY: number,
-  ): Player | null {
+  ): { enemy: Player; coalition: boolean } | null {
     let singleEnemySmallId = 0;
+    let firstEnemy: Player | null = null;
+    // Coalition members accepted so far (beyond the first enemy). Tiny, so a linear scan is fine.
+    const coalition: number[] = [];
 
     let minX = 1e9,
       minY = 1e9,
@@ -664,9 +678,23 @@ export class PlayerExecution implements Execution {
         }
         if (singleEnemySmallId === 0) {
           singleEnemySmallId = ownerId;
-        } else if (singleEnemySmallId !== ownerId) {
-          // Multi-enemy border: immediate O(1) early exit
-          return null;
+          firstEnemy = this.mg.playerBySmallID(ownerId) as Player;
+        } else if (
+          singleEnemySmallId !== ownerId &&
+          !coalition.includes(ownerId)
+        ) {
+          // A second owner on the ring: fine only if it's allied with the first
+          // enemy and not friendly with us. Otherwise the body isn't encircled.
+          const other = this.mg.playerBySmallID(ownerId);
+          if (
+            !other.isPlayer() ||
+            firstEnemy === null ||
+            !other.isFriendly(firstEnemy) ||
+            other.isFriendly(this.player)
+          ) {
+            return null;
+          }
+          coalition.push(ownerId);
         }
         const px = map.x(n);
         const py = map.y(n);
@@ -684,7 +712,10 @@ export class PlayerExecution implements Execution {
       maxX >= clusterBoxMaxX &&
       maxY >= clusterBoxMaxY
     ) {
-      return this.mg.playerBySmallID(singleEnemySmallId) as Player;
+      return {
+        enemy: this.mg.playerBySmallID(singleEnemySmallId) as Player,
+        coalition: coalition.length > 0,
+      };
     }
     return null;
   }

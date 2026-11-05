@@ -10,6 +10,14 @@ import type { Config } from "@openfront/engine-lib/configuration/Config";
 import type { ConquestFx, DeadUnitFx, RendererConfig } from "../../../types";
 import {
   STRUCTURE_TYPES,
+  UT_AIRDROP,
+  UT_AIRSTRIKE,
+  UT_BALLISTIC_MISSILE,
+  UT_CLUSTER_MISSILE,
+  UT_CLUSTER_WARHEAD,
+  UT_CONVOY,
+  UT_CRUISE_MISSILE,
+  UT_DRONE,
   UT_SHELL,
   UT_TRAIN,
   UT_WARSHIP,
@@ -373,8 +381,23 @@ export class FxSpritePass {
       return;
     }
 
-    if (typeName === UT_TRAIN && !unit.reachedTarget) {
+    if (
+      (typeName === UT_TRAIN || typeName === UT_CONVOY) &&
+      !unit.reachedTarget
+    ) {
       this.pushFx(x, y, FX_MINI_EXPLOSION, now);
+      return;
+    }
+
+    // Conventional war flights: a burst where one was shot down, a small
+    // blast where a missile or drone struck (structures it destroyed get
+    // their own). A landed airdrop or a cluster carrier's split shows none.
+    if (AIR_FLIGHT_TYPES.has(typeName)) {
+      if (!unit.reachedTarget) {
+        this.pushFx(x, y, FX_SAM_EXPLOSION, now);
+      } else if (typeName !== UT_AIRDROP && typeName !== UT_CLUSTER_MISSILE) {
+        this.pushFx(x, y, FX_MINI_EXPLOSION, now);
+      }
       return;
     }
 
@@ -539,3 +562,14 @@ export class FxSpritePass {
     gl.deleteTexture(this.atlasTex);
   }
 }
+
+/** Conventional war flights (see spawnFxForUnit). */
+const AIR_FLIGHT_TYPES: ReadonlySet<string> = new Set([
+  UT_AIRSTRIKE,
+  UT_AIRDROP,
+  UT_CRUISE_MISSILE,
+  UT_BALLISTIC_MISSILE,
+  UT_CLUSTER_MISSILE,
+  UT_CLUSTER_WARHEAD,
+  UT_DRONE,
+]);

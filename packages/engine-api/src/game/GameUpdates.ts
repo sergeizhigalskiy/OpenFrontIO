@@ -288,6 +288,11 @@ export interface PlayerUpdate {
   betrayals?: number;
   lastDeleteUnitTick?: Tick;
   isLobbyCreator?: boolean;
+  /**
+   * Conventional war only: the player's capital (their spawn tile until it
+   * moves). Undefined outside conventional war, for tribes, and before spawn.
+   */
+  capitalTile?: TileRef;
 }
 
 export interface AllianceView {

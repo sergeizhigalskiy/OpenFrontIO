@@ -113,6 +113,8 @@ export class SendAttackIntentEvent implements GameEvent {
   constructor(
     public readonly targetID: PlayerID | null,
     public readonly troops: number,
+    /** The clicked tile. The attack spearheads toward it. Null for a broad attack. */
+    public readonly focusTile: TileRef | null = null,
   ) {}
 }
 
@@ -142,6 +144,12 @@ export class BuildUnitIntentEvent implements GameEvent {
     public readonly tile: TileRef,
     public readonly rocketDirectionUp?: boolean,
     public readonly amount?: number,
+    /** Minefields only: the density percent to lay it with. */
+    public readonly density?: number,
+    /** Airdrops only: the troops to drop (the attack-ratio share). */
+    public readonly troops?: number,
+    /** Drones only: the swarm size. */
+    public readonly count?: number,
   ) {}
 }
 
@@ -821,6 +829,7 @@ export class Transport {
       type: "attack",
       targetID: event.targetID,
       troops: event.troops,
+      ...(event.focusTile !== null ? { focusTile: event.focusTile } : {}),
     });
   }
 
@@ -905,6 +914,15 @@ export class Transport {
       tile: event.tile,
       rocketDirectionUp: event.rocketDirectionUp,
       amount: event.amount,
+      ...(event.unit === UnitType.Minefield && event.density !== undefined
+        ? { density: event.density }
+        : {}),
+      ...(event.unit === UnitType.Airdrop && event.troops !== undefined
+        ? { troops: event.troops }
+        : {}),
+      ...(event.unit === UnitType.Drone && event.count !== undefined
+        ? { count: event.count }
+        : {}),
     });
   }
 

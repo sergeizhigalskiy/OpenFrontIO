@@ -181,6 +181,19 @@ export interface PublicGameModifiers {
 // schemas' max). Also the length of BuildableUnit.upgradeCosts.
 export const MAX_UPGRADE_AMOUNT = 50;
 
+// Minefield density, an integer percent chosen when the field is laid and
+// carried on the build intent (BuildUnitIntentSchema.density). Lower density
+// is cheaper and less likely to hit; see engine-lib/game/NavalDefense.ts.
+export const MINEFIELD_MIN_DENSITY = 10;
+export const MINEFIELD_MAX_DENSITY = 100;
+export const MINEFIELD_DEFAULT_DENSITY = 50;
+
+// Drone swarm size, carried on the build intent (BuildUnitIntentSchema.count):
+// one order launches this many drones (see engine-lib/game/ConventionalWar.ts).
+export const DRONE_SWARM_MIN = 1;
+export const DRONE_SWARM_MAX = 20;
+export const DRONE_SWARM_DEFAULT = 5;
+
 export interface UnitInfo {
   maxHealth?: number;
   damage?: number;
@@ -214,6 +227,30 @@ export enum UnitType {
   MIRVWarhead = "MIRV Warhead",
   Train = "Train",
   Factory = "Factory",
+  // Donated troops on their way to an ally (see ConvoyExecution).
+  Convoy = "Convoy",
+  // Naval defense (see MinefieldExecution and CoastalBatteryExecution).
+  // A minefield sits on ocean water and is seen only by its owner and their
+  // friends; a coastal battery is a shore structure that shells ships.
+  Minefield = "Minefield",
+  CoastalBattery = "Coastal Battery",
+  // Conventional war (see engine-lib/game/ConventionalWar.ts): enabled only
+  // when GameConfig.conventionalWar is on, which also disables the nukes. An
+  // airbase is a land structure holding one sortie; airstrike, airdrop and
+  // cruise missile are both the build-menu action and the unit that flies
+  // it; a flak gun is a cheap land structure that shoots down planes; a drone
+  // is a cheap loitering munition that hunts flak guns and ships; ballistic
+  // and cluster missiles are the hydrogen bomb and MIRV rungs without fallout
+  // or land loss (a cluster missile splits into cluster warheads).
+  Airbase = "Airbase",
+  Airstrike = "Airstrike",
+  Airdrop = "Airdrop",
+  CruiseMissile = "Cruise Missile",
+  FlakGun = "Flak Gun",
+  Drone = "Drone",
+  BallisticMissile = "Ballistic Missile",
+  ClusterMissile = "Cluster Missile",
+  ClusterWarhead = "Cluster Warhead",
 }
 
 export enum TrainType {
@@ -234,6 +271,12 @@ export const BuildableAttacks = unitTypeGroup([
   UnitType.HydrogenBomb,
   UnitType.MIRV,
   UnitType.Warship,
+  UnitType.Airstrike,
+  UnitType.Airdrop,
+  UnitType.CruiseMissile,
+  UnitType.Drone,
+  UnitType.BallisticMissile,
+  UnitType.ClusterMissile,
 ] as const);
 
 export const Structures = unitTypeGroup([
@@ -243,10 +286,16 @@ export const Structures = unitTypeGroup([
   UnitType.MissileSilo,
   UnitType.Port,
   UnitType.Factory,
+  UnitType.CoastalBattery,
+  UnitType.Airbase,
+  UnitType.FlakGun,
 ] as const);
 
 export const BuildMenus = unitTypeGroup([
   ...Structures.types,
+  // Not a structure: it sits on water, which nobody owns, so the structure
+  // rules (captured with the tile, removed off owned land) don't apply.
+  UnitType.Minefield,
   ...BuildableAttacks.types,
 ] as const);
 

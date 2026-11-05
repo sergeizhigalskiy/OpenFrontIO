@@ -34,6 +34,7 @@ import { GLUnavailableError, initGL } from "./initGL";
 import { BarPass } from "./passes/BarPass";
 import { BorderComputePass } from "./passes/BorderComputePass";
 import { BorderStampPass } from "./passes/BorderStampPass";
+import { CapitalMarker, CapitalPass } from "./passes/CapitalPass";
 import { CoordinateGridPass } from "./passes/CoordinateGridPass";
 import { CrosshairPass } from "./passes/CrosshairPass";
 import { DefenseCoveragePass } from "./passes/DefenseCoveragePass";
@@ -42,6 +43,7 @@ import { FalloutLightPass } from "./passes/FalloutLightPass";
 import { FxPass } from "./passes/fx-pass";
 import { LightmapPass } from "./passes/LightmapPass";
 import { MapLayerPass } from "./passes/MapLayerPass";
+import { MinefieldPass } from "./passes/MinefieldPass";
 import { MoveIndicatorPass } from "./passes/MoveIndicatorPass";
 import { NamePass } from "./passes/name-pass";
 import { NightCompositePass } from "./passes/NightCompositePass";
@@ -135,6 +137,8 @@ export class GPURenderer {
   private namePass: NamePass;
   private fxPass: FxPass;
   private rangeCirclePass: RangeCirclePass;
+  private minefieldPass: MinefieldPass;
+  private capitalPass: CapitalPass;
   private samRadiusPass: SAMRadiusPass;
   private crosshairPass: CrosshairPass;
   private railroadPass: RailroadPass;
@@ -555,6 +559,12 @@ export class GPURenderer {
     // --- Range circle (ghost preview radius) ---
     this.rangeCirclePass = new RangeCirclePass(gl);
 
+    // --- Minefields (own and friendly only) ---
+    this.minefieldPass = new MinefieldPass(gl, mapW);
+
+    // --- Capital stars (conventional war) ---
+    this.capitalPass = new CapitalPass(gl);
+
     // --- SAM radius overlay (dashed green circles during build mode) ---
     this.samRadiusPass = new SAMRadiusPass(gl, mapW, this.settings);
     this.samRadiusPass.setPaletteData(paletteData);
@@ -909,6 +919,7 @@ export class GPURenderer {
     this.frameTick++;
     this.unitPass.setFrameTick(this.frameTick);
     this.unitPass.updateUnits(units, gameTick);
+    this.minefieldPass.updateUnits(units);
     this.samRadiusPass.setTick(gameTick);
     this.barPass.updateBars(units, this.lastStructures, gameTick);
     this.pointLightPass.updateLights(units);
@@ -935,6 +946,7 @@ export class GPURenderer {
       }
       this.samRadiusPass.setAllies(friendly);
       this.unitPass.setAllies(friendly);
+      this.minefieldPass.setFriendly(friendly);
     }
   }
 
@@ -1106,6 +1118,11 @@ export class GPURenderer {
     this.spawnOverlayPass.update(centers);
   }
 
+  /** Conventional war: the capital stars to draw. */
+  updateCapitals(capitals: CapitalMarker[]): void {
+    this.capitalPass.update(capitals);
+  }
+
   updateSmallPlayerGlow(set: Uint8Array | null): void {
     this.smallPlayerGlowPass.update(set);
   }
@@ -1139,6 +1156,7 @@ export class GPURenderer {
     if (id === this.localPlayerID) return;
     this.localPlayerID = id;
     this.samRadiusPass.setLocalPlayer(id);
+    this.minefieldPass.setLocalPlayer(id);
     this.structurePass.setLocalPlayer(id);
     this.affiliationPalette.setLocalPlayer(id);
     this.unitPass.setLocalPlayer(id);
@@ -1365,6 +1383,8 @@ export class GPURenderer {
     this.spawnOverlayPass.draw(cam);
     if (pe.borderStamp) this.borderStampPass.draw(cam);
     if (pe.railroad) this.railroadPass.draw(cam, zoom);
+    // Under the ships that sail through them.
+    this.minefieldPass.draw(cam);
     if (pe.unit) this.unitPass.drawGround(cam);
     if (pe.falloutBloom) this.bloomPass.draw(cam, this.frameTick);
     this.samRadiusPass.draw(cam);
@@ -1373,6 +1393,7 @@ export class GPURenderer {
     this.crosshairPass.draw(cam);
     if (pe.structure) this.structurePass.draw(cam, zoom);
     if (pe.structure) this.structureLevelPass.draw(cam, zoom);
+    this.capitalPass.draw(cam);
     // Small-player glow draws after structures so buildings can't hide it.
     this.smallPlayerGlowPass.draw(cam);
     if (pe.bar) this.barPass.draw(cam);
@@ -1506,6 +1527,8 @@ export class GPURenderer {
     this.smallPlayerGlowPass.dispose();
     this.railroadPass.dispose();
     this.rangeCirclePass.dispose();
+    this.minefieldPass.dispose();
+    this.capitalPass.dispose();
     this.samRadiusPass.dispose();
     this.crosshairPass.dispose();
     this.structurePass.dispose();

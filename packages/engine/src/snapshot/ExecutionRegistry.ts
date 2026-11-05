@@ -1,4 +1,6 @@
 // Every entry is `<ClassName>Snapshot`, exported next to its class.
+import { AirbaseExecutionSnapshot } from "../execution/AirbaseExecution";
+import { AirMissionExecutionSnapshot } from "../execution/AirMissionExecution";
 import { AllianceExtensionExecutionSnapshot } from "../execution/alliance/AllianceExtensionExecution";
 import { AllianceRejectExecutionSnapshot } from "../execution/alliance/AllianceRejectExecution";
 import { AllianceRequestExecutionSnapshot } from "../execution/alliance/AllianceRequestExecution";
@@ -6,17 +8,25 @@ import { BreakAllianceExecutionSnapshot } from "../execution/alliance/BreakAllia
 import { AttackExecutionSnapshot } from "../execution/AttackExecution";
 import { BoatRetreatExecutionSnapshot } from "../execution/BoatRetreatExecution";
 import { CityExecutionSnapshot } from "../execution/CityExecution";
+import { CoastalBatteryExecutionSnapshot } from "../execution/CoastalBatteryExecution";
 import { ConstructionExecutionSnapshot } from "../execution/ConstructionExecution";
+import { ConvoyExecutionSnapshot } from "../execution/ConvoyExecution";
 import { DefensePostExecutionSnapshot } from "../execution/DefensePostExecution";
 import { DeleteUnitExecutionSnapshot } from "../execution/DeleteUnitExecution";
 import { DonateGoldExecutionSnapshot } from "../execution/DonateGoldExecution";
 import { DonateTroopsExecutionSnapshot } from "../execution/DonateTroopExecution";
 import { DoomsdayClockExecutionSnapshot } from "../execution/DoomsdayClockExecution";
+import {
+  DroneExecutionSnapshot,
+  DroneSwarmExecutionSnapshot,
+} from "../execution/DroneExecution";
 import { EmbargoAllExecutionSnapshot } from "../execution/EmbargoAllExecution";
 import { EmbargoExecutionSnapshot } from "../execution/EmbargoExecution";
 import { EmojiExecutionSnapshot } from "../execution/EmojiExecution";
 import { FactoryExecutionSnapshot } from "../execution/FactoryExecution";
+import { FlakGunExecutionSnapshot } from "../execution/FlakGunExecution";
 import { MarkDisconnectedExecutionSnapshot } from "../execution/MarkDisconnectedExecution";
+import { MinefieldExecutionSnapshot } from "../execution/MinefieldExecution";
 import { MirvExecutionSnapshot } from "../execution/MIRVExecution";
 import { MissileSiloExecutionSnapshot } from "../execution/MissileSiloExecution";
 import { MoveWarshipExecutionSnapshot } from "../execution/MoveWarshipExecution";
@@ -53,6 +63,8 @@ import type { ExecutionSnapshotType } from "./ExecutionSnapshot";
  * replaced it.
  */
 export const EXECUTION_SNAPSHOT_TYPES = [
+  AirbaseExecutionSnapshot,
+  AirMissionExecutionSnapshot,
   AllianceExtensionExecutionSnapshot,
   AllianceRejectExecutionSnapshot,
   AllianceRequestExecutionSnapshot,
@@ -60,17 +72,23 @@ export const EXECUTION_SNAPSHOT_TYPES = [
   BoatRetreatExecutionSnapshot,
   BreakAllianceExecutionSnapshot,
   CityExecutionSnapshot,
+  CoastalBatteryExecutionSnapshot,
   ConstructionExecutionSnapshot,
+  ConvoyExecutionSnapshot,
   DefensePostExecutionSnapshot,
   DeleteUnitExecutionSnapshot,
   DonateGoldExecutionSnapshot,
+  DroneExecutionSnapshot,
+  DroneSwarmExecutionSnapshot,
   DonateTroopsExecutionSnapshot,
   DoomsdayClockExecutionSnapshot,
   EmbargoAllExecutionSnapshot,
   EmbargoExecutionSnapshot,
   EmojiExecutionSnapshot,
   FactoryExecutionSnapshot,
+  FlakGunExecutionSnapshot,
   MarkDisconnectedExecutionSnapshot,
+  MinefieldExecutionSnapshot,
   MirvExecutionSnapshot,
   MissileSiloExecutionSnapshot,
   MoveWarshipExecutionSnapshot,

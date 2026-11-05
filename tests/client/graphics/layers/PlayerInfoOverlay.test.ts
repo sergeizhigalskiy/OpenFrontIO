@@ -91,9 +91,16 @@ describe("PlayerInfoOverlay", () => {
     smallID: () => 2,
   };
 
-  const makeGame = (myPlayer: unknown, isReplay = false) => ({
+  const makeGame = (
+    myPlayer: unknown,
+    isReplay = false,
+    units: unknown[] = [],
+  ) => ({
     isValidCoord: () => true,
     ref: () => 42,
+    x: () => 5,
+    y: () => 5,
+    units: () => units,
     owner: () => hovered,
     myPlayer: () => myPlayer,
     inSpawnPhase: () => false,
@@ -128,6 +135,51 @@ describe("PlayerInfoOverlay", () => {
     expect(out).toContain("opacity-100 visible");
     expect(out).toContain("Bob");
     expect(out).toContain("text-green-500");
+  });
+
+  it("shows a troop convoy under the cursor instead of the land it crosses", () => {
+    const convoy = {
+      type: () => UnitType.Convoy,
+      tile: () => 42,
+      owner: () => ({ ...hovered, displayName: () => "Carol" }),
+      hasHealth: () => false,
+      troops: () => 5000,
+    };
+    overlay.game = makeGame(null, false, [convoy]) as never;
+
+    overlay.maybeShow(10, 10);
+    const out = flatten(overlay.render());
+
+    expect(out).toContain("Carol");
+    expect(out).toContain("unit_type.convoy");
+    expect(out).toContain("Troops:");
+    expect(out).not.toContain("Bob");
+  });
+
+  it("shows a coastal battery's health under the cursor", () => {
+    const battery = {
+      type: () => UnitType.CoastalBattery,
+      tile: () => 42,
+      owner: () => ({ ...hovered, displayName: () => "Dana" }),
+      hasHealth: () => true,
+      health: () => 1200,
+    };
+    const game = makeGame(null, false, [battery]);
+    overlay.game = {
+      ...game,
+      config: () => ({
+        ...game.config(),
+        unitInfo: () => ({ maxHealth: 1500 }),
+      }),
+    } as never;
+
+    overlay.maybeShow(10, 10);
+    const out = flatten(overlay.render());
+
+    expect(out).toContain("Dana");
+    expect(out).toContain("unit_type.coastal_battery");
+    expect(out).toContain("Health: 1200 / 1500");
+    expect(out).not.toContain("Bob");
   });
 
   it("shows a white name when there is no local player", () => {

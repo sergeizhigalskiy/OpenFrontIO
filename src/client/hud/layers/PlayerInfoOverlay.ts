@@ -63,6 +63,17 @@ const portIcon = assetUrl("images/PortIcon.svg");
 const samLauncherIcon = assetUrl("images/SamLauncherIconWhite.svg");
 const soldierIcon = assetUrl("images/SoldierIcon.svg");
 
+/** How close (in tiles) the cursor must be to a convoy to show its info. */
+const CONVOY_HOVER_RADIUS = 5;
+/** How close (in tiles) the cursor must be to a coastal battery to show it. */
+const COASTAL_BATTERY_HOVER_RADIUS = 3;
+
+/** Unit types whose hover card names them through a translation key. */
+const UNIT_NAME_KEYS: Partial<Record<UnitType, string>> = {
+  [UnitType.Convoy]: "unit_type.convoy",
+  [UnitType.CoastalBattery]: "unit_type.coastal_battery",
+};
+
 function euclideanDistWorld(
   coord: { x: number; y: number },
   tileRef: TileRef,
@@ -232,6 +243,37 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
 
     const tile = this.game.ref(worldCoord.x, worldCoord.y);
     if (!tile) return;
+
+    // A troop convoy under the cursor wins over the land it crosses.
+    const convoy = this.game
+      .units(UnitType.Convoy)
+      .filter(
+        (u) =>
+          euclideanDistWorld(worldCoord, u.tile(), this.game) <
+          CONVOY_HOVER_RADIUS,
+      )
+      .sort(distSortUnitWorld(worldCoord, this.game))[0];
+    if (convoy !== undefined) {
+      this.unit = convoy;
+      this.setVisible(true);
+      return;
+    }
+
+    // So does a coastal battery: its card shows its health.
+    const battery = this.game
+      .units(UnitType.CoastalBattery)
+      .filter(
+        (u) =>
+          u.type() === UnitType.CoastalBattery &&
+          euclideanDistWorld(worldCoord, u.tile(), this.game) <
+            COASTAL_BATTERY_HOVER_RADIUS,
+      )
+      .sort(distSortUnitWorld(worldCoord, this.game))[0];
+    if (battery !== undefined) {
+      this.unit = battery;
+      this.setVisible(true);
+      return;
+    }
 
     const owner = this.game.owner(tile);
 
@@ -880,6 +922,12 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
       (unit.owner() === this.game.myPlayer() ||
         this.game.myPlayer()?.isFriendly(unit.owner())) ??
       false;
+    // A coastal battery shows how much of its health is left.
+    const health = !unit.hasHealth()
+      ? ""
+      : unit.type() === UnitType.CoastalBattery
+        ? `${unit.health()} / ${this.game.config().unitInfo(UnitType.CoastalBattery).maxHealth}`
+        : `${unit.health()}`;
 
     return html`
       <div class="p-2">
@@ -887,14 +935,21 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
           ${unit.owner().displayName()}
         </div>
         <div class="mt-1">
-          <div class="text-sm opacity-80">${unit.type()}</div>
+          <div class="text-sm opacity-80">
+            ${
+              UNIT_NAME_KEYS[unit.type()] !== undefined
+                ? translateText(UNIT_NAME_KEYS[unit.type()]!)
+                : unit.type()
+            }
+          </div>
           ${
             unit.hasHealth()
-              ? html` <div class="text-sm">Health: ${unit.health()}</div> `
+              ? html` <div class="text-sm">Health: ${health}</div> `
               : ""
           }
           ${
-            unit.type() === UnitType.TransportShip
+            unit.type() === UnitType.TransportShip ||
+            unit.type() === UnitType.Convoy
               ? html`
                   <div class="text-sm">
                     Troops: ${renderTroops(unit.troops())}

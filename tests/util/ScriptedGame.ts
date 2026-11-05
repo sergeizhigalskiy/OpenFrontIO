@@ -6,6 +6,8 @@ import {
   GameMapType,
   GameMode,
   GameType,
+  MINEFIELD_MAX_DENSITY,
+  MINEFIELD_MIN_DENSITY,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
 import {
@@ -357,6 +359,40 @@ function buildStructureIntent(
   return null;
 }
 
+/** A coastal battery on an ocean shore, or a minefield off it at a random density. */
+function buildNavalDefenseIntent(
+  game: Game,
+  p: Player,
+  rand: PseudoRandom,
+): Intent | null {
+  const shore = pick(
+    rand,
+    [...p.borderTiles()].filter((t) => game.isOceanShore(t)),
+  );
+  if (shore === null) return null;
+  if (rand.chance(2)) {
+    const unit = UnitType.CoastalBattery;
+    if (!canAfford(game, p, unit) || p.canBuild(unit, shore) === false) {
+      return null;
+    }
+    return { type: "build_unit", unit, tile: shore };
+  }
+  if (game.config().isUnitDisabled(UnitType.Minefield)) return null;
+  const density = rand.nextInt(
+    MINEFIELD_MIN_DENSITY,
+    MINEFIELD_MAX_DENSITY + 1,
+  );
+  const cost = game.config().minefieldCost(game, p, density);
+  const water = nearbyWater(game, shore, rand);
+  if (
+    water === null ||
+    p.canBuild(UnitType.Minefield, water, null, cost) === false
+  ) {
+    return null;
+  }
+  return { type: "build_unit", unit: UnitType.Minefield, tile: water, density };
+}
+
 function buildWarshipIntent(
   game: Game,
   p: Player,
@@ -414,6 +450,72 @@ function launchBombIntent(
   };
 }
 
+/**
+ * Conventional war only: builds an airbase, a flak gun and a level-3 silo,
+ * then flies every weapon (airstrike, airdrop, cruise, ballistic and cluster
+ * missiles, drone swarms) at enemy SAMs, flak guns, ships and land.
+ */
+function conventionalWarIntent(
+  game: Game,
+  p: Player,
+  rand: PseudoRandom,
+  other: Player | null,
+): Intent | null {
+  const built = (type: UnitType) =>
+    p.units(type).filter((u) => u.isActive() && !u.isUnderConstruction());
+  for (const unit of [UnitType.Airbase, UnitType.FlakGun]) {
+    if (p.units(unit).length > 0 || !canAfford(game, p, unit)) continue;
+    const tile = randomOwnedTile(rand, p);
+    if (tile !== null && p.canBuild(unit, tile) !== false) {
+      return { type: "build_unit", unit, tile };
+    }
+  }
+  const silo = built(UnitType.MissileSilo).find((s) => s.level() < 3);
+  if (silo !== undefined && rand.chance(3)) {
+    return {
+      type: "upgrade_structure",
+      unit: UnitType.MissileSilo,
+      unitId: silo.id(),
+    };
+  }
+  const enemy = (types: UnitType[]) =>
+    game
+      .units(types)
+      .filter(
+        (u) =>
+          u.isActive() && u.owner() !== p && !p.isFriendly(u.owner(), true),
+      );
+  const weapon = pick(rand, [
+    UnitType.Airstrike,
+    UnitType.Airdrop,
+    UnitType.CruiseMissile,
+    UnitType.BallisticMissile,
+    UnitType.ClusterMissile,
+    UnitType.Drone,
+  ]);
+  if (weapon === null) return null;
+  let tile: TileRef | null;
+  if (weapon === UnitType.Drone) {
+    tile =
+      pick(
+        rand,
+        enemy([UnitType.FlakGun, UnitType.Warship, UnitType.TransportShip]),
+      )?.tile() ?? null;
+  } else {
+    tile =
+      pick(rand, enemy([UnitType.SAMLauncher, UnitType.FlakGun]))?.tile() ??
+      (other === null ? null : randomOwnedTile(rand, other));
+  }
+  if (tile === null || p.canBuild(weapon, tile) === false) return null;
+  return {
+    type: "build_unit",
+    unit: weapon,
+    tile,
+    ...(weapon === UnitType.Airdrop ? { troops: p.troops() / 5 } : {}),
+    ...(weapon === UnitType.Drone ? { count: rand.nextInt(1, 9) } : {}),
+  };
+}
+
 function moveWarshipIntent(
   game: Game,
   p: Player,
@@ -463,6 +565,12 @@ function playIntent(game: Game, p: Player, rand: PseudoRandom): Intent | null {
   const other = pick(rand, others);
   const own = (types: UnitType[]) => p.units(types);
 
+  // Only in conventional war, so the other variants draw the same numbers.
+  if (game.config().conventionalWar() && rand.chance(2)) {
+    const intent = conventionalWarIntent(game, p, rand, other);
+    if (intent !== null) return intent;
+  }
+
   const readySilo = own([UnitType.MissileSilo]).some(
     (s) => s.isActive() && !s.isInCooldown() && !s.isUnderConstruction(),
   );
@@ -510,7 +618,9 @@ function playIntent(game: Game, p: Player, rand: PseudoRandom): Intent | null {
     case 6:
       return buildStructureIntent(game, p, rand);
     case 7:
-      return buildWarshipIntent(game, p, rand);
+      return rand.chance(2)
+        ? buildWarshipIntent(game, p, rand)
+        : buildNavalDefenseIntent(game, p, rand);
     case 8:
       return launchBombIntent(game, p, rand, other);
     case 9: {

@@ -1,4 +1,8 @@
-import { PlayerInfo, PlayerType } from "@openfront/engine-api/game/GameTypes";
+import {
+  PlayerInfo,
+  PlayerType,
+  UnitType,
+} from "@openfront/engine-api/game/GameTypes";
 import { GameID } from "@openfront/engine-api/Schemas";
 import { DonateGoldExecution } from "@openfront/engine/execution/DonateGoldExecution";
 import { DonateTroopsExecution } from "@openfront/engine/execution/DonateTroopExecution";
@@ -56,11 +60,20 @@ describe("Donate troops to an ally", () => {
     const recipientTroopsBefore = recipient.troops();
     game.addExecution(new DonateTroopsExecution(donor, recipientInfo.id, 5000));
 
-    for (let i = 0; i < 5; i++) {
+    // The troops leave the donor at once and travel as a convoy.
+    game.executeNextTick();
+    game.executeNextTick();
+    const [convoy] = donor.units(UnitType.Convoy);
+    expect(convoy).toBeDefined();
+    expect(convoy.troops()).toBe(5000);
+    expect(donor.troops() < donorTroopsBefore).toBe(true);
+
+    for (let i = 0; i < 20 && convoy.isActive(); i++) {
       game.executeNextTick();
     }
 
-    expect(donor.troops() < donorTroopsBefore).toBe(true);
+    expect(convoy.isActive()).toBe(false);
+    expect(convoy.reachedTarget()).toBe(true);
     expect(recipient.troops() > recipientTroopsBefore).toBe(true);
   });
 });
@@ -210,6 +223,7 @@ describe("Donate troops to a non ally", () => {
     game.executeNextTick();
 
     // Troops should not be donated since they are not allies
+    expect(donor.units(UnitType.Convoy)).toHaveLength(0);
     expect(donor.troops() >= donorTroopsBefore).toBe(true);
     expect(recipient.troops() >= recipientTroopsBefore).toBe(true);
   });

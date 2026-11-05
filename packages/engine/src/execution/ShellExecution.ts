@@ -1,5 +1,6 @@
 import { TileRef } from "@openfront/engine-api/game/GameMap";
 import { UnitType } from "@openfront/engine-api/game/GameTypes";
+import { WARSHIP_DRONE_HIT_PERCENT } from "@openfront/engine-lib/game/ConventionalWar";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import {
   zInt,
@@ -23,6 +24,7 @@ import type {
   SnapshotReader,
   SnapshotWriter,
 } from "../snapshot/SnapshotContext";
+import { shellConvoy } from "./ConvoyExecution";
 
 export class ShellExecution implements Execution {
   private active = true;
@@ -74,7 +76,17 @@ export class ShellExecution implements Execution {
         this.active = false;
         const targetType = this.target.type();
         const targetWasActive = this.target.isActive();
-        this.target.modifyHealth(-this.effectOnTarget(), this._owner);
+        if (targetType === UnitType.Convoy) {
+          // Convoys have troops, not health: a hit kills a share of them.
+          shellConvoy(this.target, this._owner);
+        } else if (targetType === UnitType.Drone) {
+          // Drones have no health: each shell downs one by a seeded roll.
+          if (this.random.nextInt(0, 100) < WARSHIP_DRONE_HIT_PERCENT) {
+            this.target.delete(true, this._owner);
+          }
+        } else {
+          this.target.modifyHealth(-this.effectOnTarget(), this._owner);
+        }
         // Award veterancy to the firing warship when this shell lands the
         // killing blow on an enemy warship or transport ship.
         if (

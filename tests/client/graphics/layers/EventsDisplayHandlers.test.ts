@@ -353,6 +353,32 @@ describe("EventsDisplay handlers", () => {
     });
   });
 
+  describe("onDonateEvent", () => {
+    it("reports a troop convoy's delivery to the sender and the recipient", () => {
+      const me = { ...myPlayer, id: () => "me" };
+      const ally = { ...friend, id: () => "ally" };
+      const players: Record<string, unknown> = { me, ally };
+      game.myPlayer = () => me;
+      game.player = (id: string) => players[id];
+      const troops = (senderId: string, recipientId: string, amount: bigint) =>
+        ed.onDonateEvent({
+          type: GameUpdateType.DonateEvent,
+          donationType: "troops",
+          senderId,
+          recipientId,
+          amount,
+        });
+
+      troops("me", "ally", 5000n);
+      troops("ally", "me", 700n);
+
+      expect(events().map((event) => event.description)).toEqual([
+        'events_display.convoy_delivered {"name":"Friend","troops":"5000"}',
+        'events_display.received_troops_from_player {"name":"Friend","troops":"700"}',
+      ]);
+    });
+  });
+
   describe("onDisplayMessageEvent", () => {
     it("translates unit names in event parameters", () => {
       ed.onDisplayMessageEvent({

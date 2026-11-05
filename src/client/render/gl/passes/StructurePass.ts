@@ -16,9 +16,12 @@
 
 import type { GhostPreviewData, RendererConfig, UnitState } from "../../types";
 import {
+  UT_AIRBASE,
   UT_CITY,
+  UT_COASTAL_BATTERY,
   UT_DEFENSE_POST,
   UT_FACTORY,
+  UT_FLAK_GUN,
   UT_MISSILE_SILO,
   UT_PORT,
   UT_SAM_LAUNCHER,
@@ -56,6 +59,20 @@ const STRUCTURE_ORDER = [
 ] as const;
 
 const ATLAS_COLS = STRUCTURE_ORDER.length;
+
+/**
+ * Structures without an atlas column of their own, drawn with another's icon
+ * (the atlas generator isn't in this repo). A coastal battery is a shore gun,
+ * so it gets the defense post's shield.
+ */
+const BORROWED_ICONS: ReadonlyMap<string, (typeof STRUCTURE_ORDER)[number]> =
+  new Map([
+    [UT_COASTAL_BATTERY, UT_DEFENSE_POST],
+    // Conventional war: an airbase launches like a silo, a flak gun shoots
+    // planes like a SAM.
+    [UT_AIRBASE, UT_MISSILE_SILO],
+    [UT_FLAK_GUN, UT_SAM_LAUNCHER],
+  ]);
 
 // ---------------------------------------------------------------------------
 // Instance data layout
@@ -142,11 +159,12 @@ export class StructurePass {
 
     // Build unitType string → atlas column mapping
     for (let i = 0; i < header.unitTypes.length; i++) {
+      const type = header.unitTypes[i];
       const col = STRUCTURE_ORDER.indexOf(
-        header.unitTypes[i] as (typeof STRUCTURE_ORDER)[number],
+        BORROWED_ICONS.get(type) ?? (type as (typeof STRUCTURE_ORDER)[number]),
       );
       if (col >= 0) {
-        this.typeToAtlasCol.set(header.unitTypes[i], col);
+        this.typeToAtlasCol.set(type, col);
       }
     }
 

@@ -23,11 +23,16 @@ export class PlayerActionHandler {
     private uiState: UIState,
   ) {}
 
-  handleAttack(player: PlayerView, targetId: string | null) {
+  handleAttack(
+    player: PlayerView,
+    targetId: string | null,
+    focusTile: TileRef | null = null,
+  ) {
     this.eventBus.emit(
       new SendAttackIntentEvent(
         targetId,
         this.uiState.attackRatio * player.troops(),
+        focusTile,
       ),
     );
   }

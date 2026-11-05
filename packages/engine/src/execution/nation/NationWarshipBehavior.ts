@@ -6,6 +6,10 @@ import {
   PlayerType,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
+import {
+  MINEFIELD_DEFAULT_DENSITY,
+  MINEFIELD_RADIUS,
+} from "@openfront/engine-lib/game/NavalDefense";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import {
   readVersioned,
@@ -25,6 +29,11 @@ import {
   EMOJI_WARSHIP_RETALIATION,
   NationEmojiBehavior,
 } from "./NationEmojiBehavior";
+
+/** A hostile warship this close to a nation's busiest port makes it lay mines. */
+const NATION_MINEFIELD_THREAT_RANGE = 80;
+/** How far out from the port a nation centers its minefield. */
+const NATION_MINEFIELD_PORT_OFFSET = 6;
 
 export class NationWarshipBehavior {
   // Track our transport ships we currently own
@@ -104,6 +113,93 @@ export class NationWarshipBehavior {
       return true;
     }
     return false;
+  }
+
+  /**
+   * Lays a minefield at the default density off our busiest port (highest
+   * level) when a hostile warship is within NATION_MINEFIELD_THREAT_RANGE of
+   * it and none of our fields covers the port yet. Deterministic: it draws
+   * nothing from the PRNG.
+   */
+  maybeLayMinefield(): boolean {
+    const game = this.game;
+    if (game.config().isUnitDisabled(UnitType.Minefield)) return false;
+    let port: Unit | null = null;
+    for (const p of this.player.units(UnitType.Port)) {
+      if (p.isUnderConstruction()) continue;
+      if (
+        port === null ||
+        p.level() > port.level() ||
+        (p.level() === port.level() && p.id() < port.id())
+      ) {
+        port = p;
+      }
+    }
+    if (port === null) return false;
+
+    const portTile = port.tile();
+    const threatened = game.anyUnitNearby(
+      portTile,
+      NATION_MINEFIELD_THREAT_RANGE,
+      [UnitType.Warship],
+      (u) => u.owner() !== this.player && !this.player.isFriendly(u.owner()),
+    );
+    if (!threatened) return false;
+    const alreadyMined = game.anyUnitNearby(
+      portTile,
+      MINEFIELD_RADIUS,
+      [UnitType.Minefield],
+      (u) => u.owner() === this.player,
+    );
+    if (alreadyMined) return false;
+
+    const cost = game
+      .config()
+      .minefieldCost(game, this.player, MINEFIELD_DEFAULT_DENSITY);
+    if (this.spareGold() < cost) return false;
+
+    const tile = this.minefieldTileOff(portTile);
+    if (tile === null) return false;
+    if (this.player.canBuild(UnitType.Minefield, tile, null, cost) === false) {
+      return false;
+    }
+    game.addExecution(
+      new ConstructionExecution(
+        this.player,
+        UnitType.Minefield,
+        tile,
+        undefined,
+        undefined,
+        MINEFIELD_DEFAULT_DENSITY,
+      ),
+    );
+    return true;
+  }
+
+  /**
+   * The ocean tile at most NATION_MINEFIELD_PORT_OFFSET tiles from the port
+   * that lies furthest out, so the field covers the port's approaches. Ties
+   * go to the lowest tile ref.
+   */
+  private minefieldTileOff(portTile: TileRef): TileRef | null {
+    const game = this.game;
+    const r = NATION_MINEFIELD_PORT_OFFSET;
+    const px = game.x(portTile);
+    const py = game.y(portTile);
+    let best: TileRef | null = null;
+    let bestDist = -1;
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        const dist = dx * dx + dy * dy;
+        if (dist > r * r || dist <= bestDist) continue;
+        if (!game.isValidCoord(px + dx, py + dy)) continue;
+        const tile = game.ref(px + dx, py + dy);
+        if (!game.isOcean(tile)) continue;
+        best = tile;
+        bestDist = dist;
+      }
+    }
+    return best;
   }
 
   private warshipSpawnTile(portTile: TileRef, radius: number): TileRef | null {

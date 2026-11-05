@@ -1,7 +1,12 @@
 import { TileRef } from "@openfront/engine-api/game/GameMap";
-import { Tick, UnitType } from "@openfront/engine-api/game/GameTypes";
+import {
+  MINEFIELD_DEFAULT_DENSITY,
+  Tick,
+  UnitType,
+} from "@openfront/engine-api/game/GameTypes";
 import {
   zInt,
+  zNum,
   zPlayerRef,
   zRef,
 } from "@openfront/engine-lib/snapshot/SnapshotType";
@@ -14,9 +19,15 @@ import type {
   SnapshotReader,
   SnapshotWriter,
 } from "../snapshot/SnapshotContext";
+import { AirbaseExecution } from "./AirbaseExecution";
+import { AirMissionExecution } from "./AirMissionExecution";
 import { CityExecution } from "./CityExecution";
+import { CoastalBatteryExecution } from "./CoastalBatteryExecution";
 import { DefensePostExecution } from "./DefensePostExecution";
+import { DroneSwarmExecution } from "./DroneExecution";
 import { FactoryExecution } from "./FactoryExecution";
+import { FlakGunExecution } from "./FlakGunExecution";
+import { MinefieldExecution } from "./MinefieldExecution";
 import { MirvExecution } from "./MIRVExecution";
 import { MissileSiloExecution } from "./MissileSiloExecution";
 import { NukeExecution } from "./NukeExecution";
@@ -37,6 +48,12 @@ export class ConstructionExecution implements Execution {
     private tile: TileRef,
     private rocketDirectionUp?: boolean,
     private amount?: number,
+    /** Minefields only: the density (integer percent) to lay it with. */
+    private density?: number,
+    /** Airdrops only: the troops to drop (capped by AirMissionExecution). */
+    private troops?: number,
+    /** Drones only: the swarm size (clamped by DroneSwarmExecution). */
+    private count?: number,
   ) {}
 
   init(mg: Game, ticks: number): void {
@@ -144,6 +161,48 @@ export class ConstructionExecution implements Execution {
           new WarshipExecution({ owner: player, patrolTile: this.tile }),
         );
         break;
+      case UnitType.Minefield:
+        // Laid at once; MinefieldExecution validates and charges for it.
+        this.mg.addExecution(
+          new MinefieldExecution({
+            owner: player,
+            tile: this.tile,
+            density: this.density ?? MINEFIELD_DEFAULT_DENSITY,
+          }),
+        );
+        break;
+      case UnitType.CoastalBattery:
+        this.mg.addExecution(new CoastalBatteryExecution(this.structure!));
+        break;
+      case UnitType.Airbase:
+        this.mg.addExecution(new AirbaseExecution(this.structure!));
+        break;
+      case UnitType.FlakGun:
+        this.mg.addExecution(new FlakGunExecution(this.structure!));
+        break;
+      case UnitType.Drone:
+        // The swarm validates and charges each drone as it takes off.
+        this.mg.addExecution(
+          new DroneSwarmExecution(player, this.tile, this.count ?? 1),
+        );
+        break;
+      case UnitType.Airstrike:
+      case UnitType.Airdrop:
+      case UnitType.CruiseMissile:
+      case UnitType.BallisticMissile:
+      case UnitType.ClusterMissile:
+        // AirMissionExecution validates and charges at takeoff.
+        this.mg.addExecution(
+          new AirMissionExecution(
+            this.constructionType,
+            player,
+            this.tile,
+            this.constructionType === UnitType.Airdrop
+              ? (this.troops ?? null)
+              : null,
+          ),
+        );
+        break;
       case UnitType.Port:
         this.mg.addExecution(new PortExecution(this.structure!));
         break;
@@ -180,6 +239,9 @@ export class ConstructionExecution implements Execution {
       case UnitType.SAMLauncher:
       case UnitType.City:
       case UnitType.Factory:
+      case UnitType.CoastalBattery:
+      case UnitType.Airbase:
+      case UnitType.FlakGun:
         return true;
       default:
         return false;
@@ -203,6 +265,9 @@ export class ConstructionExecution implements Execution {
       tile: this.tile,
       rocketDirectionUp: this.rocketDirectionUp,
       amount: this.amount,
+      density: this.density,
+      troops: this.troops,
+      count: this.count,
       structure: w.unitOrNull(this.structure),
       ticksUntilComplete: this.ticksUntilComplete,
     });
@@ -216,6 +281,9 @@ export class ConstructionExecution implements Execution {
     this.tile = s.tile;
     this.rocketDirectionUp = s.rocketDirectionUp;
     this.amount = s.amount;
+    this.density = s.density;
+    this.troops = s.troops;
+    this.count = s.count;
     this.structure = r.unitOrNull(s.structure);
     this.ticksUntilComplete = s.ticksUntilComplete as Tick;
   }
@@ -230,6 +298,12 @@ const ConstructionStateSchema = z.object({
   tile: zInt(),
   rocketDirectionUp: z.boolean().optional(),
   amount: zInt().optional(),
+  /** Added in v2 (minefields); absent for every other construction. */
+  density: zInt().optional(),
+  /** Added in v3 (airdrops); absent for every other construction. */
+  troops: zNum().optional(),
+  /** Added in v3 (drone swarms); absent for every other construction. */
+  count: zInt().optional(),
   structure: zRef().nullable(),
   // Unset until a structure with a build time is placed.
   ticksUntilComplete: zInt().optional(),
@@ -238,7 +312,10 @@ type ConstructionState = z.infer<typeof ConstructionStateSchema>;
 
 export const ConstructionExecutionSnapshot = execSnapshotType({
   name: "Construction",
-  version: 1,
+  version: 3,
   schema: ConstructionStateSchema,
+  // v2 added the optional minefield density and v3 the optional airdrop
+  // troops and drone swarm count; older records never had them.
+  migrations: { 1: (d) => d, 2: (d) => d },
   cls: () => ConstructionExecution,
 });

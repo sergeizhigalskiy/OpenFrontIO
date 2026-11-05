@@ -9,7 +9,18 @@ import {
 import { PlayerLike } from "@openfront/engine-api/game/ReadViews";
 import { GameConfig } from "@openfront/engine-api/Schemas";
 import { pow } from "../DetMath";
+import {
+  AIRBASE_CONSTRUCTION_TICKS,
+  CONVENTIONAL_WAR_UNIT_TYPES,
+  FLAK_GUN_CONSTRUCTION_TICKS,
+  NUCLEAR_UNIT_TYPES,
+} from "../game/ConventionalWar";
 import { DoomsdayClockSpeed } from "../game/DoomsdayClock";
+import {
+  COASTAL_BATTERY_CONSTRUCTION_TICKS,
+  COASTAL_BATTERY_HEALTH_PERCENT_OF_WARSHIP,
+  MINEFIELD_MAX_DENSITY,
+} from "../game/NavalDefense";
 import { assertNever } from "../Util";
 
 export interface NukeMagnitude {
@@ -21,6 +32,8 @@ const DEFAULT_SPAWN_IMMUNITY_TICKS = 5 * 10;
 
 /** SAM launcher construction duration in ticks (non-instant-build). */
 export const SAM_CONSTRUCTION_TICKS = 30 * 10;
+/** A fresh warship's health; shells deal 200-300 (see ShellExecution). */
+export const WARSHIP_MAX_HEALTH = 1000;
 
 // Doomsday Clock tunables (anti-stall). Off unless enabled in GameConfig.
 // Times in seconds. The required map share rises in waves (levels + times in
@@ -176,7 +189,25 @@ export class Config {
     return 30;
   }
 
+  /**
+   * Conventional war mode (see game/ConventionalWar.ts): nukes are disabled
+   * and the air units and capitals are on.
+   */
+  conventionalWar(): boolean {
+    return this._gameConfig.conventionalWar ?? false;
+  }
+
   isUnitDisabled(unitType: UnitType): boolean {
+    // The mode decides first: air units exist only in conventional war, and
+    // conventional war has no nukes. disabledUnits can still turn more off.
+    if (CONVENTIONAL_WAR_UNIT_TYPES.includes(unitType)) {
+      if (!this.conventionalWar()) return true;
+    } else if (
+      NUCLEAR_UNIT_TYPES.includes(unitType) &&
+      this.conventionalWar()
+    ) {
+      return true;
+    }
     return this._gameConfig.disabledUnits?.includes(unitType) ?? false;
   }
   instantBuild(): boolean {
@@ -212,7 +243,7 @@ export class Config {
     let info: UnitInfo;
     switch (type) {
       case UnitType.Warship:
-        info = { maxHealth: 1000 };
+        info = { maxHealth: WARSHIP_MAX_HEALTH };
         break;
       case UnitType.Shell:
         info = { damage: 250 };
@@ -247,6 +278,43 @@ export class Config {
           upgradable: true,
         };
         break;
+      case UnitType.CoastalBattery:
+        info = {
+          maxHealth: Math.floor(
+            (WARSHIP_MAX_HEALTH * COASTAL_BATTERY_HEALTH_PERCENT_OF_WARSHIP) /
+              100,
+          ),
+          constructionDuration: this.instantBuild()
+            ? 0
+            : COASTAL_BATTERY_CONSTRUCTION_TICKS,
+        };
+        break;
+      case UnitType.Minefield:
+        // A minefield's health is its density: it starts at the density it was
+        // laid with and loses MINEFIELD_DEPLETION_PER_HIT per hit. Laid at once.
+        info = { maxHealth: MINEFIELD_MAX_DENSITY };
+        break;
+      case UnitType.Airbase:
+        info = {
+          constructionDuration: this.instantBuild()
+            ? 0
+            : AIRBASE_CONSTRUCTION_TICKS,
+        };
+        break;
+      case UnitType.FlakGun:
+        info = {
+          constructionDuration: this.instantBuild()
+            ? 0
+            : FLAK_GUN_CONSTRUCTION_TICKS,
+        };
+        break;
+      case UnitType.Airstrike:
+      case UnitType.Airdrop:
+      case UnitType.CruiseMissile:
+      case UnitType.Drone:
+      case UnitType.BallisticMissile:
+      case UnitType.ClusterMissile:
+      case UnitType.ClusterWarhead:
       case UnitType.TransportShip:
       case UnitType.SAMMissile:
       case UnitType.AtomBomb:
@@ -255,6 +323,7 @@ export class Config {
       case UnitType.MIRVWarhead:
       case UnitType.TradeShip:
       case UnitType.Train:
+      case UnitType.Convoy:
         info = {};
         break;
       default:

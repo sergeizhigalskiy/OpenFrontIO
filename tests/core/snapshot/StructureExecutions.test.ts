@@ -3,14 +3,17 @@ import {
   PlayerType,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
+import { CoastalBatteryExecution } from "@openfront/engine/execution/CoastalBatteryExecution";
 import { ConstructionExecution } from "@openfront/engine/execution/ConstructionExecution";
 import { DoomsdayClockExecution } from "@openfront/engine/execution/DoomsdayClockExecution";
+import { MinefieldExecution } from "@openfront/engine/execution/MinefieldExecution";
 import { MirvExecution } from "@openfront/engine/execution/MIRVExecution";
 import { NukeExecution } from "@openfront/engine/execution/NukeExecution";
 import { PortExecution } from "@openfront/engine/execution/PortExecution";
 import { SAMLauncherExecution } from "@openfront/engine/execution/SAMLauncherExecution";
 import { ShellExecution } from "@openfront/engine/execution/ShellExecution";
 import { TrainStationExecution } from "@openfront/engine/execution/TrainStationExecution";
+import { WarshipExecution } from "@openfront/engine/execution/WarshipExecution";
 import { Game, Player } from "@openfront/engine/game/Game";
 import { setup } from "../../util/Setup";
 import { expectSnapshotRoundTrip } from "../../util/Snapshot";
@@ -220,6 +223,52 @@ describe("structure and missile execution snapshots", () => {
     game.addExecution(new TrainStationExecution(city2));
     await expectSnapshotRoundTrip(game, BIG, 20);
   });
+
+  test("minefields and coastal batteries in combat, pending and building", async () => {
+    // Land at x 0-7, ocean at x 8-15.
+    const map = "half_land_half_ocean";
+    const { game, a, b } = await twoPlayers(map);
+    conquerRect(game, a, 4, 0, 8, 16);
+    conquerRect(game, b, 0, 0, 2, 16);
+    // Past spawn immunity, so the warships open fire.
+    executeTicks(game, 50);
+    const field = a.buildUnit(UnitType.Minefield, game.ref(12, 8), {
+      density: 100,
+    });
+    // Structures keep 15 tiles apart: one battery at each end of the coast.
+    const battery = a.buildUnit(UnitType.CoastalBattery, game.ref(7, 15), {});
+    const raiders = [game.ref(11, 3), game.ref(13, 12)].map((tile) =>
+      b.buildUnit(UnitType.Warship, tile, { patrolTile: tile }),
+    );
+    game.addExecution(
+      new MinefieldExecution(field),
+      new CoastalBatteryExecution(battery),
+      ...raiders.map((w) => new WarshipExecution(w)),
+      // Pending: an order not yet laid, a minefield build carrying its
+      // density, and a battery that will spend a while under construction.
+      new MinefieldExecution({ owner: a, tile: game.ref(10, 13), density: 30 }),
+      new ConstructionExecution(
+        a,
+        UnitType.Minefield,
+        game.ref(9, 2),
+        undefined,
+        undefined,
+        40,
+      ),
+      new ConstructionExecution(a, UnitType.CoastalBattery, game.ref(7, 0)),
+    );
+    await expectSnapshotRoundTrip(game, map, 1);
+    // Warships patrolling through the fields, shells flying both ways.
+    executeTicks(game, 15);
+    expect(a.units(UnitType.Minefield)).toHaveLength(3);
+    expect(
+      a.units(UnitType.CoastalBattery).some((u) => u.isUnderConstruction()),
+    ).toBe(true);
+    await expectSnapshotRoundTrip(game, map, 120);
+    // The scenario did fight: mines went off and shells landed both ways.
+    expect(field.health()).toBeLessThan(100);
+    expect(battery.health()).toBeLessThan(battery.maxHealth());
+  }, 60_000);
 
   test("doomsday clock rotting a side", async () => {
     const game = await setup(

@@ -123,6 +123,16 @@ export class NationStructurePlacement {
         return this.portValue();
       case UnitType.SAMLauncher:
         return this.samLauncherValue();
+      // Nations don't place these through the land-tile scoring: a minefield
+      // goes on water (NationWarshipBehavior.maybeLayMinefield picks the tile)
+      // and nations don't build coastal batteries. No tile, not a throw.
+      case UnitType.Minefield:
+      case UnitType.CoastalBattery:
+      // Conventional war: NationAirBehavior places the one airbase nations
+      // build; they build no flak guns.
+      case UnitType.Airbase:
+      case UnitType.FlakGun:
+        return null;
       default:
         throw new Error(`Value function not implemented for ${type}`);
     }

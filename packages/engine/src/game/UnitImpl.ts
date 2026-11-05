@@ -14,6 +14,7 @@ import {
   GameUpdateType,
   UnitUpdate,
 } from "@openfront/engine-api/game/GameUpdates";
+import { clampMinefieldDensity } from "@openfront/engine-lib/game/NavalDefense";
 import { maxHealthWithVeterancy } from "@openfront/engine-lib/game/Veterancy";
 import {
   snapshotType,
@@ -54,6 +55,8 @@ export class UnitImpl implements Unit {
   private _troops: number;
   // Number of missiles in cooldown, if empty all missiles are ready.
   private _missileTimerQueue: number[] = [];
+  // Airbases only: the tick the last drone took off (see DroneExecution).
+  private _lastDroneLaunch: number | null = null;
   private _hasTrainStation: boolean = false;
   private _level: number = 1;
   private _targetable: boolean = true;
@@ -73,6 +76,10 @@ export class UnitImpl implements Unit {
   ) {
     this._lastTile = _tile;
     this._health = toInt(this.mg.unitInfo(_type).maxHealth ?? 1);
+    if (_type === UnitType.Minefield && "density" in params) {
+      // A minefield's health is its density (see Config.unitInfo).
+      this._health = toInt(clampMinefieldDensity(params.density));
+    }
     this._targetTile =
       "targetTile" in params ? (params.targetTile ?? undefined) : undefined;
     this._targetPlayer =
@@ -587,6 +594,14 @@ export class UnitImpl implements Unit {
     this.mg.addUpdate(this.toUpdate());
   }
 
+  lastDroneLaunchTick(): number | null {
+    return this._lastDroneLaunch;
+  }
+
+  recordDroneLaunch(): void {
+    this._lastDroneLaunch = this.mg.ticks();
+  }
+
   setTargetTile(targetTile: TileRef | undefined) {
     this._targetTile = targetTile;
   }
@@ -845,6 +860,7 @@ export class UnitImpl implements Unit {
       lastOwner: w.playerOrNull(this._lastOwner),
       troops: this._troops,
       missileTimerQueue: [...this._missileTimerQueue],
+      lastDroneLaunch: this._lastDroneLaunch,
       hasTrainStation: this._hasTrainStation,
       level: this._level,
       targetable: this._targetable,
@@ -897,6 +913,7 @@ export class UnitImpl implements Unit {
     this._lastOwner = r.playerOrNull(s.lastOwner) as PlayerImpl | null;
     this._troops = s.troops;
     this._missileTimerQueue = [...s.missileTimerQueue];
+    this._lastDroneLaunch = s.lastDroneLaunch;
     this._hasTrainStation = s.hasTrainStation;
     this._level = s.level;
     this._targetable = s.targetable;
@@ -911,7 +928,11 @@ export class UnitImpl implements Unit {
 
 export const UnitSnapshot = snapshotType({
   name: "Unit",
-  version: 1,
+  // v2 added lastDroneLaunch (airbases launching drones).
+  version: 2,
+  migrations: {
+    1: (d) => ({ ...(d as Record<string, unknown>), lastDroneLaunch: null }),
+  },
   schema: z.object({
     id: zInt(),
     type: UnitTypeSchema,
@@ -953,6 +974,7 @@ export const UnitSnapshot = snapshotType({
     lastOwner: zPlayerRef().nullable(),
     troops: zNum(),
     missileTimerQueue: z.array(zInt()),
+    lastDroneLaunch: zInt().nullable(),
     hasTrainStation: z.boolean(),
     level: zInt(),
     targetable: z.boolean(),

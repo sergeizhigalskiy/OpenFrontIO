@@ -22,6 +22,7 @@ import {
 } from "./render/types";
 // Value import from the leaf module (not the ./render/gl barrel) so non-Vite
 // consumers don't pull in GPURenderer and its shaders — see note above.
+import type { CapitalMarker } from "./render/gl/passes/CapitalPass";
 import {
   EFFECT_PALETTE_BLOCKS,
   MAX_TRAIL_COLORS,
@@ -153,6 +154,8 @@ export class WebGLFrameBuilder {
    * just first-seen — re-uploads only when the tile actually changes.
    */
   private readonly lastSpawnTile = new Map<number, number>();
+  /** The capitals last sent to the renderer (see syncCapitals). */
+  private lastCapitalsKey = "";
   /** Skin atlas allocated once on first syncPlayers — player set is locked at game start. */
   private skinsInitialized = false;
   // The renderer needs to know which player is "me" so affiliation tint,
@@ -177,6 +180,7 @@ export class WebGLFrameBuilder {
     // texture starts zeroed, so the mirror must too or nothing re-uploads.
     this.effectPalette.fill(0);
     this.lastSpawnTile.clear();
+    this.lastCapitalsKey = "";
     this.localPlayerSmallID = 0;
     this.skinsInitialized = false;
   }
@@ -238,6 +242,7 @@ export class WebGLFrameBuilder {
     this.syncPlayerSpawns(gameView);
     this.syncLocalPlayer(gameView);
     this.syncSpawnOverlay(gameView);
+    this.syncCapitals(gameView);
     this.syncSmallPlayerGlow(gameView);
     this.syncTerrainDeltas(gameView);
     this.syncNukeImpacts(gameView);
@@ -420,6 +425,32 @@ export class WebGLFrameBuilder {
       });
     }
     this.view.updateSpawnOverlay(inSpawnPhase, centers);
+  }
+
+  /**
+   * Conventional war: a star on every living player's capital, for everyone.
+   * Re-sent only when a capital moves or a player joins or falls.
+   */
+  private syncCapitals(gameView: GameView): void {
+    if (!gameView.config().conventionalWar()) return;
+    const capitals: CapitalMarker[] = [];
+    let key = "";
+    for (const p of gameView.players()) {
+      const tile = p.state.capitalTile;
+      if (tile === undefined || !p.isAlive()) continue;
+      key += `${p.smallID()}:${tile},`;
+      const c = p.territoryColor().toRgb();
+      capitals.push({
+        x: gameView.x(tile),
+        y: gameView.y(tile),
+        r: c.r / 255,
+        g: c.g / 255,
+        b: c.b / 255,
+      });
+    }
+    if (key === this.lastCapitalsKey) return;
+    this.lastCapitalsKey = key;
+    this.view.updateCapitals(capitals);
   }
 
   /**

@@ -84,6 +84,8 @@ export interface PlayerState {
   hasSpawned: boolean;
   /** TileRef the player picked as their spawn (undefined if not yet spawned). */
   spawnTile?: number;
+  /** Conventional war: the capital's TileRef (undefined otherwise). */
+  capitalTile?: number;
   lastDeleteUnitTick: number;
   allies: number[];
   embargoes: number[];

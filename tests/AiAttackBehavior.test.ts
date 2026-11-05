@@ -1318,7 +1318,7 @@ describe("Troop donations to teammates", () => {
       spy.mock.calls
         .map((c) => c[0])
         .filter((e) => e instanceof DonateTroopsExecution);
-    return { game, nation, busy, behavior, donations };
+    return { game, nation, busy, strong, behavior, donations };
   }
 
   it("Impossible gives its troops above the reserve to the fighting teammate lowest on troops", async () => {
@@ -1329,6 +1329,20 @@ describe("Troop donations to teammates", () => {
     expect(donation["troops"]).toBeCloseTo(
       nation.troops() - 0.3 * game.config().maxTroops(nation),
     );
+  });
+
+  it("skips a teammate its convoy is already heading to", async () => {
+    const { nation, busy, strong, behavior, donations } = await setupTeam();
+    // Donated troops travel, so busy's troop count does not show them yet.
+    const tile = nation.borderTiles().values().next().value!;
+    nation.buildUnit(UnitType.Convoy, tile, {
+      troops: 1_000,
+      targetTile: busy.borderTiles().values().next().value!,
+      targetPlayer: busy,
+    });
+    expect(behavior["donateTroops"]()).toBe(true);
+    const [donation] = donations();
+    expect(donation["recipientID"]).toBe(strong.id());
   });
 
   it.each([

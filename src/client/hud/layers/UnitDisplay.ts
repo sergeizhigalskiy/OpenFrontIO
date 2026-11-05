@@ -24,12 +24,22 @@ import { UserSettings } from "../../UserSettings";
 import { resolveKeybindLabel, translateText } from "../../Utils";
 import { GameView } from "../../view";
 import {
+  airbaseIcon,
+  airdropIcon,
+  airstrikeIcon,
   atomBombIcon,
+  ballisticMissileIcon,
   cityIcon,
+  clusterMissileIcon,
+  coastalBatteryIcon,
+  cruiseMissileIcon,
   defensePostIcon,
+  droneIcon,
   factoryIcon,
+  flakGunIcon,
   goldCoinIcon,
   hydrogenBombIcon,
+  minefieldIcon,
   mirvIcon,
   missileSiloIcon,
   portIcon,
@@ -37,6 +47,8 @@ import {
   warshipIcon,
 } from "../HotbarIcons";
 import { TutorialHighlight, TutorialHighlightEvent } from "../Tutorial";
+import { droneSwarmSlider } from "./AirOrders";
+import { displayedCost, minefieldDensitySlider } from "./MinefieldDensity";
 
 /** How long a build button has to be held before it shows its details (cost etc.) */
 const PEEK_HOLD_MS = 450;
@@ -59,6 +71,10 @@ export class UnitDisplay extends LitElement implements Controller {
   private _port = 0;
   private _defensePost = 0;
   private _samLauncher = 0;
+  private _coastalBatteries = 0;
+  private _minefields = 0;
+  private _airbases = 0;
+  private _flakGuns = 0;
   private allDisabled = false;
   private enabledUnitCount = 0;
   private tutorialMode = false;
@@ -410,7 +426,8 @@ export class UnitDisplay extends LitElement implements Controller {
   private cost(item: UnitType): Gold {
     for (const bu of this.playerBuildables ?? []) {
       if (bu.type === item) {
-        return bu.cost;
+        // A minefield is priced at the density on the slider.
+        return displayedCost(bu.type, bu.cost, this.uiState);
       }
     }
     return 0n;
@@ -431,6 +448,20 @@ export class UnitDisplay extends LitElement implements Controller {
         return (
           this.cost(item) <= (player?.gold() ?? 0n) &&
           (player?.units(UnitType.Port).length ?? 0) > 0
+        );
+      case UnitType.CruiseMissile:
+      case UnitType.BallisticMissile:
+      case UnitType.ClusterMissile:
+        return (
+          this.cost(item) <= (player?.gold() ?? 0n) &&
+          (player?.units(UnitType.MissileSilo).length ?? 0) > 0
+        );
+      case UnitType.Airstrike:
+      case UnitType.Airdrop:
+      case UnitType.Drone:
+        return (
+          this.cost(item) <= (player?.gold() ?? 0n) &&
+          (player?.units(UnitType.Airbase).length ?? 0) > 0
         );
       default:
         return this.cost(item) <= (player?.gold() ?? 0n);
@@ -460,7 +491,61 @@ export class UnitDisplay extends LitElement implements Controller {
     this._samLauncher = player.totalUnitLevels(UnitType.SAMLauncher);
     this._factories = player.totalUnitLevels(UnitType.Factory);
     this._warships = player.totalUnitLevels(UnitType.Warship);
+    this._coastalBatteries = player.totalUnitLevels(UnitType.CoastalBattery);
+    this._minefields = player.totalUnitLevels(UnitType.Minefield);
+    this._airbases = player.totalUnitLevels(UnitType.Airbase);
+    this._flakGuns = player.totalUnitLevels(UnitType.FlakGun);
     this.requestUpdate();
+  }
+
+  /** Conventional war only: isUnitDisplayed hides them otherwise. */
+  private renderConventionalWarItems() {
+    return html`
+      ${this.renderUnitItem(
+        airbaseIcon,
+        this._airbases,
+        UnitType.Airbase,
+        "airbase",
+        "",
+      )}
+      ${this.renderUnitItem(
+        flakGunIcon,
+        this._flakGuns,
+        UnitType.FlakGun,
+        "flak_gun",
+        "",
+      )}
+      ${this.renderUnitItem(
+        airstrikeIcon,
+        null,
+        UnitType.Airstrike,
+        "airstrike",
+        "",
+      )}
+      ${this.renderUnitItem(airdropIcon, null, UnitType.Airdrop, "airdrop", "")}
+      ${this.renderUnitItem(droneIcon, null, UnitType.Drone, "drone", "")}
+      ${this.renderUnitItem(
+        cruiseMissileIcon,
+        null,
+        UnitType.CruiseMissile,
+        "cruise_missile",
+        "",
+      )}
+      ${this.renderUnitItem(
+        ballisticMissileIcon,
+        null,
+        UnitType.BallisticMissile,
+        "ballistic_missile",
+        "",
+      )}
+      ${this.renderUnitItem(
+        clusterMissileIcon,
+        null,
+        UnitType.ClusterMissile,
+        "cluster_missile",
+        "",
+      )}
+    `;
   }
 
   render() {
@@ -550,6 +635,20 @@ export class UnitDisplay extends LitElement implements Controller {
               this.getHotkey("buildWarship", "Digit7"),
             )}
             ${this.renderUnitItem(
+              coastalBatteryIcon,
+              this._coastalBatteries,
+              UnitType.CoastalBattery,
+              "coastal_battery",
+              "",
+            )}
+            ${this.renderUnitItem(
+              minefieldIcon,
+              this._minefields,
+              UnitType.Minefield,
+              "minefield",
+              "",
+            )}
+            ${this.renderUnitItem(
               atomBombIcon,
               null,
               UnitType.AtomBomb,
@@ -570,9 +669,34 @@ export class UnitDisplay extends LitElement implements Controller {
               "mirv",
               this.getHotkey("buildMIRV", "Digit0"),
             )}
+            ${this.renderConventionalWarItems()}
           </div>
         </div>
         ${this.renderUnitTooltip()}
+        ${
+          this.uiState.ghostStructure === UnitType.Drone
+            ? html`<div
+                class="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 z-[90]"
+              >
+                ${droneSwarmSlider(
+                  this.uiState,
+                  this.cost(UnitType.Drone),
+                  () => this.requestUpdate(),
+                )}
+              </div>`
+            : nothing
+        }
+        ${
+          this.uiState.ghostStructure === UnitType.Minefield
+            ? html`<div
+                class="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 z-[90]"
+              >
+                ${minefieldDensitySlider(this.uiState, () =>
+                  this.requestUpdate(),
+                )}
+              </div>`
+            : nothing
+        }
       </div>
     `;
   }

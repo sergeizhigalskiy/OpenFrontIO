@@ -1,8 +1,10 @@
 import {
   Difficulty,
+  MessageType,
   PlayerID,
-  PlayerType,
+  UnitType,
 } from "@openfront/engine-api/game/GameTypes";
+import { renderTroops } from "@openfront/engine-lib/Format";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import {
   zNum,
@@ -18,12 +20,13 @@ import type {
   SnapshotReader,
   SnapshotWriter,
 } from "../snapshot/SnapshotContext";
-import { EmojiExecution } from "./EmojiExecution";
-import {
-  EMOJI_DONATION_TOO_SMALL,
-  EMOJI_LOVE,
-} from "./nation/NationEmojiBehavior";
+import { ConvoyExecution, planConvoyRoute } from "./ConvoyExecution";
 
+/**
+ * Sends troops to an ally. The troops leave the sender at once but travel as
+ * a convoy unit (ConvoyExecution), which can be ambushed on the way; the
+ * recipient only gets what arrives.
+ */
 export class DonateTroopsExecution implements Execution {
   private recipient: Player;
 
@@ -63,39 +66,62 @@ export class DonateTroopsExecution implements Execution {
 
   tick(ticks: number): void {
     if (this.troops === null) throw new Error("not initialized");
+    this.active = false;
 
-    const minTroops = this.getMinTroopsForRelationUpdate();
-
-    if (
-      this.sender.canDonateTroops(this.recipient) &&
-      this.sender.donateTroops(this.recipient, this.troops)
-    ) {
-      // Prevent players from just buying a good relation by sending 1% troops. Instead, a minimum is needed, and it's random.
-      if (this.troops >= minTroops) {
-        this.recipient.updateRelation(this.sender, 50);
-      }
-
-      // Only AI nations auto-respond with emojis, human players should not
-      if (
-        this.recipient.type() === PlayerType.Nation &&
-        this.recipient.canSendEmoji(this.sender)
-      ) {
-        this.mg.addExecution(
-          new EmojiExecution(
-            this.recipient,
-            this.sender.id(),
-            this.random.randElement(
-              this.troops >= minTroops ? EMOJI_LOVE : EMOJI_DONATION_TOO_SMALL,
-            ),
-          ),
-        );
-      }
-    } else {
+    if (!this.sender.canDonateTroops(this.recipient)) {
       console.warn(
         `cannot send troops from ${this.sender} to ${this.recipient}`,
       );
+      return;
     }
-    this.active = false;
+    const troops = Math.floor(Math.min(this.troops, this.sender.troops()));
+    if (troops <= 0) return;
+
+    const route = planConvoyRoute(this.mg, this.sender, this.recipient);
+    if (route === null) {
+      this.mg.displayMessage(
+        "events_display.convoy_no_route",
+        MessageType.ATTACK_FAILED,
+        this.sender.id(),
+        undefined,
+        { name: this.recipient.displayName() },
+        undefined,
+        this.recipient.id(),
+      );
+      return;
+    }
+
+    const minTroops = this.getMinTroopsForRelationUpdate();
+    // buildUnit takes the convoy's troops from the sender.
+    const convoy = this.sender.buildUnit(UnitType.Convoy, route[0], {
+      troops,
+      targetTile: route[route.length - 1],
+      targetPlayer: this.recipient,
+    });
+    this.sender.recordTroopDonation(this.recipient);
+    this.mg.addExecution(
+      new ConvoyExecution(convoy, this.recipient, route, minTroops),
+    );
+
+    const amount = renderTroops(troops);
+    this.mg.displayMessage(
+      "events_display.convoy_dispatched",
+      MessageType.DONATION_SENT,
+      this.sender.id(),
+      undefined,
+      { name: this.recipient.displayName(), troops: amount },
+      convoy.id(),
+      this.recipient.id(),
+    );
+    this.mg.displayMessage(
+      "events_display.convoy_incoming",
+      MessageType.DONATION_RECEIVED,
+      this.recipient.id(),
+      undefined,
+      { name: this.sender.displayName(), troops: amount },
+      convoy.id(),
+      this.sender.id(),
+    );
   }
 
   private getMinTroopsForRelationUpdate(): number {

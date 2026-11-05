@@ -30,6 +30,7 @@ import type {
   TerrainRect,
   UnitState,
 } from "../types";
+import type { CapitalMarker } from "./passes/CapitalPass";
 import type { SpawnCenter } from "./passes/SpawnOverlayPass";
 import type { AttackTroopLabel } from "./passes/WorldTextPass";
 import { GPURenderer } from "./Renderer";
@@ -303,6 +304,11 @@ export class MapRenderer {
   /** Update spawn phase overlay (tile highlights + breathing rings). */
   updateSpawnOverlay(inSpawnPhase: boolean, centers: SpawnCenter[]): void {
     this.renderer?.updateSpawnOverlay(inSpawnPhase, centers);
+  }
+
+  /** Conventional war: the capital stars to draw. */
+  updateCapitals(capitals: CapitalMarker[]): void {
+    this.renderer?.updateCapitals(capitals);
   }
 
   /** Set the small-player glow set (1 byte per owner smallID), or null = off. */

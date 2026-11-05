@@ -19,6 +19,7 @@ import { assetUrl } from "@openfront/shared/AssetUrls";
 import { UIState } from "../../UIState";
 import { translateText } from "../../Utils";
 import { GameView, PlayerView } from "../../view";
+import { airOrderExtras } from "./AirOrders";
 import { BuildItemDisplay, BuildMenu, flattenedBuildTable } from "./BuildMenu";
 import { ChatIntegration } from "./ChatIntegration";
 import { EmojiTable } from "./EmojiTable";
@@ -581,11 +582,20 @@ function createMenuElements(
                 item.unitType === UnitType.HydrogenBomb
                   ? params.uiState?.rocketDirectionUp
                   : undefined;
+              const extras = airOrderExtras(
+                buildableUnit.type,
+                params.uiState,
+                params.myPlayer,
+              );
               params.eventBus.emit(
                 new BuildUnitIntentEvent(
                   buildableUnit.type,
                   params.tile,
                   rocketDirectionUp,
+                  undefined,
+                  undefined,
+                  extras.troops,
+                  extras.count,
                 ),
               );
             }
@@ -772,6 +782,7 @@ export const centerButtonElement: CenterButtonElement = {
         params.playerActionHandler.handleAttack(
           params.myPlayer,
           params.selected?.id() ?? null,
+          params.tile,
         );
       }
     }
