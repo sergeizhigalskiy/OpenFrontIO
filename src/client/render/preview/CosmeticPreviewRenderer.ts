@@ -135,6 +135,8 @@ export class CosmeticPreviewRenderer {
   private effectEntryScratch = new Float32Array(EFFECT_ENTRY_FLOATS);
 
   private terrainPass: TerrainPass;
+  /** Raw terrain bytes (R8UI) the terrain pass reads tile kinds from. */
+  private terrainBytesTex: WebGLTexture;
   private territoryPass: PreviewTerritoryPass;
   private railroadPass: RailroadPass;
   private unitPass: UnitPass;
@@ -176,10 +178,20 @@ export class CosmeticPreviewRenderer {
     this.effectTex = this.createEffectTexture();
     this.trailTex = this.createTrailTexture();
 
+    this.terrainBytesTex = createTexture2D(this.gl, {
+      width: map.mapW,
+      height: map.mapH,
+      internalFormat: this.gl.R8UI,
+      format: this.gl.RED_INTEGER,
+      type: this.gl.UNSIGNED_BYTE,
+      data: map.terrainBytes,
+      filter: this.gl.NEAREST,
+    });
     this.terrainPass = new TerrainPass(
       this.gl,
       () => map.terrainBytes,
       map.terrainBytes,
+      this.terrainBytesTex,
       map.mapW,
       map.mapH,
     );
@@ -729,6 +741,7 @@ export class CosmeticPreviewRenderer {
     gl.deleteTexture(this.paletteTex);
     gl.deleteTexture(this.effectTex);
     gl.deleteTexture(this.trailTex);
+    gl.deleteTexture(this.terrainBytesTex);
 
     this.terrainPass.dispose();
     this.cameraUniforms.dispose();

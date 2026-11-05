@@ -1259,7 +1259,7 @@
     "map_view_label": "Camera",
     "map_view_terrain3d": "3D terrain",
     "map_view_tilt": "Tilted",
-    "mountain_color_desc": "Base color for mountain terrain.",
+    "mountain_color_desc": "Color of the highest mountain peaks. Lower mountains are bare rock.",
     "mountain_color_label": "Mountain color",
     "name_cull_desc": "Hide names smaller than this size",
     "name_cull_label": "Minimum name size",

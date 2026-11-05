@@ -1,11 +1,10 @@
 /**
  * HeightField — the smoothed per-tile elevation, on the CPU and the GPU.
  *
- * GPU: an RG8 texture, LINEAR-filtered. R = smoothed height (Relief.ts
- * units / 255), G = 255 on tiles the hillshade may shade (land that isn't
- * impassable), read with texelFetch so it stays tile-crisp. The terrain pass
- * derives normals from R; in 3D mode the surface mesh samples R for vertex
- * heights.
+ * GPU: an R8 texture, LINEAR-filtered: smoothed height (Relief.ts units /
+ * 255). In 3D mode the surface mesh samples it for vertex heights (the
+ * camera include's uHeightMap). The terrain shader's hillshade reads the
+ * land-only elevation in the SurfaceField instead.
  *
  * CPU: the same smoothed heights (one byte per tile) for ray-cast picking.
  * The raw terrain bytes are not retained — rect updates (water nukes) read
@@ -14,12 +13,7 @@
 
 import type { TerrainRect } from "../../types";
 import { createTexture2D } from "../utils/GlUtils";
-import {
-  HEIGHT_UNITS_PER_LEVEL,
-  isShadedTile,
-  sampleHeight,
-  smoothHeights,
-} from "./Relief";
+import { HEIGHT_UNITS_PER_LEVEL, sampleHeight, smoothHeights } from "./Relief";
 
 /** Blur radius of smoothHeights — a terrain change dirties this much around it. */
 const SMOOTH_RADIUS = 2;
@@ -52,10 +46,10 @@ export class HeightField {
     this.tex = createTexture2D(gl, {
       width: mapW,
       height: mapH,
-      internalFormat: gl.RG8,
-      format: gl.RG,
+      internalFormat: gl.R8,
+      format: gl.RED,
       type: gl.UNSIGNED_BYTE,
-      data: this.packRect(terrainBytes, 0, 0, mapW, mapH, mapW),
+      data: this.heights,
       filter: gl.LINEAR,
     });
   }
@@ -79,6 +73,8 @@ export class HeightField {
     const gl = this.gl;
     gl.bindTexture(gl.TEXTURE_2D, this.tex);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    // Upload each rect straight from the height rows.
+    gl.pixelStorei(gl.UNPACK_ROW_LENGTH, this.mapW);
     for (const r of rects) {
       const x0 = Math.max(0, r.x - SMOOTH_RADIUS);
       const y0 = Math.max(0, r.y - SMOOTH_RADIUS);
@@ -103,32 +99,13 @@ export class HeightField {
         y0,
         w,
         h,
-        gl.RG,
+        gl.RED,
         gl.UNSIGNED_BYTE,
-        this.packRect(terrain, x0, y0, w, h, this.mapW),
+        this.heights,
+        y0 * this.mapW + x0,
       );
     }
-  }
-
-  /** Interleave smoothed height (R) and shade mask (G) for a rect. */
-  private packRect(
-    terrain: Uint8Array,
-    x0: number,
-    y0: number,
-    w: number,
-    h: number,
-    stride: number,
-  ): Uint8Array {
-    const out = new Uint8Array(w * h * 2);
-    let o = 0;
-    for (let y = y0; y < y0 + h; y++) {
-      const row = y * stride;
-      for (let x = x0; x < x0 + w; x++) {
-        out[o++] = this.heights[row + x];
-        out[o++] = isShadedTile(terrain[row + x]) ? 255 : 0;
-      }
-    }
-    return out;
+    gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
   }
 
   dispose(): void {

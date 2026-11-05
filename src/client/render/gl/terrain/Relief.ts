@@ -9,8 +9,10 @@
  * Heights are stored as bytes in "height units": HEIGHT_UNITS_PER_LEVEL per
  * elevation level, land lifted LAND_BASE_LEVELS above the water so coasts get
  * a visible lip. A small binomial blur turns the 31 quantized levels into a
- * continuous surface; hillshade normals and the 3D mesh both read the
- * smoothed field, so shading and geometry always agree.
+ * continuous surface the 3D mesh and picking read. The terrain shader's
+ * hillshade reads the same blur taken over land only (SurfaceData.ts), so
+ * inland the shading follows the geometry exactly; at coasts and walls it
+ * keeps the land's own slope instead of the dip toward sea level.
  *
  * World axes: x east, y south (down the screen), z up out of the map.
  */
@@ -171,14 +173,19 @@ export function reliefNormal(
 }
 
 /** Bounds for the hillshade multiplier, so shading never crushes the palette. */
-export const MIN_SHADE = 0.45;
-export const MAX_SHADE = 1.45;
+export const MIN_SHADE = 0.55;
+export const MAX_SHADE = 1.4;
+/** Slopes turned from the light darken by this share of their full Lambert. */
+export const SHADOW_SOFTNESS = 0.72;
 
 /**
- * Brightness multiplier for a surface normal under `light`. Flat ground maps
- * to exactly 1, so the terrain palette is untouched where there's no relief;
- * slopes facing the light brighten and slopes facing away darken. `strength`
- * scales the effect (0 = off).
+ * Brightness multiplier for a surface normal under `light` — the core of the
+ * terrain shader's hillshade (shaders/terrain/terrain.frag.glsl, which adds a
+ * coast bevel, hollow/ridge shading and wall shadows on top). Flat ground
+ * maps to exactly 1, so the terrain palette is untouched where there's no
+ * relief; slopes facing the light brighten and slopes facing away darken,
+ * softened so deep relief doesn't swallow the palette. `strength` scales the
+ * effect (0 = off).
  */
 export function hillshadeFactor(
   normal: Vec3,
@@ -189,8 +196,9 @@ export function hillshadeFactor(
     0,
     normal[0] * light[0] + normal[1] * light[1] + normal[2] * light[2],
   );
-  const relative = lambert / Math.max(1e-3, light[2]);
-  const shade = 1 + strength * (relative - 1);
+  const relief = lambert / Math.max(1e-3, light[2]) - 1;
+  const soft = relief < 0 ? relief * SHADOW_SOFTNESS : relief;
+  const shade = 1 + strength * soft;
   return Math.min(MAX_SHADE, Math.max(MIN_SHADE, shade));
 }
 
@@ -201,5 +209,5 @@ export function hillshadeFactor(
  */
 export function shadeChannel(channel: number, factor: number): number {
   if (factor <= 1) return channel * factor;
-  return channel + (255 - channel) * (factor - 1) * 0.6;
+  return channel + (255 - channel) * (factor - 1) * 0.5;
 }
