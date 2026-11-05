@@ -35,6 +35,7 @@ import type {
 import {
   applyPackedAttackTroops,
   applyPackedPlayerStats,
+  CITY_STATE_FLAG,
   embargoSmallIDs,
   playerStateFromUpdate,
   playerStaticFromUpdate,
@@ -82,6 +83,8 @@ const UPDATE_TYPE_ROUTING: Record<
   SpawnPhaseEnd: "events",
   GamePaused: "misc",
   DonateEvent: "misc",
+  // Kept for the record; the replay viewer draws no ruins yet.
+  Ruins: "misc",
 };
 
 /**
@@ -170,6 +173,7 @@ export class FrameNormalizer {
         // A nation's flag comes on its first update. Players' own
         // cosmetics are in the game start info.
         if (pu.nationFlag) info.flag = `/flags/${pu.nationFlag}.svg`;
+        if (pu.isCityState === true) info.flag = CITY_STATE_FLAG;
         newPlayers.push(info);
         touched.add(state.smallID);
       } else {

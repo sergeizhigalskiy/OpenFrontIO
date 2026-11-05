@@ -171,6 +171,7 @@ function createGlStub() {
     setLocalRailColor: noop("setLocalRailColor"),
     updateSpawnOverlay: noop("updateSpawnOverlay"),
     updateCapitals: noop("updateCapitals"),
+    updateRuins: noop("updateRuins"),
     initSkinAtlas: noop("initSkinAtlas"),
     applyTerrainRects: (rects: unknown[]) =>
       bump("applyTerrainRects", rects.length),

@@ -21,6 +21,7 @@ import {
   COASTAL_BATTERY_HEALTH_PERCENT_OF_WARSHIP,
   MINEFIELD_MAX_DENSITY,
 } from "../game/NavalDefense";
+import { cityStateTroopCap } from "../game/WorldFeatures";
 import { assertNever } from "../Util";
 
 export interface NukeMagnitude {
@@ -195,6 +196,19 @@ export class Config {
    */
   conventionalWar(): boolean {
     return this._gameConfig.conventionalWar ?? false;
+  }
+
+  /**
+   * Ruins with loot (see game/WorldFeatures.ts): on unless the lobby turned
+   * them off. Never in the onboarding tutorial, which keeps to its script.
+   */
+  ruinsEnabled(): boolean {
+    return this._gameConfig.ruins !== false && !this._gameConfig.tutorial;
+  }
+
+  /** Neutral city-states (see game/WorldFeatures.ts), like ruinsEnabled. */
+  cityStatesEnabled(): boolean {
+    return this._gameConfig.cityStates !== false && !this._gameConfig.tutorial;
   }
 
   isUnitDisabled(unitType: UnitType): boolean {
@@ -418,10 +432,11 @@ export class Config {
           .map((city) => city.level())
           .reduce((a, b) => a + b, 0) * this.cityTroopIncrease()
       : 0;
+    const landTroops = 2 * (pow(player.numTilesOwned(), 0.6) * 1000 + 50000);
     const maxTroops =
       player.type() === PlayerType.Human && this.hasInfiniteTroopsFor(player)
         ? 1_000_000_000
-        : 2 * (pow(player.numTilesOwned(), 0.6) * 1000 + 50000) + cityTroops;
+        : landTroops + cityTroops;
 
     // The tutorial's nation and tribe never spend troops on attacks: at their
     // usual cap they'd bank more than a new player could beat.
@@ -430,6 +445,9 @@ export class Config {
     }
 
     if (player.type() === PlayerType.Bot) {
+      // A city-state's dense garrison: a multiple of what a tribe holding as
+      // much land gets. Its own city adds nothing (game/WorldFeatures.ts).
+      if (player.isCityState()) return cityStateTroopCap(landTroops / 3);
       return maxTroops / 3;
     }
 

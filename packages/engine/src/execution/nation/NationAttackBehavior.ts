@@ -46,6 +46,11 @@ import {
 } from "./NationEmojiBehavior";
 import { findJuiciestTarget, findRunawayLeader } from "./NationUtils";
 import type { NationWarshipBehavior } from "./NationWarshipBehavior";
+import {
+  cityStateAttackOdds,
+  cityStateToAttack,
+  ruinToSeek,
+} from "./NationWorldFeatures";
 
 // Reusable neighbor buffer for hot loops; the simulation is single-threaded.
 const NEIGHBOR_SCRATCH: TileRef[] = [0, 0, 0, 0];
@@ -112,7 +117,10 @@ export class NationAttackBehavior extends AiAttackBehavior {
     try {
       this.chooseAttack();
       for (const neighbor of this.landNeighbors ?? []) {
-        if (!this.player.isFriendly(neighbor)) landFront = true;
+        // A city-state never attacks, so it isn't a front.
+        if (!this.player.isFriendly(neighbor) && !neighbor.isCityState()) {
+          landFront = true;
+        }
       }
     } finally {
       this.landNeighbors = null;
@@ -192,8 +200,10 @@ export class NationAttackBehavior extends AiAttackBehavior {
     const borderingFriends = borderingPlayers.filter(
       (o) => this.player?.isFriendly(o) === true,
     );
+    // City-states are left to attackCityState: the other strategies would
+    // take them on without weighing their garrison.
     const borderingEnemies = borderingPlayers.filter(
-      (o) => this.player?.isFriendly(o) === false,
+      (o) => this.player?.isFriendly(o) === false && !o.isCityState(),
     );
 
     // Attack TerraNullius but not nuked territory (direct border or across a river)
@@ -303,6 +313,10 @@ export class NationAttackBehavior extends AiAttackBehavior {
       if (owner === this.player) {
         continue;
       }
+      // City-states are only taken by land (attackCityState)
+      if (owner.isPlayer() && owner.isCityState()) {
+        continue;
+      }
       // Skip players we already know are unreachable (Performance optimization)
       if (owner.isPlayer() && unreachablePlayers.has(owner.id())) {
         continue;
@@ -373,6 +387,9 @@ export class NationAttackBehavior extends AiAttackBehavior {
     ) {
       if (this.attackBots()) return;
     }
+
+    // A bordering city-state, once comfortably stronger than its garrison
+    if (this.attackCityState()) return;
 
     // Save up troops until we reach the reserve ratio
     if (!this.hasReserveRatioTroops()) return;
@@ -587,6 +604,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
         (n) =>
           n.isPlayer() &&
           n.type() === PlayerType.Bot &&
+          !n.isCityState() &&
           !this.player.isFriendly(n) &&
           n.units().some((u) => Structures.has(u.type())),
       );
@@ -749,14 +767,34 @@ export class NationAttackBehavior extends AiAttackBehavior {
   }
 
   private neighboringBots(): Player[] {
-    return this.player
-      .nearby()
-      .filter(
-        (n): n is Player =>
-          n.isPlayer() &&
-          this.player.isFriendly(n) === false &&
-          n.type() === PlayerType.Bot,
-      );
+    return this.player.nearby().filter(
+      (n): n is Player =>
+        n.isPlayer() &&
+        this.player.isFriendly(n) === false &&
+        n.type() === PlayerType.Bot &&
+        // City-states have their own rule (attackCityState)
+        !n.isCityState(),
+    );
+  }
+
+  // Take a bordering city-state once we could send a good multiple of its garrison
+  // (cityStateToAttack), on some attack ticks: more often on harder difficulties
+  private attackCityState(): boolean {
+    const target = cityStateToAttack(
+      this.game,
+      this.player,
+      this.landNeighbors ?? [],
+      (t) => this.reserveTroops(t),
+    );
+    if (target === null) return false;
+    const { difficulty } = this.game.config().gameConfig();
+    if (!this.random.chance(cityStateAttackOdds(difficulty))) return false;
+    return this.sendLandAttack(target);
+  }
+
+  // Free-land expansion pushes toward a nearby unclaimed ruin first
+  protected override expansionFocus(): TileRef | null {
+    return ruinToSeek(this.game, this.player);
   }
 
   // Hard & Impossible take bots in an order that walls others in, annexing them for free
@@ -953,6 +991,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
 
     const filteredPlayers = this.game.players().filter((p) => {
       if (p === this.player) return false;
+      if (p.isCityState()) return false;
       if (this.player.isFriendly(p)) return false;
       // In FFA, don't spam boats into players with more troops
       return !this.isFFA() || p.troops() < this.player.troops();

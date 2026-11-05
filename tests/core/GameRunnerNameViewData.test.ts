@@ -90,7 +90,13 @@ test("bot and tribe names are placed during the spawn phase", async () => {
   expect(runner.executeNextTick()).toBe(true);
 
   expect(runner.game.inSpawnPhase()).toBe(true);
-  expect(namedBotIDs.size).toBe(3);
+  // City-states (world features, on by default) are named in the spawn
+  // phase too, next to the three tribes.
+  const cityStates = runner.game
+    .players()
+    .filter((p) => p.isCityState()).length;
+  expect(cityStates).toBeGreaterThan(0);
+  expect(namedBotIDs.size).toBe(3 + cityStates);
 
   runner.addTurn({ turnNumber: 2, intents: [] });
   expect(runner.executeNextTick()).toBe(true);

@@ -527,4 +527,54 @@ describe("PlayerInfoOverlay", () => {
       expect(flatten(overlay.render())).not.toContain("player_panel.target");
     });
   });
+  describe("world features", () => {
+    it("names an unclaimed ruin under the cursor, and nothing more", () => {
+      const game = makeGame(null);
+      overlay.game = {
+        ...game,
+        owner: () => ({ isPlayer: () => false }),
+        isLand: () => true,
+        ruins: () => [42],
+      } as never;
+
+      overlay.maybeShow(10, 10);
+      const out = flatten(overlay.render());
+
+      expect(out).toContain("opacity-100 visible");
+      expect(out).toContain("world_features.ruins");
+      expect(out).not.toContain("Bob");
+    });
+
+    it("shows nothing on free land away from ruins", () => {
+      const game = makeGame(null);
+      overlay.game = {
+        ...game,
+        owner: () => ({ isPlayer: () => false }),
+        isLand: () => true,
+        ruins: () => [],
+      } as never;
+
+      overlay.maybeShow(10, 10);
+
+      expect(flatten(overlay.render())).not.toContain("world_features.ruins");
+    });
+
+    it("labels a city-state as one", () => {
+      const game = makeGame(null);
+      overlay.game = {
+        ...game,
+        owner: () => ({
+          ...hovered,
+          type: () => PlayerType.Bot,
+          isCityState: () => true,
+        }),
+      } as never;
+
+      overlay.maybeShow(10, 10);
+      const out = flatten(overlay.render());
+
+      expect(out).toContain("player_type.city_state");
+      expect(out).not.toContain("player_type.bot");
+    });
+  });
 });

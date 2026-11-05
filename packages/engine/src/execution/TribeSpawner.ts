@@ -45,9 +45,12 @@ export class TribeSpawner {
     const tribes: SpawnExecution[] = [];
     const { customTribes } = this.tribeNameData;
 
-    // Spawn positioned custom tribes first (those with coordinates).
+    // Spawn positioned custom tribes first (those with coordinates). Static
+    // entries are city-states, never tribes (CityStateSpawner).
     if (customTribes !== undefined) {
-      const positioned = customTribes.filter((ct) => ct.coordinates);
+      const positioned = customTribes.filter(
+        (ct) => ct.coordinates && ct.static !== true,
+      );
       for (const ct of positioned) {
         if (tribes.length >= numTribes) break;
         const exec = this.spawnPositionedTribe(ct);
@@ -138,7 +141,9 @@ export class TribeSpawner {
     if (customTribes !== undefined) {
       const available = customTribes.filter(
         (ct) =>
-          ct.coordinates === undefined && !this.usedCustomTribes.has(ct.name),
+          ct.coordinates === undefined &&
+          ct.static !== true &&
+          !this.usedCustomTribes.has(ct.name),
       );
       if (available.length > 0) {
         const index = this.random.nextInt(0, available.length);

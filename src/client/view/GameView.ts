@@ -53,6 +53,7 @@ import type { CosmeticVisibility } from "./CosmeticVisibility";
 import {
   applyPackedAttackTroops,
   applyPackedPlayerStats,
+  CITY_STATE_FLAG,
   embargoSmallIDs,
 } from "./EntityState";
 import {
@@ -146,6 +147,9 @@ export class GameView implements GameLike {
   };
 
   private toDelete = new Set<number>();
+
+  /** The unclaimed ruins' tiles, as of the last Ruins update. */
+  private _ruins: readonly TileRef[] = [];
 
   private _cosmetics: Map<string, PlayerCosmetics> = new Map();
   private _cosmeticVisibility: CosmeticVisibility = readCosmeticVisibility();
@@ -287,6 +291,11 @@ export class GameView implements GameLike {
     if (gu.updates[GameUpdateType.Win].length > 0) {
       this._gameOver = true;
     }
+    // Each Ruins update lists every unclaimed ruin; the last one wins.
+    const ruinUpdates = gu.updates[GameUpdateType.Ruins] ?? [];
+    if (ruinUpdates.length > 0) {
+      this._ruins = ruinUpdates[ruinUpdates.length - 1].tiles;
+    }
 
     const myDisplayName = formatPlayerDisplayName(
       this._myUsername,
@@ -360,6 +369,10 @@ export class GameView implements GameLike {
               ? ({
                   flag: `/flags/${pu.nationFlag}.svg`,
                 } satisfies PlayerCosmetics)
+              : undefined) ??
+            // A city-state's banner marks it as one (see CITY_STATE_FLAG).
+            (pu.isCityState === true
+              ? ({ flag: CITY_STATE_FLAG } satisfies PlayerCosmetics)
               : undefined) ??
             {},
         );
@@ -863,6 +876,11 @@ export class GameView implements GameLike {
 
   owner(tile: TileRef): PlayerView | TerraNullius {
     return this.playerBySmallID(this.ownerID(tile));
+  }
+
+  /** Tiles of the unclaimed ruins (world features); never what they hold. */
+  ruins(): readonly TileRef[] {
+    return this._ruins;
   }
 
   ticks(): Tick {

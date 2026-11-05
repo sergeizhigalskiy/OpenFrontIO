@@ -134,6 +134,12 @@ export function playerTypeFromEnum(t: PlayerTypeEnum): PlayerType {
   }
 }
 
+/**
+ * The banner a neutral city-state shows beside its name (in place of a
+ * flag), live and in replays: it marks it as a city-state.
+ */
+export const CITY_STATE_FLAG = "/images/CityStateFlag.svg";
+
 // First-emission updates from the engine always include every field; these
 // builders assert non-null for that contract. Subsequent diffs are partial
 // and flow through applyStateUpdate() (PlayerStateUpdate).
@@ -148,6 +154,8 @@ export function playerStaticFromUpdate(pu: PlayerUpdate): PlayerStatic {
     playerType: gamePlayerTypeToEnum(pu.playerType!),
     team: pu.team ?? null,
     isLobbyCreator: pu.isLobbyCreator!,
+    // A city-state is one from its first update on, and never stops being one.
+    ...(pu.isCityState === true ? { isCityState: true } : {}),
   };
 }
 

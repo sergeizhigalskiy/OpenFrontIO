@@ -22,6 +22,8 @@ export interface PlayerLike {
   smallID(): number;
   isPlayer(): boolean;
   type(): PlayerType;
+  /** A neutral city-state (engine-lib/game/WorldFeatures.ts). */
+  isCityState(): boolean;
   isLobbyCreator(): boolean;
   numTilesOwned(): number;
   troops(): number;

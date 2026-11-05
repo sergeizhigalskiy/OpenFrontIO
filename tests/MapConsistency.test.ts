@@ -75,7 +75,13 @@ function normalizeCustomTribes(raw: unknown): CustomTribe[] | undefined {
     }
     if (entry === null || typeof entry !== "object")
       throw new Error(`custom_tribes[${i}]: invalid entry`);
-    const obj = entry as { name?: unknown; coordinates?: unknown };
+    const obj = entry as {
+      name?: unknown;
+      coordinates?: unknown;
+      static?: unknown;
+    };
+    // The generator only writes `static: true`.
+    const isStatic = obj.static === true ? { static: true } : {};
     if (typeof obj.name !== "string" || obj.name === "")
       throw new Error(`custom_tribes[${i}]: name must be a non-empty string`);
     if (obj.coordinates !== undefined) {
@@ -89,9 +95,10 @@ function normalizeCustomTribes(raw: unknown): CustomTribe[] | undefined {
       return {
         name: obj.name,
         coordinates: obj.coordinates as [number, number],
+        ...isStatic,
       };
     }
-    return { name: obj.name };
+    return { name: obj.name, ...isStatic };
   });
 }
 

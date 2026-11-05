@@ -92,6 +92,12 @@ export const CustomTribeSchema = z.union([
   z.strictObject({
     name: z.string().min(1),
     coordinates: Coordinates.optional(),
+    static: z
+      .boolean()
+      .optional()
+      .describe(
+        "A neutral city-state instead of a tribe: it never expands or attacks. Placed at coordinates when given, else randomly.",
+      ),
   }),
 ]);
 

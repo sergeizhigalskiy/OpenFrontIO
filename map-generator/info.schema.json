@@ -154,6 +154,10 @@
                   }
                 ],
                 "description": "[x, y] tile position. Origin is top-left; y extends down."
+              },
+              "static": {
+                "description": "A neutral city-state instead of a tribe: it never expands or attacks. Placed at coordinates when given, else randomly.",
+                "type": "boolean"
               }
             },
             "required": ["name"],

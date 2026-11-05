@@ -51,6 +51,7 @@ import {
 } from "@openfront/engine-lib/game/TeamAssignment";
 import { TerraNulliusImpl } from "@openfront/engine-lib/game/TerraNulliusImpl";
 import { UnitGrid } from "@openfront/engine-lib/game/UnitGrid";
+import { RuinReward } from "@openfront/engine-lib/game/WorldFeatures";
 import {
   readVersioned,
   snapshotType,
@@ -58,6 +59,7 @@ import {
   zInt,
   zPlayerRef,
   zRef,
+  zTile,
 } from "@openfront/engine-lib/snapshot/SnapshotType";
 import { simpleHash } from "@openfront/engine-lib/Util";
 import { z } from "zod";
@@ -107,6 +109,7 @@ import { Railroad } from "./Railroad";
 import { Stats } from "./Stats";
 import { StatsImpl, StatsSnapshot } from "./StatsImpl";
 import { WaterManager, WaterManagerSnapshot } from "./WaterManager";
+import { claimRuin, payCityStateBounty } from "./WorldFeatures";
 
 export function createGame(
   humans: PlayerInfo[],
@@ -174,6 +177,8 @@ export class GameImpl implements Game {
   private _clusterMissilesLaunched = 0;
   private shipStaggers = { tradeShip: 0, transportShip: 0 };
   private _nationMirvTargets = new Map<PlayerID, Tick>();
+  // Unclaimed ruins by tile, in placement order (WorldFeatures.ts).
+  private _ruins = new Map<TileRef, RuinReward>();
 
   private _isPaused: boolean = false;
   private _winner: Player | Team | null = null;
@@ -594,6 +599,7 @@ export class GameImpl implements Game {
         startTick: this.startTick,
       });
     }
+    if (this._ruins.size > 0) this.addRuinsUpdate();
   }
 
   ticks(): number {
@@ -659,9 +665,13 @@ export class GameImpl implements Game {
     }
     // Flush pending water conversions + throttled graph rebuild
     const waterChangedTiles = this._waterManager.tick(this._ticks);
+    let ruinFlooded = false;
     for (const tile of waterChangedTiles) {
       this.recordTileUpdate(tile);
+      // A ruin whose land turns to water is gone, unclaimed.
+      if (this._ruins.delete(tile)) ruinFlooded = true;
     }
+    if (ruinFlooded) this.addRuinsUpdate();
     // Queued conversions write the map directly, bypassing setWater.
     if (waterChangedTiles.length > 0) this._structureVersion++;
     this._ticks++;
@@ -1020,6 +1030,33 @@ export class GameImpl implements Game {
     ) {
       onCapitalConquered(this, previousOwner, owner);
     }
+    // Ruins: the first player to take a ruin's tile from unclaimed land
+    // claims it. One size check while there are none.
+    if (this._ruins.size > 0 && !previousOwner.isPlayer()) {
+      const reward = this._ruins.get(tile);
+      if (reward !== undefined) {
+        this._ruins.delete(tile);
+        this.addRuinsUpdate();
+        claimRuin(this, owner, tile, reward);
+      }
+    }
+  }
+
+  ruins(): ReadonlyMap<TileRef, RuinReward> {
+    return this._ruins;
+  }
+
+  addRuins(ruins: readonly { tile: TileRef; reward: RuinReward }[]): void {
+    for (const r of ruins) this._ruins.set(r.tile, r.reward);
+    this.addRuinsUpdate();
+  }
+
+  /** Tells the view where the unclaimed ruins are now (never what they hold). */
+  private addRuinsUpdate(): void {
+    this.addUpdate({
+      type: GameUpdateType.Ruins,
+      tiles: [...this._ruins.keys()],
+    });
   }
 
   relinquish(tile: TileRef) {
@@ -1704,6 +1741,7 @@ export class GameImpl implements Game {
       nationMirvTargets: [...this._nationMirvTargets],
       mirvsLaunched: this._mirvsLaunched,
       clusterMissilesLaunched: this._clusterMissilesLaunched,
+      ruins: [...this._ruins].map(([tile, reward]) => ({ tile, reward })),
       rail: w.versioned(
         RailNetworkSnapshot,
         (this._railNetwork as RailNetworkImpl).snapshot(w),
@@ -1763,6 +1801,7 @@ export class GameImpl implements Game {
     this._nationMirvTargets = new Map(s.nationMirvTargets);
     this._mirvsLaunched = s.mirvsLaunched;
     this._clusterMissilesLaunched = s.clusterMissilesLaunched;
+    this._ruins = new Map(s.ruins.map((r) => [r.tile, r.reward]));
     (this._railNetwork as RailNetworkImpl).restoreSnapshot(
       readVersioned(RailNetworkSnapshot, s.rail),
       r,
@@ -1860,18 +1899,24 @@ export class GameImpl implements Game {
       conqueredId: conquered.id(),
       gold: goldCaptured,
     });
+
+    // A city-state also pays its bounty (WorldFeatures.ts), once.
+    if (conquered.isCityState()) payCityStateBounty(this, conqueror, conquered);
   }
 }
 
 export const GameSnapshot = snapshotType({
   name: "Game",
-  // v2 added clusterMissilesLaunched (conventional war).
-  version: 2,
+  // v2 added clusterMissilesLaunched (conventional war), v3 the unclaimed
+  // ruins (world features).
+  version: 3,
   migrations: {
     1: (d) => ({
       ...(d as Record<string, unknown>),
       clusterMissilesLaunched: 0,
     }),
+    // Older builds had no ruins.
+    2: (d) => ({ ...(d as Record<string, unknown>), ruins: [] }),
   },
   schema: z.object({
     ticks: zInt(),
@@ -1903,6 +1948,7 @@ export const GameSnapshot = snapshotType({
     nationMirvTargets: z.array(z.tuple([z.string(), zInt()])),
     mirvsLaunched: zInt(),
     clusterMissilesLaunched: zInt(),
+    ruins: z.array(z.object({ tile: zTile(), reward: z.enum(RuinReward) })),
     rail: VersionedSchema,
     water: VersionedSchema,
     sharedWaterCache: VersionedSchema,

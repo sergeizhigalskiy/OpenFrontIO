@@ -18,6 +18,7 @@ import {
   processGameRecord,
   ReplayDesyncError,
 } from "../../../../src/client/replay/processor/ReplayProcessor";
+import { CITY_STATE_FLAG } from "../../../../src/client/view/EntityState";
 import {
   config,
   human,
@@ -148,6 +149,9 @@ describe("replay processor", () => {
     for (const p of h.players) {
       if (p.playerType === PlayerTypeEnum.Nation) {
         expect(p.flag).toMatch(/^\/flags\/\w+\.svg$/);
+      } else if (p.isCityState === true) {
+        // So is a city-state's banner (world features, on by default).
+        expect(p.flag).toBe(CITY_STATE_FLAG);
       } else {
         expect(p.flag).toBeUndefined();
       }

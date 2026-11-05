@@ -202,14 +202,26 @@ export abstract class AiAttackBehavior {
       return false;
     }
 
+    const focus = target.isPlayer() ? null : this.expansionFocus();
     this.game.addExecution(
       new AttackExecution(
         troops,
         this.player,
         target.isPlayer() ? target.id() : this.game.terraNullius().id(),
+        null,
+        true,
+        focus,
       ),
     );
     return true;
+  }
+
+  /**
+   * The tile a land expansion into free land pushes toward first (a
+   * spearhead, see AttackExecution), or null to advance evenly.
+   */
+  protected expansionFocus(): TileRef | null {
+    return null;
   }
 
   protected sendBoatAttack(target: Player): boolean {

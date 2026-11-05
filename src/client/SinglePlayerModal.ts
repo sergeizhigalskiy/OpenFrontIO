@@ -148,6 +148,9 @@ const DEFAULT_OPTIONS = {
   customAllianceMinutes: undefined as number | undefined,
   waterNukes: false,
   conventionalWar: false,
+  // World features: both on by default.
+  ruins: true,
+  cityStates: true,
   doomsdayClock: false,
   doomsdayClockSpeed: "normal" as DoomsdayClockSpeed,
   overtime: false,
@@ -238,6 +241,8 @@ export class SinglePlayerModal extends BaseModal {
     DEFAULT_OPTIONS.customAllianceMinutes;
   @state() private waterNukes: boolean = DEFAULT_OPTIONS.waterNukes;
   @state() private conventionalWar: boolean = DEFAULT_OPTIONS.conventionalWar;
+  @state() private ruins: boolean = DEFAULT_OPTIONS.ruins;
+  @state() private cityStates: boolean = DEFAULT_OPTIONS.cityStates;
   @state() private doomsdayClock: boolean = DEFAULT_OPTIONS.doomsdayClock;
   @state() private doomsdayClockSpeed: DoomsdayClockSpeed =
     DEFAULT_OPTIONS.doomsdayClockSpeed;
@@ -612,6 +617,14 @@ export class SinglePlayerModal extends BaseModal {
                     checked: this.conventionalWar,
                   },
                   {
+                    labelKey: "game_settings.ruins",
+                    checked: this.ruins,
+                  },
+                  {
+                    labelKey: "game_settings.city_states",
+                    checked: this.cityStates,
+                  },
+                  {
                     labelKey: "game_settings.doomsday_clock",
                     checked: this.doomsdayClock,
                     doomsdayClockSpeed: this.doomsdayClockSpeed,
@@ -684,6 +697,8 @@ export class SinglePlayerModal extends BaseModal {
       this.customAllianceMinutes !== DEFAULT_OPTIONS.customAllianceMinutes ||
       this.waterNukes !== DEFAULT_OPTIONS.waterNukes ||
       this.conventionalWar !== DEFAULT_OPTIONS.conventionalWar ||
+      this.ruins !== DEFAULT_OPTIONS.ruins ||
+      this.cityStates !== DEFAULT_OPTIONS.cityStates ||
       this.doomsdayClock !== DEFAULT_OPTIONS.doomsdayClock ||
       // Pace only matters when the mode is on (startGame drops it when off).
       (this.doomsdayClock &&
@@ -816,6 +831,8 @@ export class SinglePlayerModal extends BaseModal {
     this.customAllianceMinutes = DEFAULT_OPTIONS.customAllianceMinutes;
     this.waterNukes = DEFAULT_OPTIONS.waterNukes;
     this.conventionalWar = DEFAULT_OPTIONS.conventionalWar;
+    this.ruins = DEFAULT_OPTIONS.ruins;
+    this.cityStates = DEFAULT_OPTIONS.cityStates;
     this.doomsdayClock = DEFAULT_OPTIONS.doomsdayClock;
     this.doomsdayClockSpeed = DEFAULT_OPTIONS.doomsdayClockSpeed;
     this.overtime = DEFAULT_OPTIONS.overtime;
@@ -863,6 +880,8 @@ export class SinglePlayerModal extends BaseModal {
       customAllianceMinutes: this.customAllianceMinutes,
       waterNukes: this.waterNukes,
       conventionalWar: this.conventionalWar,
+      ruins: this.ruins,
+      cityStates: this.cityStates,
       doomsdayClock: this.doomsdayClock,
       doomsdayClockSpeed: this.doomsdayClockSpeed,
       overtime: this.overtime,
@@ -893,6 +912,8 @@ export class SinglePlayerModal extends BaseModal {
     this.customAllianceMinutes = config.customAllianceMinutes;
     this.waterNukes = config.waterNukes ?? false;
     this.conventionalWar = config.conventionalWar ?? false;
+    this.ruins = config.ruins ?? true;
+    this.cityStates = config.cityStates ?? true;
     this.doomsdayClock = config.doomsdayClock ?? false;
     this.doomsdayClockSpeed = config.doomsdayClockSpeed ?? "normal";
     this.overtime = config.overtime ?? false;
@@ -1035,6 +1056,12 @@ export class SinglePlayerModal extends BaseModal {
         break;
       case "game_settings.conventional_war":
         this.conventionalWar = checked;
+        break;
+      case "game_settings.ruins":
+        this.ruins = checked;
+        break;
+      case "game_settings.city_states":
+        this.cityStates = checked;
         break;
       case "game_settings.doomsday_clock":
         this.doomsdayClock = checked;
@@ -1368,6 +1395,9 @@ export class SinglePlayerModal extends BaseModal {
               : {}),
             ...(this.waterNukes ? { waterNukes: true } : {}),
             ...(this.conventionalWar ? { conventionalWar: true } : {}),
+            // On unless turned off, so only an off switch is sent.
+            ...(this.ruins ? {} : { ruins: false }),
+            ...(this.cityStates ? {} : { cityStates: false }),
             ...(this.doomsdayClock
               ? {
                   doomsdayClock: {

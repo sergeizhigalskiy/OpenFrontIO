@@ -31,6 +31,7 @@ import type {
   UnitState,
 } from "../types";
 import type { CapitalMarker } from "./passes/CapitalPass";
+import type { RuinMarker } from "./passes/RuinsPass";
 import type { SpawnCenter } from "./passes/SpawnOverlayPass";
 import type { AttackTroopLabel } from "./passes/WorldTextPass";
 import { GPURenderer } from "./Renderer";
@@ -309,6 +310,11 @@ export class MapRenderer {
   /** Conventional war: the capital stars to draw. */
   updateCapitals(capitals: CapitalMarker[]): void {
     this.renderer?.updateCapitals(capitals);
+  }
+
+  /** World features: the unclaimed ruins to draw. */
+  updateRuins(ruins: RuinMarker[]): void {
+    this.renderer?.updateRuins(ruins);
   }
 
   /** Set the small-player glow set (1 byte per owner smallID), or null = off. */

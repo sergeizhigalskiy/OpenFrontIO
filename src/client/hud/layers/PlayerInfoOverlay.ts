@@ -67,6 +67,8 @@ const soldierIcon = assetUrl("images/SoldierIcon.svg");
 const CONVOY_HOVER_RADIUS = 5;
 /** How close (in tiles) the cursor must be to a coastal battery to show it. */
 const COASTAL_BATTERY_HOVER_RADIUS = 3;
+/** How close (in tiles) the cursor must be to an unclaimed ruin to name it. */
+const RUINS_HOVER_RADIUS = 4;
 
 /** Unit types whose hover card names them through a translation key. */
 const UNIT_NAME_KEYS: Partial<Record<UnitType, string>> = {
@@ -127,6 +129,10 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
 
   @state()
   private unit: UnitView | null = null;
+
+  /** The cursor is on an unclaimed ruin (world features). */
+  @state()
+  private onRuins = false;
 
   @state()
   private _isInfoVisible: boolean = false;
@@ -232,6 +238,7 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
     this.setVisible(false);
     this.unit = null;
     this.player = null;
+    this.onRuins = false;
   }
 
   public maybeShow(x: number, y: number) {
@@ -276,6 +283,22 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
     }
 
     const owner = this.game.owner(tile);
+
+    // An unclaimed ruin is named, never what it holds.
+    if (
+      !owner.isPlayer() &&
+      this.game
+        .ruins()
+        .some(
+          (ruin) =>
+            euclideanDistWorld(worldCoord, ruin, this.game) <
+            RUINS_HOVER_RADIUS,
+        )
+    ) {
+      this.onRuins = true;
+      this.setVisible(true);
+      return;
+    }
 
     if (owner && owner.isPlayer()) {
       this.player = owner as PlayerView;
@@ -582,7 +605,9 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
     let playerType = "";
     switch (player.type()) {
       case PlayerType.Bot:
-        playerType = translateText("player_type.bot");
+        playerType = translateText(
+          player.isCityState() ? "player_type.city_state" : "player_type.bot",
+        );
         break;
       case PlayerType.Nation:
         playerType = translateText("player_type.nation");
@@ -990,6 +1015,13 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
         >
           ${this.player ? this.renderPlayerInfo(this.player) : ""}
           ${this.unit ? this.renderUnitInfo(this.unit) : ""}
+          ${
+            this.onRuins
+              ? html`<div class="p-2 font-bold">
+                  ${translateText("world_features.ruins")}
+                </div>`
+              : ""
+          }
         </div>
       </div>
     `;

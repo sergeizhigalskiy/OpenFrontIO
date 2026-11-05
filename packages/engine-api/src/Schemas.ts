@@ -350,6 +350,12 @@ export const GameConfigSchema = z.object({
   // built, and airbases, airstrikes, airdrops, cruise missiles and capitals
   // are on (see engine-lib/game/ConventionalWar.ts). Off when absent.
   conventionalWar: z.boolean().optional(),
+  // Ruins with loot on unclaimed land (see engine-lib/game/WorldFeatures.ts).
+  // On when absent; false turns them off.
+  ruins: z.boolean().optional(),
+  // Neutral city-states (see engine-lib/game/WorldFeatures.ts). On when
+  // absent; false turns them off.
+  cityStates: z.boolean().optional(),
 });
 
 // What a host sends in update_game_config. maxPlayers is the private-lobby

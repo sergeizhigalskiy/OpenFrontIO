@@ -405,4 +405,32 @@ describe("TribeSpawner", () => {
     expect(execs[0].tile).toBeUndefined();
     expect(warnSpy).toHaveBeenCalled();
   });
+  test("static entries are city-states, never tribes", async () => {
+    const game = await setup("plains", { bots: 3, gameMap: GameMapType.Asia });
+    const tile = findLandTile(game);
+
+    mockResolveTribeNameData.mockReturnValue({
+      prefixes: ["Alpha"],
+      suffixes: ["Tribe"],
+      customTribes: [
+        {
+          name: "Free City",
+          coordinates: [game.x(tile), game.y(tile)],
+          static: true,
+        },
+        { name: "Named City", static: true },
+        { name: "Random1" },
+      ],
+    });
+
+    const execs = new TribeSpawner(game, GAME_ID).spawnTribes(3);
+    const names = execs.map(
+      (e) => (e as unknown as { playerInfo: { name: string } }).playerInfo.name,
+    );
+    expect(names).toContain("Random1");
+    expect(names).not.toContain("Free City");
+    expect(names).not.toContain("Named City");
+    // No positioned tribe: the static one isn't one.
+    for (const exec of execs) expect(exec.tile).toBeUndefined();
+  });
 });
