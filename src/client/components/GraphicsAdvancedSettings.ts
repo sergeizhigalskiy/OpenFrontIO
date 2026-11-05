@@ -4,7 +4,11 @@ import { customElement, property } from "lit/decorators.js";
 import { migrateLegacyGraphicsSettings } from "../GraphicsPresets";
 import { isLayerVisible, layerAlpha } from "../MapLayerSettings";
 import { type GraphicsOverrides } from "../render/gl";
-import { COSMETICS_SHOW_FROM } from "../render/gl/GraphicsOverrides";
+import {
+  COSMETICS_SHOW_FROM,
+  MAP_VIEW_MODES,
+  type MapViewMode,
+} from "../render/gl/GraphicsOverrides";
 import renderDefaults from "../render/gl/render-settings.json";
 import {
   GRAPHICS_KEY,
@@ -30,6 +34,12 @@ const COSMETICS_SHOW_FROM_LABELS: Record<
   teammates: "graphics_setting.cosmetics_show_from_teammates",
   self: "graphics_setting.cosmetics_show_from_self",
   none: "graphics_setting.cosmetics_show_from_none",
+};
+
+const MAP_VIEW_MODE_LABELS: Record<MapViewMode, string> = {
+  flat: "graphics_setting.map_view_flat",
+  tilt: "graphics_setting.map_view_tilt",
+  terrain3d: "graphics_setting.map_view_terrain3d",
 };
 
 type CosmeticCategory = Exclude<
@@ -385,6 +395,15 @@ export class GraphicsAdvancedSettings extends LitElement {
     this.requestUpdate();
   }
 
+  private patchMapView(patch: Partial<GraphicsOverrides["mapView"]>) {
+    const current = this.userSettings.graphicsOverrides();
+    this.writeOverrides({
+      ...current,
+      mapView: { ...current.mapView, ...patch },
+    });
+    this.requestUpdate();
+  }
+
   private patchSmallPlayerGlow(
     patch: Partial<GraphicsOverrides["smallPlayerGlow"]>,
   ) {
@@ -543,6 +562,33 @@ export class GraphicsAdvancedSettings extends LitElement {
 
   private onToggleShowDots() {
     this.patchStructure({ showDots: !this.currentShowDots() });
+  }
+
+  // ---- Map view ----
+
+  private currentMapViewMode(): MapViewMode {
+    return (
+      this.userSettings.graphicsOverrides().mapView?.mode ??
+      (renderDefaults.mapView.mode as MapViewMode)
+    );
+  }
+
+  private onMapViewModeChange(event: Event) {
+    const value = detailValue(event);
+    const mode = MAP_VIEW_MODES.find((option) => option === value);
+    if (mode === undefined) return;
+    this.patchMapView({ mode });
+  }
+
+  private currentHillshade(): boolean {
+    return (
+      this.userSettings.graphicsOverrides().mapView?.hillshade ??
+      renderDefaults.mapView.hillshade
+    );
+  }
+
+  private onToggleHillshade() {
+    this.patchMapView({ hillshade: !this.currentHillshade() });
   }
 
   // ---- Map ----
@@ -1039,6 +1085,28 @@ export class GraphicsAdvancedSettings extends LitElement {
     const whole = (v: number) => String(Math.round(v));
 
     return html`
+      <!-- 🎥 Map view -->
+      ${GraphicsAdvancedSettings.section("graphics_setting.section_map_view")}
+      <setting-select
+        label=${translateText("graphics_setting.map_view_label")}
+        description=${translateText("graphics_setting.map_view_desc")}
+        id="map-view-mode-select"
+        .options=${MAP_VIEW_MODES.map((value) => ({
+          value,
+          label: translateText(MAP_VIEW_MODE_LABELS[value]),
+        }))}
+        .value=${this.currentMapViewMode()}
+        @change=${this.onMapViewModeChange}
+      ></setting-select>
+
+      <setting-toggle
+        label=${translateText("graphics_setting.hillshade_label")}
+        description=${translateText("graphics_setting.hillshade_desc")}
+        id="hillshade-toggle"
+        .checked=${this.currentHillshade()}
+        @change=${this.onToggleHillshade}
+      ></setting-toggle>
+
       <!-- 💡 Lighting -->
       ${GraphicsAdvancedSettings.section("graphics_setting.section_lighting")}
       <setting-slider

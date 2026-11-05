@@ -13,7 +13,7 @@ uniform usampler2D uStrings;       // MAX_CHARS × (MAX_PLAYERS*2), R8UI
 uniform sampler2D  uPlayerData;    // 4 × MAX_PLAYERS, RGBA32F
 
 // Uniforms
-uniform mat3  uCamera;
+#include "camera"
 uniform float uTime;
 uniform float uFontSize;    // atlas reference font size
 uniform float uAtlasScaleW; // atlas texture width
@@ -112,8 +112,8 @@ void main() {
 
   // Zoom-based culling: compute screen-space size and skip if too small.
   // Highlighted (hovered) names bypass the cull so they're always visible.
-  // uCamera[0][0] is the x-scale component of the camera matrix
-  float cameraScale = length(vec2(uCamera[0][0], uCamera[1][0]));
+  // Clip units per world tile at the focus point (camera.glsl).
+  float cameraScale = camClipScale();
   float screenSize = nameWorldScale * uBase * cameraScale;
   // Targeted names bypass the cull, boosted to the smallest size that
   // survives it, so a mark set from across the map is still visible.
@@ -172,8 +172,7 @@ void main() {
   vec2 worldPos = vec2(wx, wy + lineOffsetY) + glyphOrigin + aPos * glyphSize;
 
   // 9. Camera transform
-  vec3 clip = uCamera * vec3(worldPos, 1.0);
-  gl_Position = vec4(clip.xy, 0.0, 1.0);
+  gl_Position = billboardToClip(vec2(wx, wy), worldPos - vec2(wx, wy));
 
   // 10. Fade the whole name plate when the cursor is on top of any part of it
   // so units underneath stay visible. Hit test runs on the CPU (NamePass).

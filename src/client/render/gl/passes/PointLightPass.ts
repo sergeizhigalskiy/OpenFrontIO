@@ -83,7 +83,6 @@ export class PointLightPass {
 
   // Program + uniforms
   private lightProg: WebGLProgram;
-  private uLightCam: WebGLUniformLocation;
   private uRadiusMultiplier: WebGLUniformLocation;
   private uRadiusArr: WebGLUniformLocation;
   private uIntensityArr: WebGLUniformLocation;
@@ -139,7 +138,6 @@ export class PointLightPass {
       lightFragSrc,
       "PointLightPass",
     );
-    this.uLightCam = gl.getUniformLocation(this.lightProg, "uCamera")!;
     this.uRadiusMultiplier = gl.getUniformLocation(
       this.lightProg,
       "uRadiusMultiplier",
@@ -278,7 +276,6 @@ export class PointLightPass {
     const dn = this.settings.lighting;
 
     gl.useProgram(this.lightProg);
-    gl.uniformMatrix3fv(this.uLightCam, false, cameraMatrix);
     gl.uniform1f(this.uRadiusMultiplier, dn.lightRadiusMultiplier);
     gl.uniform1f(this.uFalloffPower, dn.falloffPower);
 

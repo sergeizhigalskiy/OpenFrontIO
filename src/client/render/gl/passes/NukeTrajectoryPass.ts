@@ -33,7 +33,6 @@ export class NukeTrajectoryPass {
   private lineBuf: WebGLBuffer;
   private lineVertexCount: number;
   private lineVertices: Float32Array;
-  private uLineCamera: WebGLUniformLocation;
   private uLineP0: WebGLUniformLocation;
   private uLineP1: WebGLUniformLocation;
   private uLineP2: WebGLUniformLocation;
@@ -54,7 +53,6 @@ export class NukeTrajectoryPass {
   // Marker program
   private markerProgram: WebGLProgram;
   private markerVAO: WebGLVertexArrayObject;
-  private uMarkerCamera: WebGLUniformLocation;
   private uMarkerP0: WebGLUniformLocation;
   private uMarkerP1: WebGLUniformLocation;
   private uMarkerP2: WebGLUniformLocation;
@@ -77,7 +75,6 @@ export class NukeTrajectoryPass {
       fragSrc,
       "NukeTrajectoryPass.lineProgram",
     );
-    this.uLineCamera = gl.getUniformLocation(this.lineProgram, "uCamera")!;
     this.uLineP0 = gl.getUniformLocation(this.lineProgram, "uP0")!;
     this.uLineP1 = gl.getUniformLocation(this.lineProgram, "uP1")!;
     this.uLineP2 = gl.getUniformLocation(this.lineProgram, "uP2")!;
@@ -158,7 +155,6 @@ export class NukeTrajectoryPass {
       markerFragSrc,
       "NukeTrajectoryPass.markerProgram",
     );
-    this.uMarkerCamera = gl.getUniformLocation(this.markerProgram, "uCamera")!;
     this.uMarkerP0 = gl.getUniformLocation(this.markerProgram, "uP0")!;
     this.uMarkerP1 = gl.getUniformLocation(this.markerProgram, "uP1")!;
     this.uMarkerP2 = gl.getUniformLocation(this.markerProgram, "uP2")!;
@@ -254,7 +250,6 @@ export class NukeTrajectoryPass {
 
     // --- Draw trajectory line ---
     gl.useProgram(this.lineProgram);
-    gl.uniformMatrix3fv(this.uLineCamera, false, cameraMatrix);
     gl.uniform2f(this.uLineP0, d.p0x, d.p0y);
     gl.uniform2f(this.uLineP1, d.p1x, d.p1y);
     gl.uniform2f(this.uLineP2, d.p2x, d.p2y);
@@ -313,7 +308,6 @@ export class NukeTrajectoryPass {
     const gl = this.gl;
     const s = this.settings.nukeTrajectory;
     gl.useProgram(this.markerProgram);
-    gl.uniformMatrix3fv(this.uMarkerCamera, false, cameraMatrix);
     gl.uniform2f(this.uMarkerP0, d.p0x, d.p0y);
     gl.uniform2f(this.uMarkerP1, d.p1x, d.p1y);
     gl.uniform2f(this.uMarkerP2, d.p2x, d.p2y);

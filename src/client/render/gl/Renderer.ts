@@ -30,6 +30,7 @@ import type {
   UnitState,
 } from "../types";
 import { Camera } from "./Camera";
+import { CameraUniforms } from "./camera/CameraUniforms";
 import { GLUnavailableError, initGL } from "./initGL";
 import { BarPass } from "./passes/BarPass";
 import { BorderComputePass } from "./passes/BorderComputePass";
@@ -67,6 +68,9 @@ import { TrailPass } from "./passes/TrailPass";
 import { UnitPass } from "./passes/UnitPass";
 import { WorldTextPass } from "./passes/WorldTextPass";
 import type { RenderSettings } from "./RenderSettings";
+import { HeightField } from "./terrain/HeightField";
+import { MapSurface } from "./terrain/MapSurface";
+import { HEIGHT_UNITS_PER_LEVEL } from "./terrain/Relief";
 import { AffiliationPalette } from "./utils/Affiliation";
 import {
   EFFECT_PALETTE_BLOCKS,
@@ -117,6 +121,13 @@ export class GPURenderer {
    * runs, but the map may render with black areas — the owner should warn.
    */
   readonly glLimited: { renderer: string; maxTextureSize: number } | null;
+
+  /** Smoothed elevation (hillshade, 3D surface, picking). */
+  private heightField: HeightField;
+  /** Camera uniform block every map shader reads (camera/CameraBlock.ts). */
+  private cameraUniforms: CameraUniforms;
+  /** Chunked LOD terrain mesh, drawn by full-map passes in 3D mode. */
+  private mapSurface: MapSurface;
 
   // Passes
   private terrainPass: TerrainPass;
@@ -265,6 +276,7 @@ export class GPURenderer {
     this.mapH = mapH;
 
     this.camera = new Camera(mapW, mapH);
+    this.cameraUniforms = new CameraUniforms(gl);
 
     // --- Terrain (static) ---
     // Bake once and let the array go — nothing below retains map-sized
@@ -288,6 +300,15 @@ export class GPURenderer {
           hexToRgb(this.settings.terrain.mountainColor) ?? undefined,
       },
     );
+    this.heightField = new HeightField(
+      gl,
+      terrainSource,
+      terrainBytes,
+      mapW,
+      mapH,
+    );
+    this.terrainPass.setRelief(this.heightField.tex, this.settings.mapView);
+    this.mapSurface = new MapSurface(gl, mapW, mapH);
 
     // --- Terrain bytes R8UI texture (shared by map-layer passes) ---
     this.terrainBytesTex = createTexture2D(gl, {
@@ -696,6 +717,20 @@ export class GPURenderer {
     this.camera.setCameraState(x, y, z);
   }
 
+  /** World height of the drawn surface at (x, y); 0 unless 3D terrain is on. */
+  terrainHeightAt(x: number, y: number): number {
+    const view = this.settings.mapView;
+    if (view.mode !== "terrain3d") return 0;
+    return this.heightField.levelAt(x, y) * view.heightScale;
+  }
+
+  /** Upper bound of terrainHeightAt (0 unless 3D terrain is on). */
+  terrainMaxHeight(): number {
+    const view = this.settings.mapView;
+    if (view.mode !== "terrain3d") return 0;
+    return this.heightField.peakLevel * view.heightScale;
+  }
+
   // ---------------------------------------------------------------------------
   // Data upload
   // ---------------------------------------------------------------------------
@@ -999,6 +1034,7 @@ export class GPURenderer {
   applyTerrainRects(rects: readonly TerrainRect[], bytes: Uint8Array): void {
     if (rects.length === 0) return;
     this.terrainPass.applyTerrainRects(rects, bytes);
+    this.heightField.applyTerrainRects(rects);
     this.railroadPass.applyTerrainRects(rects, bytes);
     // Update the shared R8UI terrain-bytes texture used by map-layer passes.
     if (!this.terrainBytesTex) return;
@@ -1312,6 +1348,7 @@ export class GPURenderer {
     const cw = this.canvas.width;
     const ch = this.canvas.height;
     const compositingActive = this.isLightCompositingActive();
+    this.bindCamera();
 
     if (compositingActive) {
       this.resizeSceneTargetIfNeeded(cw, ch);
@@ -1327,6 +1364,38 @@ export class GPURenderer {
     }
 
     this.renderOverlays(cam, zoom);
+  }
+
+  /**
+   * Fill and bind the camera block for this frame. Every pass draws through
+   * it, so the view mode (flat / tilt / 3D) is decided here once.
+   */
+  private bindCamera(): void {
+    const view = this.settings.mapView;
+    const tilted = view.mode !== "flat";
+    const terrain3d = view.mode === "terrain3d";
+    this.camera.setProjection(tilted ? view.tiltDeg : 0, view.fovDeg);
+    const frame = this.camera.getFrame();
+    if (terrain3d) {
+      this.mapSurface.update(frame, {
+        maxHeight: this.terrainMaxHeight(),
+        targetPx: view.lodTargetPx,
+      });
+    }
+    this.mapSurface.setActive(terrain3d);
+    this.cameraUniforms.bind(
+      frame,
+      {
+        mapW: this.mapW,
+        mapH: this.mapH,
+        // The height map's R channel is height units / 255.
+        heightScale: terrain3d
+          ? (255 / HEIGHT_UNITS_PER_LEVEL) * view.heightScale
+          : 0,
+        billboard: terrain3d,
+      },
+      this.heightField.tex,
+    );
   }
 
   private isLightCompositingActive(): boolean {
@@ -1509,6 +1578,9 @@ export class GPURenderer {
       this.terrainBytesTex = null;
     }
     this.terrainPass.dispose();
+    this.heightField.dispose();
+    this.cameraUniforms.dispose();
+    this.mapSurface.dispose();
     this.territoryPass.dispose();
     this.trailPass.dispose();
     this.spiralRibbonPass.dispose();

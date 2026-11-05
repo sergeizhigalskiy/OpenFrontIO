@@ -3,7 +3,7 @@ precision highp float;
 
 layout(location = 0) in vec2 aPos;
 
-uniform mat3 uCamera;
+#include "camera"
 uniform vec2 uCenter;    // world-space tile center (integer)
 uniform float uHalfSize; // box half-size in tiles
 
@@ -17,6 +17,5 @@ void main() {
   float r = uHalfSize + 1.0;
   vWorld = uCenter + 0.5 + local * r;
 
-  vec3 clip = uCamera * vec3(vWorld, 1.0);
-  gl_Position = vec4(clip.xy, 0.0, 1.0);
+  gl_Position = anchoredToClip(uCenter + 0.5, local * r);
 }

@@ -9,7 +9,7 @@ layout(location = 0) in vec2 aPos;
 uniform sampler2D uPlayerData; // PLAYER_DATA_COLS × MAX_PLAYERS, RGBA32F
 
 // Uniforms
-uniform mat3  uCamera;
+#include "camera"
 uniform float uTime;
 uniform float uLerpSpeed;
 uniform float uCullThreshold;
@@ -85,7 +85,7 @@ void main() {
   float nameWorldScale = (nameSize * nameScale) / uFontSize;
 
   // Zoom-based culling (same as name shader)
-  float cameraScale = length(vec2(uCamera[0][0], uCamera[1][0]));
+  float cameraScale = camClipScale();
   float screenSize  = nameWorldScale * uFontBase * cameraScale;
   // Targeted players' flag/emoji stay visible at any zoom, boosted in
   // lockstep with name.vert.glsl so the row stays aligned and centered.
@@ -170,8 +170,7 @@ void main() {
   vec2 worldPos = iconOrigin + aPos * vec2(iconW, iconH);
 
   // Camera transform
-  vec3 clip = uCamera * vec3(worldPos, 1.0);
-  gl_Position = vec4(clip.xy, 0.0, 1.0);
+  gl_Position = billboardToClip(vec2(wx, wy), worldPos - vec2(wx, wy));
 
   vIconType = iconType;
 }

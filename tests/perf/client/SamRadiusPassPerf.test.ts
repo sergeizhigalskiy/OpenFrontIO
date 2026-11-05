@@ -67,6 +67,7 @@ function createWebGL2Stub(): WebGL2RenderingContext {
     vertexAttribDivisor: () => {},
 
     getUniformLocation: () => dummyLocation,
+    uniform1i: () => {},
     uniform1f: () => {},
     uniform2f: () => {},
     uniform4f: () => {},

@@ -32,6 +32,7 @@ import blurFragSrc from "../shaders/shared/blur.frag.glsl?raw";
 import fullscreenNoUvVertSrc from "../shaders/shared/fullscreen-no-uv.vert.glsl?raw";
 import fullscreenVertSrc from "../shaders/shared/fullscreen.vert.glsl?raw";
 import compositeVertSrc from "../shaders/shared/map-quad.vert.glsl?raw";
+import { drawMapSurface } from "../terrain/MapSurface";
 
 export class FalloutBloomPass {
   private gl: WebGL2RenderingContext;
@@ -74,7 +75,6 @@ export class FalloutBloomPass {
   private uParticleFreshScale: WebGLUniformLocation;
 
   // Uniforms — composite
-  private uCompositeCam: WebGLUniformLocation;
   private uCompositeMapSize: WebGLUniformLocation;
   private uBloomCoverage: WebGLUniformLocation;
 
@@ -219,7 +219,6 @@ export class FalloutBloomPass {
       compositeFragSrc,
       "FalloutBloomPass.compositeProg",
     );
-    this.uCompositeCam = gl.getUniformLocation(this.compositeProg, "uCamera")!;
     this.uCompositeMapSize = gl.getUniformLocation(
       this.compositeProg,
       "uMapSize",
@@ -373,13 +372,11 @@ export class FalloutBloomPass {
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 
     gl.useProgram(this.compositeProg);
-    gl.uniformMatrix3fv(this.uCompositeCam, false, cameraMatrix);
     gl.uniform2f(this.uCompositeMapSize, mw, mh);
     gl.uniform1f(this.uBloomCoverage, fb.bloomCoverage);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.texA);
-    gl.bindVertexArray(this.mapVao);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    drawMapSurface(gl, this.mapVao);
 
     // Restore standard alpha blending
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);

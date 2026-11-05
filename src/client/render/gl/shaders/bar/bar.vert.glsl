@@ -4,7 +4,7 @@ precision highp float;
 layout(location = 0) in vec2 aPos;        // unit quad [0,1]x[0,1]
 layout(location = 1) in vec3 aInstData;   // x, y, progress
 
-uniform mat3 uCamera;
+#include "camera"
 uniform vec2 uBarSize;     // (width, height) in world tiles
 uniform vec2 uBarOffset;   // offset from unit center in tiles
 uniform float uSolid;      // 1.0 = veterancy pip mode (aInstData.z is a stack slot)
@@ -25,8 +25,7 @@ void main() {
   vec2 barOrigin = center + offset;
   vec2 worldPos = barOrigin + aPos * uBarSize;
 
-  vec3 clip = uCamera * vec3(worldPos, 1.0);
-  gl_Position = vec4(clip.xy, 0.0, 1.0);
+  gl_Position = billboardToClip(center, worldPos - center);
 
   vLocalPos = aPos * uBarSize;
 }

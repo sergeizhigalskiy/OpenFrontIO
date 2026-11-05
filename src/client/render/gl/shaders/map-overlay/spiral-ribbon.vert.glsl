@@ -13,7 +13,7 @@ layout(location = 1) in vec2 aPerp;   // unit perpendicular of the path there
 layout(location = 2) in float aDist;  // cumulative centerline distance
 layout(location = 3) in float aSide;  // ±1 — which edge of the strip
 
-uniform mat3 uCamera;
+#include "camera"
 uniform float uHeadDist;  // cumulative distance at the nuke's head
 uniform float uConeLen;   // cone length = one helix pitch, tiles
 uniform float uRadius;    // helix amplitude, tiles
@@ -45,8 +45,7 @@ void main() {
   vec2 n = normalize(vec2(-tangent.y, tangent.x));
 
   vec2 world = aCenter + aPerp * off + n * (aSide * uHalfWidth);
-  vec3 clip = uCamera * vec3(world, 1.0);
-  gl_Position = vec4(clip.xy, 0.0, 1.0);
+  gl_Position = groundToClip(world);
   vTheta = theta;
   vLateral = aSide * uHalfWidth;
 }

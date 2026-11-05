@@ -9,7 +9,7 @@ layout(location = 2) in float aAtlasIdx;
 
 uniform sampler2D uGlyphMetrics;  // CHAR_RANGE x 2, RGBA32F
 
-uniform mat3  uCamera;
+#include "camera"
 uniform float uZoom;
 
 // Structure icon sizing (mirrors structure.vert.glsl)
@@ -96,8 +96,7 @@ void main() {
 
   vec2 worldPos = center + vec2(0.0, yOff) + glyphOrigin + aPos * glyphSize;
 
-  vec3 clip = uCamera * vec3(worldPos, 1.0);
-  gl_Position = vec4(clip.xy, 0.0, 1.0);
+  gl_Position = billboardToClip(center, worldPos - center);
 
   vUV = vec2(mix(u0, u1, aPos.x), mix(v0, v1, aPos.y));
 }

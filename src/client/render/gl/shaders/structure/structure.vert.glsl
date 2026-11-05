@@ -7,7 +7,7 @@ layout(location = 0) in vec2 aPos;
 layout(location = 1) in vec4 aInst0; // x, y, ownerID, underConstruction
 layout(location = 2) in vec2 aInst1; // atlasIdx, markedForDeletion
 
-uniform mat3  uCamera;
+#include "camera"
 uniform float uZoom;
 
 uniform float uIconSize;
@@ -57,8 +57,7 @@ void main() {
   vec2 center = vec2(worldX + 0.5, worldY + 0.5);
   vec2 worldPos = center + (aPos - 0.5) * halfSize * 2.0;
 
-  vec3 clip = uCamera * vec3(worldPos, 1.0);
-  gl_Position = vec4(clip.xy, 0.0, 1.0);
+  gl_Position = billboardToClip(center, worldPos - center);
 
   vLocalPos = aPos - 0.5;
 

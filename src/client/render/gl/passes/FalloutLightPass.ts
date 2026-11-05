@@ -27,6 +27,7 @@ import falloutCompositeFragSrc from "../shaders/day-night/fallout-composite.frag
 import falloutLightFragSrc from "../shaders/day-night/fallout-light.frag.glsl?raw";
 import fullscreenNoUvVertSrc from "../shaders/shared/fullscreen-no-uv.vert.glsl?raw";
 import falloutCompositeVertSrc from "../shaders/shared/map-quad.vert.glsl?raw";
+import { drawMapSurface } from "../terrain/MapSurface";
 
 export class FalloutLightPass {
   private gl: WebGL2RenderingContext;
@@ -53,7 +54,6 @@ export class FalloutLightPass {
 
   // Fallout composite (tile-space → lightmap)
   private falloutCompositeProg: WebGLProgram;
-  private uFalloutCompositeCam: WebGLUniformLocation;
   private uFalloutCompositeMapSize: WebGLUniformLocation;
 
   // Sub-tile-space FBO (mapW/LIGHT_TILE_SCALE × mapH/LIGHT_TILE_SCALE)
@@ -144,10 +144,6 @@ export class FalloutLightPass {
       falloutCompositeFragSrc,
       "FalloutLightPass.falloutCompositeProg",
     );
-    this.uFalloutCompositeCam = gl.getUniformLocation(
-      this.falloutCompositeProg,
-      "uCamera",
-    )!;
     this.uFalloutCompositeMapSize = gl.getUniformLocation(
       this.falloutCompositeProg,
       "uMapSize",
@@ -257,12 +253,10 @@ export class FalloutLightPass {
     gl.blendFunc(gl.ONE, gl.ONE); // additive
 
     gl.useProgram(this.falloutCompositeProg);
-    gl.uniformMatrix3fv(this.uFalloutCompositeCam, false, cameraMatrix);
     gl.uniform2f(this.uFalloutCompositeMapSize, this.mapW, this.mapH);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.falloutTex);
-    gl.bindVertexArray(this.mapQuadVao);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    drawMapSurface(gl, this.mapQuadVao);
   }
 
   dispose(): void {

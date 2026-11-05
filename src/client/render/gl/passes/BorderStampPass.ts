@@ -13,6 +13,7 @@ import { TILE_DEFINES } from "../utils/TileCodec";
 
 import borderStampFragSrc from "../shaders/day-night/border-stamp.frag.glsl?raw";
 import borderStampVertSrc from "../shaders/day-night/border-stamp.vert.glsl?raw";
+import { drawMapSurface } from "../terrain/MapSurface";
 
 export class BorderStampPass {
   private gl: WebGL2RenderingContext;
@@ -21,7 +22,6 @@ export class BorderStampPass {
   private mapH: number;
 
   private program: WebGLProgram;
-  private uCam: WebGLUniformLocation;
   private uMapSize: WebGLUniformLocation;
   private uHighlightBrighten: WebGLUniformLocation;
   private uDefenseCheckerDarken: WebGLUniformLocation;
@@ -65,7 +65,6 @@ export class BorderStampPass {
       }),
       "BorderStampPass",
     );
-    this.uCam = gl.getUniformLocation(this.program, "uCamera")!;
     this.uMapSize = gl.getUniformLocation(this.program, "uMapSize")!;
     this.uHighlightBrighten = gl.getUniformLocation(
       this.program,
@@ -113,7 +112,6 @@ export class BorderStampPass {
     const mo = this.settings.mapOverlay;
 
     gl.useProgram(this.program);
-    gl.uniformMatrix3fv(this.uCam, false, cameraMatrix);
     gl.uniform2f(this.uMapSize, this.mapW, this.mapH);
     gl.uniform1f(this.uHighlightBrighten, mo.highlightBrighten);
     gl.uniform1f(this.uDefenseCheckerDarken, mo.defenseCheckerDarken);
@@ -148,8 +146,7 @@ export class BorderStampPass {
       gl.bindTexture(gl.TEXTURE_2D, this.defenseCoverageTex);
     }
 
-    gl.bindVertexArray(this.vao);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    drawMapSurface(gl, this.vao);
   }
 
   dispose(): void {

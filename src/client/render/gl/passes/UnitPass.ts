@@ -230,7 +230,6 @@ export class UnitPass {
   private settings: RenderSettings;
   private program: WebGLProgram;
 
-  private uCamera: WebGLUniformLocation;
   private uTick: WebGLUniformLocation;
   private uTime: WebGLUniformLocation;
   private uUnitSize: WebGLUniformLocation;
@@ -328,7 +327,6 @@ export class UnitPass {
       }),
       "UnitPass",
     );
-    this.uCamera = gl.getUniformLocation(this.program, "uCamera")!;
     this.uTick = gl.getUniformLocation(this.program, "uTick")!;
     this.uTime = gl.getUniformLocation(this.program, "uTime")!;
     this.uUnitSize = gl.getUniformLocation(this.program, "uUnitSize")!;
@@ -624,7 +622,6 @@ export class UnitPass {
     gl.useProgram(this.program);
 
     const us = this.settings.unit;
-    gl.uniformMatrix3fv(this.uCamera, false, cameraMatrix);
     gl.uniform1f(this.uTick, this.frameTick);
     gl.uniform1f(this.uTime, (performance.now() - this.startTime) / 1000);
     gl.uniform1f(this.uUnitSize, us.unitSize);

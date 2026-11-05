@@ -5,6 +5,7 @@
 import type { Config } from "@openfront/engine-lib/configuration/Config";
 import type { SpiralParams } from "../frame/SpiralTrails";
 import { Camera } from "../gl/Camera";
+import { CameraUniforms } from "../gl/camera/CameraUniforms";
 import { initGL } from "../gl/initGL";
 import { calculateExplosionDurationMs, FxPass } from "../gl/passes/fx-pass";
 import { RailroadPass } from "../gl/passes/RailroadPass";
@@ -119,6 +120,8 @@ export class CosmeticPreviewRenderer {
   private gl: WebGL2RenderingContext;
   private settings: RenderSettings;
   public camera: Camera;
+  /** The preview always draws flat (top-down, no relief). */
+  private cameraUniforms: CameraUniforms;
 
   private paletteTex: WebGLTexture;
   private paletteData = new Float32Array(getPaletteSize() * 2 * 4);
@@ -167,6 +170,7 @@ export class CosmeticPreviewRenderer {
     this.settings = createRenderSettings();
     applyGraphicsOverrides(this.settings, {});
     this.camera = new Camera(PREVIEW_MAP_W, PREVIEW_MAP_H);
+    this.cameraUniforms = new CameraUniforms(this.gl);
 
     this.paletteTex = this.createPaletteTexture();
     this.effectTex = this.createEffectTexture();
@@ -401,6 +405,16 @@ export class CosmeticPreviewRenderer {
 
     const snapshot = this.ticker.sample(now);
     const camMat = this.camera.getMatrix();
+    this.cameraUniforms.bind(
+      this.camera.getFrame(),
+      {
+        mapW: PREVIEW_MAP_W,
+        mapH: PREVIEW_MAP_H,
+        heightScale: 0,
+        billboard: false,
+      },
+      null,
+    );
 
     if (snapshot.isNewCycle) {
       this.fxPass.clear();
@@ -717,6 +731,7 @@ export class CosmeticPreviewRenderer {
     gl.deleteTexture(this.trailTex);
 
     this.terrainPass.dispose();
+    this.cameraUniforms.dispose();
     this.territoryPass.dispose();
     this.railroadPass.dispose();
     this.unitPass.dispose();

@@ -24,7 +24,6 @@ export class NukeTelegraphPass {
   private vao: WebGLVertexArrayObject;
   private instanceBuf: DynamicInstanceBuffer;
 
-  private uCamera: WebGLUniformLocation;
   private uTime: WebGLUniformLocation;
   private uTelegraphStyle: WebGLUniformLocation;
   private uTelegraphAlpha: WebGLUniformLocation;
@@ -40,7 +39,6 @@ export class NukeTelegraphPass {
     this.settings = settings;
     this.program = createProgram(gl, vertSrc, fragSrc, "NukeTelegraphPass");
 
-    this.uCamera = gl.getUniformLocation(this.program, "uCamera")!;
     this.uTime = gl.getUniformLocation(this.program, "uTime")!;
     this.uTelegraphStyle = gl.getUniformLocation(
       this.program,
@@ -128,7 +126,6 @@ export class NukeTelegraphPass {
     const time = (performance.now() - this.startTime) / 1000;
 
     gl.useProgram(this.program);
-    gl.uniformMatrix3fv(this.uCamera, false, cameraMatrix);
     gl.uniform1f(this.uTime, time);
     gl.uniform4f(
       this.uTelegraphStyle,

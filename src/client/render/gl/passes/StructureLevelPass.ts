@@ -112,7 +112,6 @@ export class StructureLevelPass {
   private settings: RenderSettings;
   private program: WebGLProgram;
   // Uniform locations
-  private uCamera: WebGLUniformLocation;
   private uZoom: WebGLUniformLocation;
   private uIconSize: WebGLUniformLocation;
   private uDotsThreshold: WebGLUniformLocation;
@@ -216,7 +215,6 @@ export class StructureLevelPass {
     gl.uniform1i(gl.getUniformLocation(this.program, "uGlyphMetrics"), 1);
 
     // Uniform locations
-    this.uCamera = gl.getUniformLocation(this.program, "uCamera")!;
     this.uZoom = gl.getUniformLocation(this.program, "uZoom")!;
     this.uIconSize = gl.getUniformLocation(this.program, "uIconSize")!;
     this.uDotsThreshold = gl.getUniformLocation(
@@ -373,7 +371,6 @@ export class StructureLevelPass {
     const sl = this.settings.structureLevel;
 
     gl.useProgram(this.program);
-    gl.uniformMatrix3fv(this.uCamera, false, cameraMatrix);
     gl.uniform1f(this.uZoom, zoom);
     gl.uniform1f(this.uIconSize, ss.iconSize);
     gl.uniform1f(this.uDotsThreshold, ss.dotsZoomThreshold);

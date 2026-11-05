@@ -6,6 +6,18 @@ import {
   ZOOM_DELTA_DIVISOR,
   ZoomEvent,
 } from "./InputHandler";
+import {
+  computeCameraFrame,
+  createCameraFrame,
+  ndcToRay,
+  pixelToNdc,
+  worldToPixel,
+  type CameraFrame,
+} from "./render/gl/camera/CameraMath";
+import {
+  pickGround,
+  type MapViewSource,
+} from "./render/gl/camera/MapViewSource";
 import { GameView, PlayerView, UnitView } from "./view";
 
 export class GoToPlayerEvent implements GameEvent {
@@ -41,6 +53,13 @@ export class TransformHandler {
   private targetScale: number | null = null;
   private intervalID: NodeJS.Timeout | null = null;
   private changed = false;
+  /**
+   * The renderer's view mode and terrain heights. Null or a flat view keeps
+   * the classic 2D math; a tilted view picks through the same camera frame
+   * the renderer draws with (see render/gl/camera/CameraMath.ts).
+   */
+  private mapView: MapViewSource | null = null;
+  private frameScratch: CameraFrame = createCameraFrame();
 
   constructor(
     private game: GameView,
@@ -54,6 +73,62 @@ export class TransformHandler {
     this.eventBus.on(GoToPositionEvent, (e) => this.onGoToPosition(e));
     this.eventBus.on(GoToUnitEvent, (e) => this.onGoToUnit(e));
     this.eventBus.on(CenterCameraEvent, () => this.centerCamera());
+  }
+
+  /** Connect the renderer's view mode (tilt / 3D) for picking, zoom and pan. */
+  setMapView(source: MapViewSource | null): void {
+    this.mapView = source;
+    this.changed = true;
+  }
+
+  /**
+   * World point at the screen centre, which is the camera's focus. Matches
+   * the centre ClientGameRunner pushes to the renderer each frame.
+   */
+  focusPoint(): { x: number; y: number } {
+    const { width, height } = this.boundingRect();
+    return {
+      x:
+        this.offsetX +
+        this.game.width() / 2 +
+        (width - this.game.width()) / (2 * this.scale),
+      y:
+        this.offsetY +
+        this.game.height() / 2 +
+        (height - this.game.height()) / (2 * this.scale),
+    };
+  }
+
+  /** The tilted camera frame for the current state, or null when flat. */
+  private tiltedFrame(): CameraFrame | null {
+    const view = this.mapView?.view();
+    if (view === undefined || view.mode === "flat") return null;
+    const { width, height } = this.boundingRect();
+    const focus = this.focusPoint();
+    return computeCameraFrame(
+      {
+        centerX: focus.x,
+        centerY: focus.y,
+        zoom: this.scale,
+        viewW: width,
+        viewH: height,
+        tiltDeg: view.tiltDeg,
+        fovDeg: view.fovDeg,
+      },
+      this.frameScratch,
+    );
+  }
+
+  /** Ground point under a canvas pixel through a tilted frame. */
+  private canvasToGround(
+    frame: CameraFrame,
+    canvasX: number,
+    canvasY: number,
+    terrain: boolean,
+  ): { x: number; y: number } | null {
+    const [nx, ny] = pixelToNdc(frame, canvasX, canvasY);
+    const ray = ndcToRay(frame, nx, ny);
+    return pickGround(ray, terrain ? this.mapView : null);
   }
 
   public updateCanvasBoundingRect() {
@@ -90,6 +165,12 @@ export class TransformHandler {
   }
 
   worldToCanvasCoordinates(cell: Cell): { x: number; y: number } {
+    const frame = this.tiltedFrame();
+    if (frame !== null) {
+      const z = this.mapView?.heightAt(cell.x, cell.y) ?? 0;
+      const p = worldToPixel(frame, cell.x, cell.y, z);
+      if (p !== null) return p;
+    }
     // Step 1: Convert from Cell coordinates to game coordinates
     // (reverse of Math.floor operation - we'll use the exact values)
     const gameX = cell.x;
@@ -130,6 +211,16 @@ export class TransformHandler {
     screenY: number,
   ): { x: number; y: number } {
     const canvasCoords = this.screenToCanvasCoordinates(screenX, screenY);
+    const frame = this.tiltedFrame();
+    if (frame !== null) {
+      const hit = this.canvasToGround(
+        frame,
+        canvasCoords.x,
+        canvasCoords.y,
+        true,
+      );
+      if (hit !== null) return hit;
+    }
     const gameX =
       (canvasCoords.x - this.game.width() / 2) / this.scale +
       this.offsetX +
@@ -165,6 +256,30 @@ export class TransformHandler {
     const canvasWidth = canvasRect.width;
     const canvasHeight = canvasRect.height;
 
+    const frame = this.tiltedFrame();
+    if (frame !== null) {
+      // Bounding box of the visible ground (a trapezoid when tilted).
+      const corners = [
+        this.canvasToGround(frame, 0, 0, false),
+        this.canvasToGround(frame, canvasWidth, 0, false),
+        this.canvasToGround(frame, 0, canvasHeight, false),
+        this.canvasToGround(frame, canvasWidth, canvasHeight, false),
+      ];
+      const xs: number[] = [];
+      const ys: number[] = [];
+      for (const c of corners) {
+        if (c === null) break;
+        xs.push(c.x);
+        ys.push(c.y);
+      }
+      if (xs.length === 4) {
+        return [
+          new Cell(Math.floor(Math.min(...xs)), Math.floor(Math.min(...ys))),
+          new Cell(Math.floor(Math.max(...xs)), Math.floor(Math.max(...ys))),
+        ];
+      }
+    }
+
     const LeftX = -this.game.width() / 2 / this.scale + this.offsetX;
     const TopY = -this.game.height() / 2 / this.scale + this.offsetY;
 
@@ -186,6 +301,11 @@ export class TransformHandler {
   }
 
   isOnScreen(cell: Cell): boolean {
+    if (this.tiltedFrame() !== null) {
+      const p = this.worldToCanvasCoordinates(cell);
+      const { width, height } = this.boundingRect();
+      return p.x > 0 && p.x < width && p.y > 0 && p.y < height;
+    }
     const [topLeft, bottomRight] = this.screenBoundingRect();
     return (
       cell.x > topLeft.x &&
@@ -196,6 +316,12 @@ export class TransformHandler {
   }
 
   screenCenter(): { screenX: number; screenY: number } {
+    if (this.tiltedFrame() !== null) {
+      // A tilted view's ground bounding box is lopsided; its true centre is
+      // the camera focus.
+      const focus = this.focusPoint();
+      return { screenX: Math.floor(focus.x), screenY: Math.floor(focus.y) };
+    }
     const [upperLeft, bottomRight] = this.screenBoundingRect();
     return {
       screenX: upperLeft.x + Math.floor((bottomRight.x - upperLeft.x) / 2),
@@ -302,12 +428,34 @@ export class TransformHandler {
     this.clearTarget();
     const oldScale = this.scale;
     const zoomFactor = 1 + event.delta / ZOOM_DELTA_DIVISOR;
+    const canvasCoords = this.screenToCanvasCoordinates(event.x, event.y);
+    const before = this.tiltedFrame();
+    const pivot =
+      before === null
+        ? null
+        : this.canvasToGround(before, canvasCoords.x, canvasCoords.y, true);
     this.scale /= zoomFactor;
 
     // Clamp the scale to prevent extreme zooming
     this.scale = Math.max(0.2, Math.min(20, this.scale));
 
-    const canvasCoords = this.screenToCanvasCoordinates(event.x, event.y);
+    if (pivot !== null) {
+      // Tilted: keep the ground point under the cursor fixed. The view is
+      // translation-invariant, so shifting by the miss is exact on flat
+      // ground and close on 3D terrain.
+      const after = this.tiltedFrame();
+      const moved =
+        after === null
+          ? null
+          : this.canvasToGround(after, canvasCoords.x, canvasCoords.y, true);
+      if (moved !== null) {
+        this.offsetX += pivot.x - moved.x;
+        this.offsetY += pivot.y - moved.y;
+        this.clampOffsets();
+        this.changed = true;
+        return;
+      }
+    }
 
     // Calculate the world point we want to zoom towards
     const zoomPointX =
@@ -362,6 +510,28 @@ export class TransformHandler {
 
   onMove(event: DragEvent) {
     this.clearTarget();
+    const frame = this.tiltedFrame();
+    if (frame !== null) {
+      // Tilted: drag the ground at the screen centre by the cursor's motion
+      // (a pixel covers more ground toward the horizon than toward you).
+      const { width, height } = this.boundingRect();
+      const cx = width / 2;
+      const cy = height / 2;
+      const from = this.canvasToGround(frame, cx, cy, false);
+      const to = this.canvasToGround(
+        frame,
+        cx + event.deltaX,
+        cy + event.deltaY,
+        false,
+      );
+      if (from !== null && to !== null) {
+        this.offsetX -= to.x - from.x;
+        this.offsetY -= to.y - from.y;
+        this.clampOffsets();
+        this.changed = true;
+        return;
+      }
+    }
     this.offsetX -= event.deltaX / this.scale;
     this.offsetY -= event.deltaY / this.scale;
     this.clampOffsets();

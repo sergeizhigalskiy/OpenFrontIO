@@ -71,7 +71,6 @@ export class MinefieldPass {
   private vao: WebGLVertexArrayObject;
   private quadBuf: WebGLBuffer;
 
-  private uCamera: WebGLUniformLocation;
   private uCenter: WebGLUniformLocation;
   private uRadius: WebGLUniformLocation;
   private uColor: WebGLUniformLocation;
@@ -89,7 +88,6 @@ export class MinefieldPass {
     this.mapW = mapW;
     this.program = createProgram(gl, vertSrc, fragSrc, "MinefieldPass");
 
-    this.uCamera = gl.getUniformLocation(this.program, "uCamera")!;
     this.uCenter = gl.getUniformLocation(this.program, "uCenter")!;
     this.uRadius = gl.getUniformLocation(this.program, "uRadius")!;
     this.uColor = gl.getUniformLocation(this.program, "uColor")!;
@@ -144,7 +142,6 @@ export class MinefieldPass {
     if (this.fields.length === 0) return;
     const gl = this.gl;
     gl.useProgram(this.program);
-    gl.uniformMatrix3fv(this.uCamera, false, cameraMatrix);
     gl.uniform1f(this.uRadius, MINEFIELD_RADIUS);
     gl.uniform1f(this.uDotSpacing, MINE_DOT_SPACING);
     gl.bindVertexArray(this.vao);

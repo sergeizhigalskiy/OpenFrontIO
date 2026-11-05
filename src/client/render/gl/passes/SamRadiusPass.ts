@@ -150,7 +150,6 @@ export class SAMRadiusPass {
   private vao: WebGLVertexArrayObject;
   private instanceBuf: DynamicInstanceBuffer;
 
-  private uCamera: WebGLUniformLocation;
   private uTime: WebGLUniformLocation;
   private uOutline: WebGLUniformLocation;
   private uStrokeWidth: WebGLUniformLocation;
@@ -194,7 +193,6 @@ export class SAMRadiusPass {
     this.settings = settings;
     this.program = createProgram(gl, vertSrc, fragSrc, "SamRadiusPass");
 
-    this.uCamera = gl.getUniformLocation(this.program, "uCamera")!;
     this.uTime = gl.getUniformLocation(this.program, "uTime")!;
     this.uOutline = gl.getUniformLocation(this.program, "uOutline")!;
     this.uStrokeWidth = gl.getUniformLocation(this.program, "uStrokeWidth")!;
@@ -561,7 +559,6 @@ export class SAMRadiusPass {
     const s = this.settings.samRadius;
 
     gl.useProgram(this.program);
-    gl.uniformMatrix3fv(this.uCamera, false, cameraMatrix);
     gl.uniform1f(this.uTime, time);
     gl.uniform1f(this.uOutline, this.colorMode === "owner" ? 1.0 : 0.0);
     gl.uniform1f(this.uStrokeWidth, s.strokeWidth);

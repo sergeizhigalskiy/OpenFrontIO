@@ -82,7 +82,6 @@ export function calculateExplosionDurationMs(
 
 export class FxShockwavePass {
   private program: WebGLProgram;
-  private uCamera: WebGLUniformLocation;
   private uRingWidth: WebGLUniformLocation;
   private uTime: WebGLUniformLocation;
   private vao: WebGLVertexArrayObject;
@@ -103,7 +102,6 @@ export class FxShockwavePass {
       shockwaveFragSrc,
       "FxShockwavePass",
     );
-    this.uCamera = gl.getUniformLocation(this.program, "uCamera")!;
     this.uRingWidth = gl.getUniformLocation(this.program, "uRingWidth")!;
     this.uTime = gl.getUniformLocation(this.program, "uTime")!;
 
@@ -308,7 +306,6 @@ export class FxShockwavePass {
     if (this.shockwaveCount === 0) return;
     const gl = this.gl;
     gl.useProgram(this.program);
-    gl.uniformMatrix3fv(this.uCamera, false, cameraMatrix);
     gl.uniform1f(this.uRingWidth, this.settings.fx.shockwaveRingWidth);
     gl.uniform1f(this.uTime, this.timeFn() * 0.001);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceBuf.buffer);

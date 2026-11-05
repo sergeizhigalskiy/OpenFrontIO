@@ -93,7 +93,6 @@ export class StructurePass {
   private localPlayerID = 0;
 
   private uLocalPlayerID: WebGLUniformLocation;
-  private uCamera: WebGLUniformLocation;
   private uZoom: WebGLUniformLocation;
   private uIconSize: WebGLUniformLocation;
   private uDotsThreshold: WebGLUniformLocation;
@@ -184,7 +183,6 @@ export class StructurePass {
       this.program,
       "uLocalPlayerID",
     )!;
-    this.uCamera = gl.getUniformLocation(this.program, "uCamera")!;
     this.uZoom = gl.getUniformLocation(this.program, "uZoom")!;
     this.uIconSize = gl.getUniformLocation(this.program, "uIconSize")!;
     this.uDotScale = gl.getUniformLocation(this.program, "uDotScale")!;
@@ -394,7 +392,6 @@ export class StructurePass {
     gl.useProgram(this.program);
 
     const ss = this.settings.structure;
-    gl.uniformMatrix3fv(this.uCamera, false, cameraMatrix);
     gl.uniform1f(this.uLocalPlayerID, this.localPlayerID);
     gl.uniform1f(this.uZoom, zoom);
     gl.uniform1f(this.uIconSize, ss.iconSize);

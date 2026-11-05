@@ -1,6 +1,6 @@
 import colorblindTheme from "./colorblind-theme.json";
 import defaultTheme from "./default-theme.json";
-import { PALETTE_NAMES } from "./GraphicsOverrides";
+import { PALETTE_NAMES, type MapViewMode } from "./GraphicsOverrides";
 import defaults from "./render-settings.json";
 
 /**
@@ -79,6 +79,33 @@ export interface RenderSettings {
     plainsColor: string;
     highlandColor: string;
     mountainColor: string;
+  };
+  /** Map camera and terrain relief (gl/camera, gl/terrain). */
+  mapView: {
+    /**
+     * "flat" = the classic top-down map; "tilt" = a perspective camera tilted
+     * toward the horizon over the flat map; "terrain3d" = the tilted camera
+     * over a height mesh, with upright labels.
+     */
+    mode: MapViewMode;
+    /** Camera tilt away from straight down, degrees (tilt and terrain3d). */
+    tiltDeg: number;
+    /** Vertical field of view, degrees. */
+    fovDeg: number;
+    /** terrain3d: world tiles of height per elevation level. */
+    heightScale: number;
+    /** terrain3d: target on-screen spacing of mesh vertices, pixels. */
+    lodTargetPx: number;
+    /** Shade land by elevation (hillshade). */
+    hillshade: boolean;
+    /** Hillshade contrast: 0 = none, 1 = full Lambert relative to flat. */
+    hillshadeStrength: number;
+    /** Hillshade vertical exaggeration: world tiles per elevation level. */
+    reliefScale: number;
+    /** Light compass azimuth (0 = north, clockwise), degrees. */
+    lightAzimuthDeg: number;
+    /** Light altitude above the horizon, degrees. */
+    lightAltitudeDeg: number;
   };
   falloutBloom: {
     broilSpeedCold: number;

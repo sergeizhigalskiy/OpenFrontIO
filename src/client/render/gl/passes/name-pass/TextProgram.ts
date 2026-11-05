@@ -33,7 +33,6 @@ export class TextProgram {
   private atlasReady = false;
 
   // Uniform locations
-  private uCamera: WebGLUniformLocation;
   private uTime: WebGLUniformLocation;
   private uDistRange: WebGLUniformLocation;
   private uLerpSpeed: WebGLUniformLocation;
@@ -94,7 +93,6 @@ export class TextProgram {
     gl.uniform1f(gl.getUniformLocation(this.program, "uBase")!, atlas.base);
 
     // Dynamic uniform locations
-    this.uCamera = gl.getUniformLocation(this.program, "uCamera")!;
     this.uTime = gl.getUniformLocation(this.program, "uTime")!;
     this.uDistRange = gl.getUniformLocation(this.program, "uDistRange")!;
     this.uLerpSpeed = gl.getUniformLocation(this.program, "uLerpSpeed")!;
@@ -180,7 +178,6 @@ export class TextProgram {
     const ns = settings.name;
     gl.useProgram(this.program);
 
-    gl.uniformMatrix3fv(this.uCamera, false, cameraMatrix);
     gl.uniform1f(this.uTime, performance.now() / 1000);
     gl.uniform1f(this.uDistRange, this.distanceRange);
     gl.uniform1f(this.uLerpSpeed, ns.lerpSpeed);

@@ -96,7 +96,6 @@ export class WorldTextPass {
   private maxInstances = 512;
 
   // Uniform locations
-  private uCamera: WebGLUniformLocation;
   private uZoom: WebGLUniformLocation;
   private uMinScreenScale: WebGLUniformLocation;
   private uDistRange: WebGLUniformLocation;
@@ -190,7 +189,6 @@ export class WorldTextPass {
     gl.uniform1f(gl.getUniformLocation(this.program, "uBase")!, this.base);
 
     // Dynamic uniform locations
-    this.uCamera = gl.getUniformLocation(this.program, "uCamera")!;
     this.uZoom = gl.getUniformLocation(this.program, "uZoom")!;
     this.uMinScreenScale = gl.getUniformLocation(
       this.program,
@@ -577,7 +575,6 @@ export class WorldTextPass {
 
     const gl = this.gl;
     gl.useProgram(this.program);
-    gl.uniformMatrix3fv(this.uCamera, false, cameraMatrix);
     gl.uniform1f(this.uZoom, zoom);
     const dpr = renderDpr();
     gl.uniform1f(
