@@ -1,4 +1,5 @@
 import { PlayerType } from "@openfront/engine-api/game/GameTypes";
+import { INFECTED_PLAYER_ID } from "@openfront/engine-lib/game/Plague";
 import { assetUrl } from "@openfront/shared/AssetUrls";
 import {
   type EffectAttributesFor,
@@ -11,6 +12,7 @@ import {
 import { colord } from "colord";
 import { getCachedCosmetics } from "./Cosmetics";
 import { buildTerrainRowSpans } from "./render/frame/derive/TerrainRowSpans";
+import { infectedPulseColor } from "./render/frame/InfectedPulse";
 import { uploadFrameData } from "./render/frame/Upload";
 // Type-only: a value import would pull GPURenderer and its `.glsl?raw` shader
 // imports into any non-Vite consumer (e.g. the Node perf harness).
@@ -238,6 +240,7 @@ export class WebGLFrameBuilder {
 
   update(gameView: GameView): void {
     this.syncPlayers(gameView);
+    this.syncInfectedPulse(gameView);
     this.syncPlayerEffects(gameView);
     this.syncPlayerSpawns(gameView);
     this.syncLocalPlayer(gameView);
@@ -494,6 +497,23 @@ export class WebGLFrameBuilder {
       }
     }
     this.view.updateSmallPlayerGlow(any ? set : null);
+  }
+
+  /** Plague mode: re-tint The Infected's fill each tick so its land pulses. */
+  private syncInfectedPulse(gameView: GameView): void {
+    if (gameView.config().gameConfig().plague !== true) return;
+    if (!gameView.hasPlayer(INFECTED_PLAYER_ID)) return;
+    const infected = gameView.player(INFECTED_PLAYER_ID);
+    if (!infected.isAlive() || !this.knownSmallIDs.has(infected.smallID())) {
+      return;
+    }
+    writePaletteEntry(
+      this.palette,
+      infected.smallID(),
+      infectedPulseColor(infected.territoryColor(), performance.now()),
+      infected.borderColor(),
+    );
+    this.view.updatePalette(this.palette);
   }
 
   private syncPlayers(gameView: GameView): void {

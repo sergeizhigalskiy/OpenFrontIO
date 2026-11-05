@@ -44,6 +44,7 @@ import {
   EMOJI_ASSIST_TARGET_ME,
   NationEmojiBehavior,
 } from "./NationEmojiBehavior";
+import { fightSurvivalThreat } from "./NationSurvivalBehavior";
 import { findJuiciestTarget, findRunawayLeader } from "./NationUtils";
 import type { NationWarshipBehavior } from "./NationWarshipBehavior";
 
@@ -163,6 +164,18 @@ export class NationAttackBehavior extends AiAttackBehavior {
   }
 
   private chooseAttack() {
+    // Horde Night and the plague put their threat first (a no-op otherwise).
+    if (
+      fightSurvivalThreat(
+        this.game,
+        this.player,
+        this.random,
+        this.reserveRatio,
+        this.expandRatio,
+      )
+    ) {
+      return;
+    }
     // Neighbor visit order matters here: the set's insertion order feeds the
     // stable troop-count sort below, so ties keep border-discovery order.
     const borderingPlayerSet = new Set<Player>();

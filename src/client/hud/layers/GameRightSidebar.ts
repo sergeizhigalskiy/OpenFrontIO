@@ -6,7 +6,9 @@ import { customElement, state } from "lit/decorators.js";
 import { createNextLobby } from "../../Api";
 import { ClientEnv } from "../../ClientEnv";
 import "../../components/DoomsdayClockPanel";
+import "../../components/HordeNightPanel";
 import "../../components/OvertimePanel";
+import "../../components/PlaguePanel";
 import { Controller } from "../../Controller";
 import { isDesktopShell } from "../../DesktopShell";
 import { gamePortal } from "../../GamePortal";
@@ -467,6 +469,16 @@ export class GameRightSidebar extends LitElement implements Controller {
         .hasWinner=${this.hasWinner}
         .refreshKey=${this.timer}
       ></overtime-panel>
+      <horde-night-panel
+        .game=${this.game}
+        .hasWinner=${this.hasWinner}
+        .refreshKey=${this.timer}
+      ></horde-night-panel>
+      <plague-panel
+        .game=${this.game}
+        .hasWinner=${this.hasWinner}
+        .refreshKey=${this.timer}
+      ></plague-panel>
     `;
   }
 

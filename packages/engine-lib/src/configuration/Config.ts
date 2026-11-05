@@ -16,11 +16,13 @@ import {
   NUCLEAR_UNIT_TYPES,
 } from "../game/ConventionalWar";
 import { DoomsdayClockSpeed } from "../game/DoomsdayClock";
+import { HORDE_NIGHT_DEFAULT_SURVIVAL_MINUTES } from "../game/HordeNight";
 import {
   COASTAL_BATTERY_CONSTRUCTION_TICKS,
   COASTAL_BATTERY_HEALTH_PERCENT_OF_WARSHIP,
   MINEFIELD_MAX_DENSITY,
 } from "../game/NavalDefense";
+import { isInfected } from "../game/Plague";
 import { assertNever } from "../Util";
 
 export interface NukeMagnitude {
@@ -195,6 +197,21 @@ export class Config {
    */
   conventionalWar(): boolean {
     return this._gameConfig.conventionalWar ?? false;
+  }
+
+  /** Horde Night co-op survival (see game/HordeNight.ts), off by default. */
+  hordeNightConfig(): { enabled: boolean; survivalMinutes: number } {
+    const c = this._gameConfig.hordeNight;
+    return {
+      enabled: c?.enabled ?? false,
+      survivalMinutes:
+        c?.survivalMinutes ?? HORDE_NIGHT_DEFAULT_SURVIVAL_MINUTES,
+    };
+  }
+
+  /** Zombie plague mode (see game/Plague.ts), off by default. */
+  plague(): boolean {
+    return this._gameConfig.plague ?? false;
   }
 
   isUnitDisabled(unitType: UnitType): boolean {
@@ -452,6 +469,8 @@ export class Config {
   }
 
   troopIncreaseRate(player: PlayerLike): number {
+    // The plague's Infected never regrows: it only grows by infecting.
+    if (this.plague() && isInfected(player)) return 0;
     const max = this.maxTroops(player);
 
     let toAdd = 10 + pow(player.troops(), 0.73) / 4;

@@ -5,10 +5,12 @@ import {
   RankedType,
   Team,
 } from "@openfront/engine-api/game/GameTypes";
+import { isInfected } from "@openfront/engine-lib/game/Plague";
 import { z } from "zod";
 import { Execution, Game } from "../game/Game";
 import { execSnapshotType } from "../snapshot/ExecutionSnapshot";
 import type { ExecRecord, SnapshotReader } from "../snapshot/SnapshotContext";
+import { checkHordeNightWinner, checkPlagueWinner } from "./SurvivalWinCheck";
 
 export class WinCheckExecution implements Execution {
   private active = true;
@@ -34,6 +36,18 @@ export class WinCheckExecution implements Execution {
     if (this.mg === null) throw new Error("Not initialized");
 
     if (this.checkRankedTeamCancelled()) {
+      return;
+    }
+
+    // Survival lobby modes (SurvivalWinCheck.ts). Horde Night replaces the
+    // usual rules; the plague adds its own and otherwise plays as usual.
+    const gameConfig = this.mg.config().gameConfig();
+    if (gameConfig.hordeNight?.enabled === true) {
+      if (checkHordeNightWinner(this.mg)) this.active = false;
+      return;
+    }
+    if (gameConfig.plague === true && checkPlagueWinner(this.mg)) {
+      this.active = false;
       return;
     }
 
@@ -79,8 +93,11 @@ export class WinCheckExecution implements Execution {
 
   checkWinnerFFA(): void {
     if (this.mg === null) throw new Error("Not initialized");
+    // The plague's Infected never wins on land or time (checkPlagueWinner).
+    const plague = this.mg.config().gameConfig().plague === true;
     const sorted = this.mg
       .players()
+      .filter((p) => !plague || !isInfected(p))
       .sort((a, b) => b.numTilesOwned() - a.numTilesOwned());
     if (sorted.length === 0) {
       return;
@@ -185,8 +202,10 @@ export class WinCheckExecution implements Execution {
       }
     }
 
+    const plague = this.mg.config().gameConfig().plague === true;
     const teamToTiles = new Map<Team, number>();
     for (const player of this.mg.players()) {
+      if (plague && isInfected(player)) continue;
       const team = player.team();
       // Sanity check, team should not be null here
       if (team === null) continue;

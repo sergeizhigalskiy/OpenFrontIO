@@ -10,6 +10,11 @@ import {
 import type { SnapshotHeader } from "@openfront/engine-api/game/SnapshotHeader";
 import { TeamCountConfig } from "@openfront/engine-api/Schemas";
 import { DoomsdayClockSpeed } from "@openfront/engine-lib/game/DoomsdayClock";
+import {
+  HORDE_NIGHT_DEFAULT_SURVIVAL_MINUTES,
+  HORDE_NIGHT_MAX_SURVIVAL_MINUTES,
+  HORDE_NIGHT_MIN_SURVIVAL_MINUTES,
+} from "@openfront/engine-lib/game/HordeNight";
 import { UserMeResponse } from "@openfront/shared/ApiSchemas";
 import { assetUrl } from "@openfront/shared/AssetUrls";
 import { generateID } from "@openfront/shared/SharedUtil";
@@ -152,6 +157,9 @@ const DEFAULT_OPTIONS = {
   doomsdayClockSpeed: "normal" as DoomsdayClockSpeed,
   overtime: false,
   overtimeStartMinutes: undefined as number | undefined,
+  hordeNight: false,
+  hordeNightSurvivalMinutes: undefined as number | undefined,
+  plague: false,
 } as const;
 
 // A map earns achievements only if it has nations to conquer — the same rule
@@ -244,6 +252,10 @@ export class SinglePlayerModal extends BaseModal {
   @state() private overtime: boolean = DEFAULT_OPTIONS.overtime;
   @state() private overtimeStartMinutes: number | undefined =
     DEFAULT_OPTIONS.overtimeStartMinutes;
+  @state() private hordeNight: boolean = DEFAULT_OPTIONS.hordeNight;
+  @state() private hordeNightSurvivalMinutes: number | undefined =
+    DEFAULT_OPTIONS.hordeNightSurvivalMinutes;
+  @state() private plague: boolean = DEFAULT_OPTIONS.plague;
   // Drives the Start Game button's busy state. Without it the click produces
   // nothing visible until every await in startGame() settles, which reads as
   // a hang rather than as loading whenever the network is slow or absent.
@@ -525,6 +537,21 @@ export class SinglePlayerModal extends BaseModal {
         .onInput=${this.handleOvertimeMinutesInput}
         .onKeyDown=${this.handleOvertimeMinutesKeyDown}
       ></toggle-input-card>`,
+      html`<toggle-input-card
+        .labelKey=${"game_settings.horde_night"}
+        .checked=${this.hordeNight}
+        .inputMin=${HORDE_NIGHT_MIN_SURVIVAL_MINUTES}
+        .inputMax=${HORDE_NIGHT_MAX_SURVIVAL_MINUTES}
+        .inputStep=${1}
+        .inputValue=${this.hordeNightSurvivalMinutes}
+        .inputAriaLabel=${translateText("game_settings.horde_night")}
+        .inputPlaceholder=${translateText("game_settings.mins_placeholder")}
+        .defaultInputValue=${HORDE_NIGHT_DEFAULT_SURVIVAL_MINUTES}
+        .minValidOnEnable=${HORDE_NIGHT_MIN_SURVIVAL_MINUTES}
+        .onToggle=${this.handleHordeNightToggle}
+        .onInput=${this.handleHordeNightMinutesInput}
+        .onKeyDown=${this.handleHordeNightMinutesKeyDown}
+      ></toggle-input-card>`,
     ];
 
     return html`
@@ -612,6 +639,10 @@ export class SinglePlayerModal extends BaseModal {
                     checked: this.conventionalWar,
                   },
                   {
+                    labelKey: "game_settings.plague",
+                    checked: this.plague,
+                  },
+                  {
                     labelKey: "game_settings.doomsday_clock",
                     checked: this.doomsdayClock,
                     doomsdayClockSpeed: this.doomsdayClockSpeed,
@@ -689,6 +720,8 @@ export class SinglePlayerModal extends BaseModal {
       (this.doomsdayClock &&
         this.doomsdayClockSpeed !== DEFAULT_OPTIONS.doomsdayClockSpeed) ||
       this.overtime !== DEFAULT_OPTIONS.overtime ||
+      this.hordeNight !== DEFAULT_OPTIONS.hordeNight ||
+      this.plague !== DEFAULT_OPTIONS.plague ||
       this.disabledUnits.length > 0
     );
   }
@@ -820,6 +853,9 @@ export class SinglePlayerModal extends BaseModal {
     this.doomsdayClockSpeed = DEFAULT_OPTIONS.doomsdayClockSpeed;
     this.overtime = DEFAULT_OPTIONS.overtime;
     this.overtimeStartMinutes = DEFAULT_OPTIONS.overtimeStartMinutes;
+    this.hordeNight = DEFAULT_OPTIONS.hordeNight;
+    this.hordeNightSurvivalMinutes = DEFAULT_OPTIONS.hordeNightSurvivalMinutes;
+    this.plague = DEFAULT_OPTIONS.plague;
   }
 
   protected onOpen(args?: Record<string, unknown>): void {
@@ -867,6 +903,9 @@ export class SinglePlayerModal extends BaseModal {
       doomsdayClockSpeed: this.doomsdayClockSpeed,
       overtime: this.overtime,
       overtimeStartMinutes: this.overtimeStartMinutes,
+      hordeNight: this.hordeNight,
+      hordeNightSurvivalMinutes: this.hordeNightSurvivalMinutes,
+      plague: this.plague,
     };
   }
 
@@ -897,6 +936,9 @@ export class SinglePlayerModal extends BaseModal {
     this.doomsdayClockSpeed = config.doomsdayClockSpeed ?? "normal";
     this.overtime = config.overtime ?? false;
     this.overtimeStartMinutes = config.overtimeStartMinutes;
+    this.hordeNight = config.hordeNight ?? false;
+    this.hordeNightSurvivalMinutes = config.hordeNightSurvivalMinutes;
+    this.plague = config.plague ?? false;
 
     await this.loadNationCount();
     if (config.nations !== undefined) {
@@ -1036,6 +1078,9 @@ export class SinglePlayerModal extends BaseModal {
       case "game_settings.conventional_war":
         this.conventionalWar = checked;
         break;
+      case "game_settings.plague":
+        this.plague = checked;
+        break;
       case "game_settings.doomsday_clock":
         this.doomsdayClock = checked;
         break;
@@ -1110,6 +1155,31 @@ export class SinglePlayerModal extends BaseModal {
   ) => {
     this.overtime = checked;
     this.overtimeStartMinutes = toOptionalNumber(value);
+  };
+
+  private handleHordeNightToggle = (
+    checked: boolean,
+    value: number | string | undefined,
+  ) => {
+    this.hordeNight = checked;
+    this.hordeNightSurvivalMinutes = toOptionalNumber(value);
+  };
+
+  private handleHordeNightMinutesKeyDown = (e: KeyboardEvent) => {
+    preventDisallowedKeys(e, ["-", "+", "e"]);
+  };
+
+  private handleHordeNightMinutesInput = (e: Event) => {
+    const input = e.target as HTMLInputElement;
+    const value = parseBoundedIntegerFromInput(input, {
+      min: HORDE_NIGHT_MIN_SURVIVAL_MINUTES,
+      max: HORDE_NIGHT_MAX_SURVIVAL_MINUTES,
+      stripPattern: /[e+-]/gi,
+    });
+    if (value === undefined) {
+      return;
+    }
+    this.hordeNightSurvivalMinutes = value;
   };
 
   private handleOvertimeMinutesKeyDown = (e: KeyboardEvent) => {
@@ -1384,6 +1454,17 @@ export class SinglePlayerModal extends BaseModal {
                   },
                 }
               : {}),
+            ...(this.hordeNight
+              ? {
+                  hordeNight: {
+                    enabled: true,
+                    survivalMinutes:
+                      this.hordeNightSurvivalMinutes ??
+                      HORDE_NIGHT_DEFAULT_SURVIVAL_MINUTES,
+                  },
+                }
+              : {}),
+            ...(this.plague ? { plague: true } : {}),
           },
           lobbyCreatedAt: Date.now(), // ms; server should be authoritative in MP
         },

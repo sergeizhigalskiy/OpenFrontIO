@@ -3,6 +3,11 @@ import {
   PlayerType,
   Team,
 } from "@openfront/engine-api/game/GameTypes";
+import {
+  HORDE_DEFENDERS_TEAM,
+  HORDE_TEAM,
+} from "@openfront/engine-lib/game/HordeNight";
+import { INFECTED_TEAM, isInfected } from "@openfront/engine-lib/game/Plague";
 import { simpleHash } from "@openfront/engine-lib/Util";
 import { Colord, colord, LabaColor } from "colord";
 import { PALETTE_NAMES } from "../render/gl/GraphicsOverrides";
@@ -71,10 +76,21 @@ function buildTeamPalettes(settings: ThemeSettings): Map<Team, Colord[]> {
   const palettes = new Map<Team, Colord[]>();
   for (const [team, hex] of Object.entries(settings.teamColors)) {
     const base = colord(hex);
-    palettes.set(team, team === "Bot" ? [base] : generateTeamColors(base));
+    palettes.set(
+      team,
+      FLAT_TEAM_COLORS.has(team) ? [base] : generateTeamColors(base),
+    );
   }
   return palettes;
 }
+
+// Teams drawn in one flat color: tribes, Horde Night's bands and the
+// plague's Infected (which has the theme's "Infected" color, not a team).
+const FLAT_TEAM_COLORS: ReadonlySet<Team> = new Set([
+  ColoredTeams.Bot,
+  HORDE_TEAM,
+  INFECTED_TEAM,
+]);
 
 /**
  * A theme built entirely from `ThemeSettings` data. Owns the per-pool color
@@ -153,8 +169,13 @@ export class SettingsTheme implements Theme {
    * allocated from the matching pool (human / nation).
    */
   territoryColor(player: PlayerView): Colord {
+    // The plague's Infected is sickly green in every mode.
+    if (isInfected(player)) {
+      return this.teamColorForPlayer(INFECTED_TEAM, player.id());
+    }
     const team = player.team();
-    if (team !== null) {
+    // Horde Night's defenders keep their own colors: the side is everyone.
+    if (team !== null && team !== HORDE_DEFENDERS_TEAM) {
       return this.teamColorForPlayer(team, player.id());
     }
     if (player.type() === PlayerType.Human) {

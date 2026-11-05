@@ -5,6 +5,7 @@ import {
   GameType,
 } from "@openfront/engine-api/game/GameTypes";
 import { GameConfig } from "@openfront/engine-api/Schemas";
+import { HORDE_NIGHT_DEFAULT_SURVIVAL_MINUTES } from "@openfront/engine-lib/game/HordeNight";
 import { html, TemplateResult } from "lit";
 import { renderDuration, translateText } from "../../client/Utils";
 
@@ -126,6 +127,19 @@ export function notableLobbySettings(
   if (c.conventionalWar)
     items.push({
       label: translateText("game_settings.conventional_war"),
+      value: enabled,
+    });
+  if (c.hordeNight?.enabled)
+    items.push({
+      label: translateText("horde_night.title"),
+      value: renderDuration(
+        (c.hordeNight.survivalMinutes ?? HORDE_NIGHT_DEFAULT_SURVIVAL_MINUTES) *
+          60,
+      ),
+    });
+  if (c.plague)
+    items.push({
+      label: translateText("game_settings.plague"),
       value: enabled,
     });
   if (c.waterNukes)

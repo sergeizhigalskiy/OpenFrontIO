@@ -11,6 +11,11 @@ import {
   TeamCountConfig,
 } from "@openfront/engine-api/Schemas";
 import { DoomsdayClockSpeed } from "@openfront/engine-lib/game/DoomsdayClock";
+import {
+  HORDE_NIGHT_DEFAULT_SURVIVAL_MINUTES,
+  HORDE_NIGHT_MAX_SURVIVAL_MINUTES,
+  HORDE_NIGHT_MIN_SURVIVAL_MINUTES,
+} from "@openfront/engine-lib/game/HordeNight";
 import { GameEnv } from "@openfront/shared/configuration/Env";
 import { EventBus } from "@openfront/shared/EventBus";
 import {
@@ -124,6 +129,9 @@ export class HostLobbyModal extends BaseModal {
   @state() private allowedPublicIds: string = "";
   @state() private waterNukes: boolean = false;
   @state() private conventionalWar: boolean = false;
+  @state() private hordeNight: boolean = false;
+  @state() private hordeNightSurvivalMinutes: number | undefined = undefined;
+  @state() private plague: boolean = false;
   @state() private lobbyId = "";
   @state() private lobbyUrlSuffix = "";
   @state() private clients: ClientInfo[] = [];
@@ -571,6 +579,21 @@ export class HostLobbyModal extends BaseModal {
         .onKeyDown=${this.handleOvertimeMinutesKeyDown}
       ></toggle-input-card>`,
       html`<toggle-input-card
+        .labelKey=${"game_settings.horde_night"}
+        .checked=${this.hordeNight}
+        .inputMin=${HORDE_NIGHT_MIN_SURVIVAL_MINUTES}
+        .inputMax=${HORDE_NIGHT_MAX_SURVIVAL_MINUTES}
+        .inputStep=${1}
+        .inputValue=${this.hordeNightSurvivalMinutes}
+        .inputAriaLabel=${translateText("game_settings.horde_night")}
+        .inputPlaceholder=${translateText("game_settings.mins_placeholder")}
+        .defaultInputValue=${HORDE_NIGHT_DEFAULT_SURVIVAL_MINUTES}
+        .minValidOnEnable=${HORDE_NIGHT_MIN_SURVIVAL_MINUTES}
+        .onToggle=${this.handleHordeNightToggle}
+        .onInput=${this.handleHordeNightMinutesInput}
+        .onKeyDown=${this.handleHordeNightMinutesKeyDown}
+      ></toggle-input-card>`,
+      html`<toggle-input-card
         .labelKey=${"game_settings.win_threshold"}
         .checked=${this.winThreshold}
         .inputId=${"win-threshold-value"}
@@ -773,6 +796,10 @@ export class HostLobbyModal extends BaseModal {
                   {
                     labelKey: "game_settings.conventional_war",
                     checked: this.conventionalWar,
+                  },
+                  {
+                    labelKey: "game_settings.plague",
+                    checked: this.plague,
                   },
                   {
                     labelKey: "game_settings.doomsday_clock",
@@ -1135,6 +1162,9 @@ export class HostLobbyModal extends BaseModal {
     this.allowedPublicIds = "";
     this.waterNukes = false;
     this.conventionalWar = false;
+    this.hordeNight = false;
+    this.hordeNightSurvivalMinutes = undefined;
+    this.plague = false;
     this.hostCheatsEnabled = false;
     this.hostCheatInfiniteGold = false;
     this.hostCheatInfiniteTroops = false;
@@ -1240,6 +1270,10 @@ export class HostLobbyModal extends BaseModal {
         break;
       case "game_settings.conventional_war":
         this.conventionalWar = checked;
+        void this.putGameConfig();
+        break;
+      case "game_settings.plague":
+        this.plague = checked;
         void this.putGameConfig();
         break;
       case "game_settings.doomsday_clock":
@@ -1377,6 +1411,33 @@ export class HostLobbyModal extends BaseModal {
       return;
     }
     this.overtimeStartMinutes = value;
+    void this.putGameConfig();
+  };
+
+  private handleHordeNightToggle = (
+    checked: boolean,
+    value: number | string | undefined,
+  ) => {
+    this.hordeNight = checked;
+    this.hordeNightSurvivalMinutes = toOptionalNumber(value);
+    void this.putGameConfig();
+  };
+
+  private handleHordeNightMinutesKeyDown = (e: KeyboardEvent) => {
+    preventDisallowedKeys(e, ["-", "+", "e"]);
+  };
+
+  private handleHordeNightMinutesInput = (e: Event) => {
+    const input = e.target as HTMLInputElement;
+    const value = parseBoundedIntegerFromInput(input, {
+      min: HORDE_NIGHT_MIN_SURVIVAL_MINUTES,
+      max: HORDE_NIGHT_MAX_SURVIVAL_MINUTES,
+      stripPattern: /[e+-]/gi,
+    });
+    if (value === undefined) {
+      return;
+    }
+    this.hordeNightSurvivalMinutes = value;
     void this.putGameConfig();
   };
 
@@ -1779,6 +1840,9 @@ export class HostLobbyModal extends BaseModal {
       doomsdayClockSpeed: this.doomsdayClockSpeed,
       overtime: this.overtime,
       overtimeStartMinutes: this.overtimeStartMinutes,
+      hordeNight: this.hordeNight,
+      hordeNightSurvivalMinutes: this.hordeNightSurvivalMinutes,
+      plague: this.plague,
       spawnImmunity: this.spawnImmunity,
       spawnImmunityDurationMinutes: this.spawnImmunityDurationMinutes,
       playerLimit: this.playerLimit,
@@ -1827,6 +1891,9 @@ export class HostLobbyModal extends BaseModal {
     this.doomsdayClockSpeed = config.doomsdayClockSpeed ?? "normal";
     this.overtime = config.overtime ?? false;
     this.overtimeStartMinutes = config.overtimeStartMinutes;
+    this.hordeNight = config.hordeNight ?? false;
+    this.hordeNightSurvivalMinutes = config.hordeNightSurvivalMinutes;
+    this.plague = config.plague ?? false;
 
     if (config.spawnImmunity !== undefined) {
       this.spawnImmunity = config.spawnImmunity;
@@ -2005,6 +2072,15 @@ export class HostLobbyModal extends BaseModal {
                   startMinutes: this.overtimeStartMinutes ?? 30,
                 }
               : { enabled: false },
+            // Same {enabled:false} rule as doomsdayClock above.
+            hordeNight: this.hordeNight
+              ? {
+                  enabled: true,
+                  survivalMinutes:
+                    this.hordeNightSurvivalMinutes ??
+                    HORDE_NIGHT_DEFAULT_SURVIVAL_MINUTES,
+                }
+              : { enabled: false },
             anonymizeNames: this.anonymizeNames,
             nameReveals: this.nameReveals,
             allowedPublicIds: this.whitelistEnabled
@@ -2012,6 +2088,7 @@ export class HostLobbyModal extends BaseModal {
               : [],
             waterNukes: this.waterNukes ? true : null,
             conventionalWar: this.conventionalWar,
+            plague: this.plague,
             hostCheats: this.hostCheatsEnabled
               ? {
                   infiniteGold: this.hostCheatInfiniteGold || undefined,

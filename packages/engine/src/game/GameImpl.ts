@@ -41,6 +41,7 @@ import {
 import { ATTACK_INDEX_SENT } from "@openfront/engine-api/StatsSchemas";
 import { renderNumber } from "@openfront/engine-lib/Format";
 import { GameMapImpl } from "@openfront/engine-lib/game/GameMapImpl";
+import { HORDE_DEFENDERS_TEAM } from "@openfront/engine-lib/game/HordeNight";
 import {
   MotionPlanRecord,
   packMotionPlans,
@@ -230,6 +231,23 @@ export class GameImpl implements Game {
   }
 
   private addPlayers() {
+    // Horde Night: every human and nation is on the one defending side,
+    // whatever the lobby's mode (see engine-lib/game/HordeNight.ts).
+    if (this._config.hordeNightConfig().enabled) {
+      if (this._config.gameConfig().gameMode === GameMode.Team) {
+        this.playerTeams = [HORDE_DEFENDERS_TEAM];
+      }
+      this._humans.forEach((p) =>
+        this.addPlayer(
+          p,
+          p.playerType === PlayerType.Bot ? null : HORDE_DEFENDERS_TEAM,
+        ),
+      );
+      this._nations.forEach((n) =>
+        this.addPlayer(n.playerInfo, HORDE_DEFENDERS_TEAM),
+      );
+      return;
+    }
     if (this.config().gameConfig().gameMode === GameMode.FFA) {
       this._humans.forEach((p) => this.addPlayer(p));
       this._nations.forEach((n) => this.addPlayer(n.playerInfo));

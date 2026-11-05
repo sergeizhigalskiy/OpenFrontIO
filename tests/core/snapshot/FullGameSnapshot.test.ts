@@ -138,6 +138,11 @@ const CONVENTIONAL_WAR_EXECS = new Set([
   "FlakGun",
 ]);
 
+// Executions of the Horde Night and plague lobby modes, whose first wave and
+// outbreak come after this game ends: their own round trips cover them
+// (tests/core/executions/HordeNight.test.ts and Plague.test.ts).
+const SURVIVAL_MODE_EXECS = new Set(["HordeBand", "HordeNight", "Plague"]);
+
 describe.each(VARIANTS)("full game snapshots: %s", (_, overrides) => {
   const start = scriptedGameStart(overrides);
   let reference: Reference;
@@ -220,7 +225,8 @@ describe.each(VARIANTS)("full game snapshots: %s", (_, overrides) => {
         (name) =>
           !reference.execTypes.has(name) &&
           !neverStored.has(name) &&
-          !CONVENTIONAL_WAR_EXECS.has(name),
+          !CONVENTIONAL_WAR_EXECS.has(name) &&
+          !SURVIVAL_MODE_EXECS.has(name),
       );
       expect(missing).toEqual([]);
     },
