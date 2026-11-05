@@ -106,6 +106,38 @@ day/night-mode wiring).
 - Input events all flow through `InputHandler` (binds to a transparent
   `inputOverlay` div above the GL canvas) → EventBus → controllers / HUD.
   The WebGL canvas itself has `pointer-events: none`.
+- The view mode (`settings.mapView.mode`: `flat`, `tilt`, `terrain3d`) turns
+  the camera into a 3D view-projection (`gl/camera/CameraMath.ts`).
+  `TransformHandler` builds the same frame from the same pose for picking,
+  zoom and pan (`setMapView(view.mapView)`), and ray-casts the terrain in 3D
+  mode, so clicks land on the tile that is drawn under the cursor.
+
+## The shared camera (placing geometry on the map)
+
+Shaders don't take a camera uniform. They `#include "camera"` (after the
+precision line; `createProgram` expands it from `shaders/shared/camera.glsl`)
+and place vertices with one of:
+
+- `groundToClip(world)` — a point on the ground, draped on 3D terrain
+- `anchoredToClip(anchor, offset)` — a flat sprite at the anchor's height
+- `billboardToClip(anchor, offset)` — a label/icon, upright in 3D mode
+- `camClipScale()` — the old `length(vec2(uCamera[0][0], uCamera[1][0]))`
+
+The renderer fills and binds the block once per frame (`CameraUniforms`), so
+a pass uploads nothing. `draw(cameraMatrix)` still receives the flat 2D mat3
+for CPU-side zoom math. To port a pass written against the old `mat3
+uCamera`: replace the uniform with the include, `vec3 clip = uCamera *
+vec3(p, 1.0); gl_Position = vec4(clip.xy, 0.0, 1.0);` with one of the
+helpers, and drop the `uniformMatrix3fv` call. A pass that covers the whole
+map draws through `drawMapSurface(gl, quadVao)` (`gl/terrain/MapSurface.ts`)
+instead of its own quad, so it drapes onto the 3D mesh. A medium-size
+ground overlay drawn per item (a weather cell, an eruption glow) draws a
+`createDrapedQuad` grid (`gl/terrain/DrapedQuad.ts`) through
+`groundToClip` instead of one quad, so it follows the terrain too; icons
+and bars use `billboardToClip` like the structure icons.
+`tests/client/render/gl/CameraPortShaders.test.ts` compiles a pass's
+programs in headless Chrome and draws them in all three view modes: add new
+passes there.
 
 ## FrameData contract
 

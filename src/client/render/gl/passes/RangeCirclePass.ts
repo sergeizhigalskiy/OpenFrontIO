@@ -18,7 +18,6 @@ export class RangeCirclePass {
   private program: WebGLProgram;
   private vao: WebGLVertexArrayObject;
 
-  private uCamera: WebGLUniformLocation;
   private uCenter: WebGLUniformLocation;
   private uRadius: WebGLUniformLocation;
   private uColor: WebGLUniformLocation;
@@ -32,7 +31,6 @@ export class RangeCirclePass {
     this.gl = gl;
     this.program = createProgram(gl, vertSrc, fragSrc, "RangeCirclePass");
 
-    this.uCamera = gl.getUniformLocation(this.program, "uCamera")!;
     this.uCenter = gl.getUniformLocation(this.program, "uCenter")!;
     this.uRadius = gl.getUniformLocation(this.program, "uRadius")!;
     this.uColor = gl.getUniformLocation(this.program, "uColor")!;
@@ -69,7 +67,6 @@ export class RangeCirclePass {
 
     const gl = this.gl;
     gl.useProgram(this.program);
-    gl.uniformMatrix3fv(this.uCamera, false, cameraMatrix);
     gl.bindVertexArray(this.vao);
 
     gl.uniform2f(this.uCenter, this.centerX, this.centerY);

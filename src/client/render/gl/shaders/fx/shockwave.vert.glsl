@@ -14,7 +14,7 @@ layout(location = 9) in float aTransSpeed; // palette step rate (colors/s)
 layout(location = 10) in float aThickness; // EMP: ring band thickness (world tiles)
 layout(location = 11) in float aCell;   // sparkles: grid pitch (front-normalized)
 
-uniform mat3 uCamera;
+#include "camera"
 uniform float uTime;
 
 out vec2  vLocalPos;
@@ -76,8 +76,7 @@ void main() {
   float extent = (r + aThickness) * MARGIN;
   vec2 worldPos = center + (aPos - 0.5) * 2.0 * extent;
 
-  vec3 clip = uCamera * vec3(worldPos, 1.0);
-  gl_Position = vec4(clip.xy, 0.0, 1.0);
+  gl_Position = anchoredToClip(center, worldPos - center);
 
   // vLocalPos stays normalized to the ring radius (dist 1.0 = radius r), so
   // scale by extent/r instead of the fixed margin.

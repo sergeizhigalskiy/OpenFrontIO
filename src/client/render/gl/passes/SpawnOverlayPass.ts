@@ -55,7 +55,6 @@ export class SpawnOverlayPass {
   private settings: RenderSettings["spawnOverlay"];
 
   // Uniforms
-  private uCamera: WebGLUniformLocation;
   private uMapSize: WebGLUniformLocation;
   private uBreathRadius: WebGLUniformLocation;
   private uHighlightRadiusSq: WebGLUniformLocation;
@@ -94,7 +93,6 @@ export class SpawnOverlayPass {
       "SpawnOverlayPass",
     );
 
-    this.uCamera = gl.getUniformLocation(this.program, "uCamera")!;
     this.uMapSize = gl.getUniformLocation(this.program, "uMapSize")!;
     this.uBreathRadius = gl.getUniformLocation(this.program, "uBreathRadius")!;
     this.uHighlightRadiusSq = gl.getUniformLocation(
@@ -224,7 +222,6 @@ export class SpawnOverlayPass {
     const breathRadius = 0.5 + 0.5 * Math.sin(this.animTime);
 
     gl.useProgram(this.program);
-    gl.uniformMatrix3fv(this.uCamera, false, cameraMatrix);
     gl.uniform2f(this.uMapSize, this.mapW, this.mapH);
     gl.uniform1f(this.uBreathRadius, breathRadius);
 

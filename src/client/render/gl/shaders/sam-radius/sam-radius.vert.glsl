@@ -10,7 +10,7 @@ layout(location = 2) in vec4 aColor;
 // Per-instance: arcStart, arcEnd, spin
 layout(location = 3) in vec3 aArcBounds;
 
-uniform mat3 uCamera;
+#include "camera"
 
 out vec2 vLocal;        // [-1, +1] local coords
 flat out float vRadius; // world-space radius for this instance
@@ -30,6 +30,5 @@ void main() {
   vec2 center = aInstance.xy + 0.5;
   vec2 worldPos = center + vLocal * r;
 
-  vec3 clip = uCamera * vec3(worldPos, 1.0);
-  gl_Position = vec4(clip.xy, 0.0, 1.0);
+  gl_Position = anchoredToClip(center, worldPos - center);
 }

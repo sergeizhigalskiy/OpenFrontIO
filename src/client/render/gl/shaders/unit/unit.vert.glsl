@@ -7,7 +7,7 @@ layout(location = 0) in vec2 aPos;
 layout(location = 1) in vec3 aInstPos;   // x, y, ownerID
 layout(location = 2) in vec3 aInstFlags; // atlasIdx, flags, flickerHash (uint8→float)
 
-uniform mat3  uCamera;
+#include "camera"
 
 uniform float uUnitSize;
 uniform float uHBombGlowScale; // quad enlargement for the hydrogen bomb glow halo
@@ -49,8 +49,7 @@ void main() {
   vec2 worldPos = center + (aPos - 0.5) * halfSize * 2.0;
   vWorldPos = worldPos;
 
-  vec3 clip = uCamera * vec3(worldPos, 1.0);
-  gl_Position = vec4(clip.xy, 0.0, 1.0);
+  gl_Position = anchoredToClip(center, worldPos - center);
 
   vQuadPos = aPos;
 

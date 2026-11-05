@@ -41,7 +41,6 @@ export class BarPass {
   private program: WebGLProgram;
   private maxBars = 2048;
 
-  private uCamera: WebGLUniformLocation;
   private uBarSize: WebGLUniformLocation;
   private uBarOffset: WebGLUniformLocation;
   private uBorderWidth: WebGLUniformLocation;
@@ -83,7 +82,6 @@ export class BarPass {
 
     // --- Shader program ---
     this.program = createProgram(gl, barVertSrc, barFragSrc, "BarPass");
-    this.uCamera = gl.getUniformLocation(this.program, "uCamera")!;
     this.uBarSize = gl.getUniformLocation(this.program, "uBarSize")!;
     this.uBarOffset = gl.getUniformLocation(this.program, "uBarOffset")!;
     this.uBorderWidth = gl.getUniformLocation(this.program, "uBorderWidth")!;
@@ -197,7 +195,6 @@ export class BarPass {
     const b = this.settings.bar;
 
     gl.useProgram(this.program);
-    gl.uniformMatrix3fv(this.uCamera, false, cameraMat);
     gl.uniform1f(this.uSolid, 0); // health/progress bars use the colored path
     gl.uniform1f(this.uBorderWidth, b.borderWidth);
     gl.uniform3f(this.uThresholds, b.threshold1, b.threshold2, b.threshold3);

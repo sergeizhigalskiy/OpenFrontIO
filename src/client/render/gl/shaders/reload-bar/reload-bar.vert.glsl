@@ -5,7 +5,7 @@ layout(location = 0) in vec2 aPos;    // unit quad [0,1]x[0,1]
 layout(location = 1) in vec4 aInst0;  // tileX, tileY, slot, slotCount
 layout(location = 2) in vec2 aInst1;  // fill (0-1), ready (0/1)
 
-uniform mat3 uCamera;
+#include "camera"
 // Half a structure icon, in tiles, sized like structure.vert.glsl.
 uniform float uHalfIcon;
 // Row top below the icon center, row width, pip height, gap between pips;
@@ -25,7 +25,8 @@ void main() {
   float w = (rowW - gap * (count - 1.0)) / count;
   float h = uLayout.z * uHalfIcon;
 
-  // Ground space, like the structure icons: centered under the icon.
+  // Centered under the icon, and upright with it in 3D like the structure
+  // icons and health bars (billboardToClip, offset +y = down the screen).
   vec2 center = aInst0.xy + 0.5;
   vec2 origin = vec2(
     center.x - rowW * 0.5 + slot * (w + gap),
@@ -37,6 +38,5 @@ void main() {
   vFill = aInst1.x;
   vReady = aInst1.y;
 
-  vec3 clip = uCamera * vec3(origin + vLocal, 1.0);
-  gl_Position = vec4(clip.xy, 0.0, 1.0);
+  gl_Position = billboardToClip(center, origin + vLocal - center);
 }

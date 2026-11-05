@@ -24,6 +24,18 @@
     "highlandColor": "#DCCB9E",
     "mountainColor": "#e6e6e6"
   },
+  "mapView": {
+    "mode": "terrain3d",
+    "tiltDeg": 30,
+    "fovDeg": 40,
+    "heightScale": 0.3,
+    "lodTargetPx": 10,
+    "hillshade": true,
+    "hillshadeStrength": 0.75,
+    "reliefScale": 0.6,
+    "lightAzimuthDeg": 315,
+    "lightAltitudeDeg": 45
+  },
   "falloutBloom": {
     "broilSpeedCold": 0.0018,
     "broilSpeedHot": 0,

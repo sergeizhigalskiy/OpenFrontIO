@@ -9,7 +9,7 @@ layout(location = 1) in vec4 aInstance;
 // Per-instance: r, g, b (base color)
 layout(location = 2) in vec3 aColor;
 
-uniform mat3 uCamera;
+#include "camera"
 
 out vec2 vWorldPos;     // tile-space position of this fragment
 flat out vec2 vCenter;  // spawn center (tile coords)
@@ -27,6 +27,5 @@ void main() {
   vec2 worldPos = center + local * r;
   vWorldPos = worldPos;
 
-  vec3 clip = uCamera * vec3(worldPos, 1.0);
-  gl_Position = vec4(clip.xy, 0.0, 1.0);
+  gl_Position = anchoredToClip(center, worldPos - center);
 }

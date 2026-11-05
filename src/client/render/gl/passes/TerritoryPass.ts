@@ -19,6 +19,7 @@ import { FALLOUT_BIT, OWNER_MASK, TILE_DEFINES } from "../utils/TileCodec";
 
 import overlayVertSrc from "../shaders/map-overlay/overlay.vert.glsl?raw";
 import territoryFragSrc from "../shaders/map-overlay/territory.frag.glsl?raw";
+import { drawMapSurface } from "../terrain/MapSurface";
 import { TileScatterPass } from "./TileScatterPass";
 
 export class TerritoryPass {
@@ -28,7 +29,6 @@ export class TerritoryPass {
   private mapH: number;
 
   private program: WebGLProgram;
-  private uCamera: WebGLUniformLocation;
   private uMapSize: WebGLUniformLocation;
   private uAltView: WebGLUniformLocation;
   private uStaleNukeBase: WebGLUniformLocation;
@@ -144,7 +144,6 @@ export class TerritoryPass {
       }),
       "TerritoryPass",
     );
-    this.uCamera = gl.getUniformLocation(this.program, "uCamera")!;
     this.uMapSize = gl.getUniformLocation(this.program, "uMapSize")!;
     this.uAltView = gl.getUniformLocation(this.program, "uAltView")!;
     this.uStaleNukeBase = gl.getUniformLocation(
@@ -425,7 +424,6 @@ export class TerritoryPass {
     const mo = this.settings.mapOverlay;
 
     gl.useProgram(this.program);
-    gl.uniformMatrix3fv(this.uCamera, false, cameraMatrix);
     gl.uniform2f(this.uMapSize, this.mapW, this.mapH);
     gl.uniform1i(this.uAltView, this.altView ? 1 : 0);
     gl.uniform1f(this.uStaleNukeBase, mo.staleNukeBase);
@@ -476,8 +474,7 @@ export class TerritoryPass {
       gl.bindTexture(gl.TEXTURE_2D, this.affiliationTex);
     }
 
-    gl.bindVertexArray(this.vao);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    drawMapSurface(gl, this.vao);
   }
 
   dispose(): void {

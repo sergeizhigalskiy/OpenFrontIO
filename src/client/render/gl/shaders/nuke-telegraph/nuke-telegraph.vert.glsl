@@ -8,7 +8,7 @@ layout(location = 1) in vec4 aInstance;
 // Per-instance: 0 = self, 1 = ally, 2 = enemy
 layout(location = 2) in float aRelation;
 
-uniform mat3 uCamera;
+#include "camera"
 
 out vec2 vLocal;              // [-1, +1] local coords
 flat out float vInnerRadius;
@@ -26,6 +26,5 @@ void main() {
   vec2 center = aInstance.xy + 0.5;
   vec2 worldPos = center + vLocal * r;
 
-  vec3 clip = uCamera * vec3(worldPos, 1.0);
-  gl_Position = vec4(clip.xy, 0.0, 1.0);
+  gl_Position = anchoredToClip(center, worldPos - center);
 }

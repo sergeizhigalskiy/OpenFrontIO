@@ -45,6 +45,7 @@ import {
   renderDpr,
   showGLGate,
 } from "../render/gl";
+import { pickTilted } from "../render/gl/camera/MapViewSource";
 import { deepAssign } from "../render/gl/SettingsUtils";
 import {
   ALL_UNIT_TYPES,
@@ -648,6 +649,17 @@ export class ReplayViewer extends LitElement {
     const transform = {
       screenToWorldCoordinates: (sx: number, sy: number) => {
         const rect = canvas.getBoundingClientRect();
+        const tilted = pickTilted(
+          view.mapView,
+          camera,
+          sx - rect.left,
+          sy - rect.top,
+          rect.width,
+          rect.height,
+        );
+        if (tilted !== null) {
+          return new Cell(Math.floor(tilted.x), Math.floor(tilted.y));
+        }
         const w = camera.worldAt(
           sx - rect.left,
           sy - rect.top,

@@ -8,6 +8,7 @@
  */
 
 import { VOLCANO_ERUPTION_RADIUS } from "@openfront/engine-lib/game/Volcanoes";
+import { createDrapedQuad, DrapedQuad } from "../terrain/DrapedQuad";
 import { createProgram } from "../utils/GlUtils";
 
 import fragSrc from "../shaders/volcano/volcano.frag.glsl?raw";
@@ -28,10 +29,9 @@ export interface VolcanoMarker {
 export class VolcanoPass {
   private gl: WebGL2RenderingContext;
   private program: WebGLProgram;
-  private vao: WebGLVertexArrayObject;
-  private quadBuf: WebGLBuffer;
+  // A draped grid, so the eruption glow follows the 3D terrain.
+  private quad: DrapedQuad;
 
-  private uCamera: WebGLUniformLocation;
   private uCenter: WebGLUniformLocation;
   private uRadius: WebGLUniformLocation;
   private uMode: WebGLUniformLocation;
@@ -47,7 +47,6 @@ export class VolcanoPass {
     this.gl = gl;
     this.program = createProgram(gl, vertSrc, fragSrc, "VolcanoPass");
 
-    this.uCamera = gl.getUniformLocation(this.program, "uCamera")!;
     this.uCenter = gl.getUniformLocation(this.program, "uCenter")!;
     this.uRadius = gl.getUniformLocation(this.program, "uRadius")!;
     this.uMode = gl.getUniformLocation(this.program, "uMode")!;
@@ -55,18 +54,7 @@ export class VolcanoPass {
     this.uRumble = gl.getUniformLocation(this.program, "uRumble")!;
     this.uAge = gl.getUniformLocation(this.program, "uAge")!;
 
-    this.vao = gl.createVertexArray()!;
-    gl.bindVertexArray(this.vao);
-    this.quadBuf = gl.createBuffer()!;
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuf);
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array([0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1]),
-      gl.STATIC_DRAW,
-    );
-    gl.enableVertexAttribArray(0);
-    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-    gl.bindVertexArray(null);
+    this.quad = createDrapedQuad(gl);
   }
 
   update(markers: VolcanoMarker[]): void {
@@ -86,16 +74,16 @@ export class VolcanoPass {
     if (this.markers.length === 0 && this.eruptions.length === 0) return;
     const gl = this.gl;
     gl.useProgram(this.program);
-    gl.uniformMatrix3fv(this.uCamera, false, cameraMatrix);
     gl.uniform1f(this.uTime, (now - this.startTime) / 1000);
-    gl.bindVertexArray(this.vao);
+    gl.bindVertexArray(this.quad.vao);
+    const count = this.quad.vertexCount;
 
     gl.uniform1i(this.uMode, 1);
     gl.uniform1f(this.uRadius, VOLCANO_ERUPTION_RADIUS);
     for (const e of this.eruptions) {
       gl.uniform2f(this.uCenter, e.x, e.y);
       gl.uniform1f(this.uAge, (now - e.startMs) / ERUPTION_GLOW_MS);
-      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      gl.drawArrays(gl.TRIANGLES, 0, count);
     }
 
     gl.uniform1i(this.uMode, 0);
@@ -103,7 +91,7 @@ export class VolcanoPass {
     for (const m of this.markers) {
       gl.uniform2f(this.uCenter, m.x, m.y);
       gl.uniform1f(this.uRumble, m.rumbling ? 1 : 0);
-      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      gl.drawArrays(gl.TRIANGLES, 0, count);
     }
     gl.bindVertexArray(null);
   }
@@ -111,7 +99,7 @@ export class VolcanoPass {
   dispose(): void {
     const gl = this.gl;
     gl.deleteProgram(this.program);
-    gl.deleteBuffer(this.quadBuf);
-    gl.deleteVertexArray(this.vao);
+    gl.deleteBuffer(this.quad.buffer);
+    gl.deleteVertexArray(this.quad.vao);
   }
 }

@@ -14,6 +14,7 @@ import { TILE_DEFINES } from "../utils/TileCodec";
 
 import overlayVertSrc from "../shaders/map-overlay/overlay.vert.glsl?raw";
 import trailFragSrc from "../shaders/map-overlay/trail.frag.glsl?raw";
+import { drawMapSurface } from "../terrain/MapSurface";
 
 export class TrailPass {
   private gl: WebGL2RenderingContext;
@@ -22,7 +23,6 @@ export class TrailPass {
   private mapH: number;
 
   private program: WebGLProgram;
-  private uCamera: WebGLUniformLocation;
   private uMapSize: WebGLUniformLocation;
   private uTrailAlpha: WebGLUniformLocation;
   private uTime: WebGLUniformLocation;
@@ -79,7 +79,6 @@ export class TrailPass {
       }),
       "TrailPass",
     );
-    this.uCamera = gl.getUniformLocation(this.program, "uCamera")!;
     this.uMapSize = gl.getUniformLocation(this.program, "uMapSize")!;
     this.uTrailAlpha = gl.getUniformLocation(this.program, "uTrailAlpha")!;
     this.uTime = gl.getUniformLocation(this.program, "uTime")!;
@@ -180,7 +179,6 @@ export class TrailPass {
     const gl = this.gl;
 
     gl.useProgram(this.program);
-    gl.uniformMatrix3fv(this.uCamera, false, cameraMatrix);
     gl.uniform2f(this.uMapSize, this.mapW, this.mapH);
     gl.uniform1f(this.uTrailAlpha, this.settings.mapOverlay.trailAlpha);
     gl.uniform1f(this.uTime, (performance.now() - this.startTime) / 1000);
@@ -197,8 +195,7 @@ export class TrailPass {
     gl.activeTexture(gl.TEXTURE3);
     gl.bindTexture(gl.TEXTURE_2D, this.effectTex);
 
-    gl.bindVertexArray(this.vao);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    drawMapSurface(gl, this.vao);
   }
 
   dispose(): void {

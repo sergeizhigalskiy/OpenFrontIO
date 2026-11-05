@@ -46,7 +46,6 @@ export class FxAttackRingPass {
   private settings: RenderSettings;
 
   private program: WebGLProgram;
-  private uCamera: WebGLUniformLocation;
   private uTilesPerPx: WebGLUniformLocation;
   private uTime: WebGLUniformLocation;
   private uRingWidth: WebGLUniformLocation;
@@ -67,7 +66,6 @@ export class FxAttackRingPass {
       attackRingFragSrc,
       "FxAttackRingPass",
     );
-    this.uCamera = gl.getUniformLocation(this.program, "uCamera")!;
     this.uTilesPerPx = gl.getUniformLocation(this.program, "uTilesPerPx")!;
     this.uTime = gl.getUniformLocation(this.program, "uTime")!;
     this.uRingWidth = gl.getUniformLocation(this.program, "uRingWidth")!;
@@ -185,7 +183,6 @@ export class FxAttackRingPass {
     if (this.ringCount === 0) return;
     const gl = this.gl;
     gl.useProgram(this.program);
-    gl.uniformMatrix3fv(this.uCamera, false, cameraMatrix);
     gl.uniform1f(this.uTilesPerPx, 1 / zoom);
     gl.uniform1f(this.uTime, performance.now() / 1000);
     gl.uniform1f(this.uRingWidth, this.settings.fx.shockwaveRingWidth);

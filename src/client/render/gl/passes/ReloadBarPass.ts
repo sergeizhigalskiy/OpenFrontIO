@@ -120,7 +120,6 @@ export class ReloadBarPass {
   private program: WebGLProgram;
   private mapW: number;
 
-  private uCamera: WebGLUniformLocation;
   private uHalfIcon: WebGLUniformLocation;
   private uLayout: WebGLUniformLocation;
   private uBorder: WebGLUniformLocation;
@@ -144,7 +143,6 @@ export class ReloadBarPass {
     this.mapW = header.mapWidth;
 
     this.program = createProgram(gl, vertSrc, fragSrc, "ReloadBarPass");
-    this.uCamera = gl.getUniformLocation(this.program, "uCamera")!;
     this.uHalfIcon = gl.getUniformLocation(this.program, "uHalfIcon")!;
     this.uLayout = gl.getUniformLocation(this.program, "uLayout")!;
     this.uBorder = gl.getUniformLocation(this.program, "uBorder")!;
@@ -212,7 +210,6 @@ export class ReloadBarPass {
 
     const gl = this.gl;
     gl.useProgram(this.program);
-    gl.uniformMatrix3fv(this.uCamera, false, cameraMatrix);
     gl.uniform1f(this.uHalfIcon, halfIcon);
     gl.uniform4f(this.uLayout, ROW_TOP, ROW_WIDTH, PIP_HEIGHT, PIP_GAP);
     gl.uniform1f(this.uBorder, BORDER_PX / zoom);

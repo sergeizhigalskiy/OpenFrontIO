@@ -26,7 +26,6 @@ export class CrosshairPass {
   private program: WebGLProgram;
   private vao: WebGLVertexArrayObject;
 
-  private uCamera: WebGLUniformLocation;
   private uCenter: WebGLUniformLocation;
   private uHalfSize: WebGLUniformLocation;
   private uViewport: WebGLUniformLocation;
@@ -55,7 +54,6 @@ export class CrosshairPass {
     this.gl = gl;
     this.program = createProgram(gl, vertSrc, fragSrc, "CrosshairPass");
 
-    this.uCamera = gl.getUniformLocation(this.program, "uCamera")!;
     this.uCenter = gl.getUniformLocation(this.program, "uCenter")!;
     this.uHalfSize = gl.getUniformLocation(this.program, "uHalfSize")!;
     this.uViewport = gl.getUniformLocation(this.program, "uViewport")!;
@@ -138,7 +136,6 @@ export class CrosshairPass {
         } else {
           gl.uniform1f(this.uHasAtlas, 0.0);
         }
-        gl.uniformMatrix3fv(this.uCamera, false, cameraMatrix);
         gl.uniform2f(this.uCenter, this.blockedXTile.x, animY);
         gl.uniform1f(this.uHalfSize, CROSSHAIR_PX * 2.2);
         gl.uniform2f(
@@ -159,7 +156,6 @@ export class CrosshairPass {
     if (!this.active) return;
 
     gl.useProgram(this.program);
-    gl.uniformMatrix3fv(this.uCamera, false, cameraMatrix);
     gl.uniform2f(this.uCenter, this.centerX, this.centerY);
     gl.uniform1f(this.uHalfSize, CROSSHAIR_PX);
     gl.uniform2f(this.uViewport, gl.drawingBufferWidth, gl.drawingBufferHeight);

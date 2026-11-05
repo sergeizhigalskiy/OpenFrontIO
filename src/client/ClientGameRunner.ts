@@ -589,6 +589,9 @@ function mountWebGLFrameLoop(
   const mapWidth = gameMap.width();
   const mapHeight = gameMap.height();
 
+  // Picking, zoom and pan follow the renderer's view mode (tilt / 3D).
+  transformHandler.setMapView(view.mapView);
+
   // Cache canvas dimensions to avoid forced reflows every frame. Reading
   // clientWidth/clientHeight flushes pending layout — at 60fps that's a
   // measurable cost. Only update on resize events from the observer.

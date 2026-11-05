@@ -31,6 +31,7 @@ import type {
   TerrainRect,
   UnitState,
 } from "../types";
+import type { MapViewSource } from "./camera/MapViewSource";
 import type { CapitalMarker } from "./passes/CapitalPass";
 import type { RuinMarker } from "./passes/RuinsPass";
 import type { SpawnCenter } from "./passes/SpawnOverlayPass";
@@ -167,6 +168,16 @@ export class MapRenderer {
   setCameraState(x: number, y: number, z: number): void {
     this.renderer?.setCameraState(x, y, z);
   }
+
+  /**
+   * The view mode and terrain heights, for screen-to-tile picking
+   * (TransformHandler.setMapView). Stays valid across context restores.
+   */
+  readonly mapView: MapViewSource = {
+    view: () => this.settings.mapView,
+    heightAt: (x, y) => this.renderer?.terrainHeightAt(x, y) ?? 0,
+    maxHeight: () => this.renderer?.terrainMaxHeight() ?? 0,
+  };
 
   // ---- Data upload ----
 

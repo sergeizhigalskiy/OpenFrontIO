@@ -5,7 +5,7 @@ precision highp int;
 layout(location = 0) in vec2 aPos; // unit quad [0,0]→[1,1]
 
 uniform sampler2D uPlayerData;
-uniform mat3  uCamera;
+#include "camera"
 uniform float uTime;
 uniform float uLerpSpeed;
 uniform float uCullThreshold;
@@ -55,7 +55,7 @@ void main() {
   float nameWorldScale = (nameSize * nameScale) / uFontSize;
 
   // Zoom-based culling
-  float cameraScale = length(vec2(uCamera[0][0], uCamera[1][0]));
+  float cameraScale = camClipScale();
   float screenSize  = nameWorldScale * uFontBase * cameraScale;
   if (screenSize < uCullThreshold) {
     gl_Position = vec4(0.0);
@@ -103,6 +103,5 @@ void main() {
   vUV = aPos;
   vBoxType = boxType;
   vec2 worldPos = mix(boxMin, boxMax, aPos);
-  vec3 clip = uCamera * vec3(worldPos, 1.0);
-  gl_Position = vec4(clip.xy, 0.0, 1.0);
+  gl_Position = billboardToClip(vec2(wx, wy), worldPos - vec2(wx, wy));
 }

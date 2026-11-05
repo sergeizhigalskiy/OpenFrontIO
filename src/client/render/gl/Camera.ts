@@ -13,8 +13,17 @@
  *   sy = zoom * -2 / canvasHeight   (Y flip)
  *   tx = -offsetX * sx
  *   ty = -offsetY * sy
+ *
+ * getMatrix() stays the flat 2D matrix (passes use it for zoom-based sizing
+ * on the CPU). What shaders draw with is getFrame(): the 3D view-projection
+ * for the current tilt (camera/CameraMath.ts), orthographic when tilt is 0.
  */
 
+import {
+  computeCameraFrame,
+  createCameraFrame,
+  type CameraFrame,
+} from "./camera/CameraMath";
 import { renderDpr } from "./utils/Dpr";
 
 const MIN_ZOOM = 0.2;
@@ -33,6 +42,10 @@ export class Camera {
   private canvasH = 1;
   private mat = new Float32Array(9);
   private dirty = true;
+  private tiltDeg = 0;
+  private fovDeg = 40;
+  private frame: CameraFrame = createCameraFrame();
+  private frameDirty = true;
   /** True until fitMap() has been called with valid canvas dimensions. */
   private needsInitialFit = true;
 
@@ -53,6 +66,7 @@ export class Camera {
       this.fitMap();
     }
     this.dirty = true;
+    this.frameDirty = true;
   }
 
   /** Fit the map into the viewport (~90% fill). */
@@ -63,6 +77,7 @@ export class Camera {
     const sy = this.canvasH / this.mapH;
     this.zoom = Math.min(sx, sy) * 0.9;
     this.dirty = true;
+    this.frameDirty = true;
     this.needsInitialFit = false;
   }
 
@@ -86,6 +101,7 @@ export class Camera {
     );
     this.clampOffset();
     this.dirty = true;
+    this.frameDirty = true;
   }
 
   /** Set the camera center to a world position. */
@@ -94,6 +110,7 @@ export class Camera {
     this.offsetY = worldY;
     this.clampOffset();
     this.dirty = true;
+    this.frameDirty = true;
   }
 
   /** Shift the camera center by a world-space delta (used for drag panning). */
@@ -102,6 +119,7 @@ export class Camera {
     this.offsetY += dy;
     this.clampOffset();
     this.dirty = true;
+    this.frameDirty = true;
   }
 
   /** Restore camera state, skipping the initial fitMap. */
@@ -111,6 +129,7 @@ export class Camera {
     this.zoom = z;
     this.needsInitialFit = false;
     this.dirty = true;
+    this.frameDirty = true;
   }
 
   /** Multiply zoom by a factor (centered on current view). */
@@ -118,6 +137,7 @@ export class Camera {
     this.zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, this.zoom * factor));
     this.clampOffset();
     this.dirty = true;
+    this.frameDirty = true;
   }
 
   /** Set absolute zoom level. */
@@ -125,6 +145,7 @@ export class Camera {
     this.zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, level));
     this.clampOffset();
     this.dirty = true;
+    this.frameDirty = true;
   }
 
   /**
@@ -139,6 +160,35 @@ export class Camera {
     this.offsetY += worldBefore.y - worldAfter.y;
     this.clampOffset();
     this.dirty = true;
+    this.frameDirty = true;
+  }
+
+  /** Set the tilt (degrees from straight down; 0 = flat) and vertical FOV. */
+  setProjection(tiltDeg: number, fovDeg: number): void {
+    if (tiltDeg === this.tiltDeg && fovDeg === this.fovDeg) return;
+    this.tiltDeg = tiltDeg;
+    this.fovDeg = fovDeg;
+    this.frameDirty = true;
+  }
+
+  /** The 3D camera frame shaders draw with (see camera/CameraMath.ts). */
+  getFrame(): CameraFrame {
+    if (this.frameDirty) {
+      computeCameraFrame(
+        {
+          centerX: this.offsetX,
+          centerY: this.offsetY,
+          zoom: this.zoom,
+          viewW: this.canvasW,
+          viewH: this.canvasH,
+          tiltDeg: this.tiltDeg,
+          fovDeg: this.fovDeg,
+        },
+        this.frame,
+      );
+      this.frameDirty = false;
+    }
+    return this.frame;
   }
 
   /** Return the column-major mat3 camera matrix (world → clip). */

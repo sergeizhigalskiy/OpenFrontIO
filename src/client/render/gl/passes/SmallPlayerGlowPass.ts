@@ -12,6 +12,7 @@ import fullscreenVertSrc from "../shaders/shared/fullscreen.vert.glsl?raw";
 import compositeVertSrc from "../shaders/shared/map-quad.vert.glsl?raw";
 import compositeFragSrc from "../shaders/small-player-glow/composite.frag.glsl?raw";
 import extractFragSrc from "../shaders/small-player-glow/extract.frag.glsl?raw";
+import { drawMapSurface } from "../terrain/MapSurface";
 import { getPaletteSize } from "../utils/ColorUtils";
 import {
   createFullscreenQuad,
@@ -42,7 +43,6 @@ export class SmallPlayerGlowPass {
 
   private uExtractMapSize: WebGLUniformLocation;
   private uBlurDir: WebGLUniformLocation;
-  private uCompositeCam: WebGLUniformLocation;
   private uCompositeMapSize: WebGLUniformLocation;
   private uGlowColor: WebGLUniformLocation;
   private uIntensity: WebGLUniformLocation;
@@ -101,7 +101,6 @@ export class SmallPlayerGlowPass {
       compositeFragSrc,
       "SmallPlayerGlowPass.compositeProg",
     );
-    this.uCompositeCam = gl.getUniformLocation(this.compositeProg, "uCamera")!;
     this.uCompositeMapSize = gl.getUniformLocation(
       this.compositeProg,
       "uMapSize",
@@ -226,7 +225,6 @@ export class SmallPlayerGlowPass {
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     toScreen(gl, canvas.width, canvas.height, () => {
       gl.useProgram(this.compositeProg);
-      gl.uniformMatrix3fv(this.uCompositeCam, false, cameraMatrix);
       gl.uniform2f(this.uCompositeMapSize, this.mapW, this.mapH);
       gl.uniform3fv(this.uGlowColor, s.color);
       // Strength fades the glow linearly: 1 = the aura's full alpha, 0.1 =
@@ -234,8 +232,7 @@ export class SmallPlayerGlowPass {
       gl.uniform1f(this.uIntensity, s.alpha * pulse * strength);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, a.tex);
-      gl.bindVertexArray(this.mapVao);
-      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      drawMapSurface(gl, this.mapVao);
     });
     gl.bindVertexArray(null);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); // restore overlay default

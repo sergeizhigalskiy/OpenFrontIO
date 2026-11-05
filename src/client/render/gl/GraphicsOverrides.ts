@@ -7,6 +7,13 @@ import { z } from "zod";
  */
 export const PALETTE_NAMES = ["default", "colorblind"] as const;
 
+/**
+ * Map camera modes (RenderSettings.mapView.mode): the classic top-down map,
+ * a tilted perspective camera, and the tilted camera over 3D terrain.
+ */
+export const MAP_VIEW_MODES = ["flat", "tilt", "terrain3d"] as const;
+export type MapViewMode = (typeof MAP_VIEW_MODES)[number];
+
 export const COSMETICS_SHOW_FROM = [
   "everyone",
   "teammates",
@@ -109,6 +116,14 @@ export const GraphicsOverridesSchema = z
         plainsColor: z.string(),
         highlandColor: z.string(),
         mountainColor: z.string(),
+      })
+      .partial(),
+    mapView: z
+      .object({
+        // Camera: flat top-down, tilted, or tilted over 3D terrain.
+        mode: z.enum(MAP_VIEW_MODES),
+        // Shade land by elevation so mountains and coasts read as relief.
+        hillshade: z.boolean(),
       })
       .partial(),
     lighting: z

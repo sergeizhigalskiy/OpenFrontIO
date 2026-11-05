@@ -10,6 +10,7 @@
 
 import fragSrc from "../shaders/tide-warning/tide-warning.frag.glsl?raw";
 import vertSrc from "../shaders/tide-warning/tide-warning.vert.glsl?raw";
+import { drawMapSurface } from "../terrain/MapSurface";
 import {
   createMapQuad,
   createProgram,
@@ -20,7 +21,6 @@ import {
 export class TideWarningPass {
   private program: WebGLProgram;
   private vao: WebGLVertexArrayObject;
-  private uCamera: WebGLUniformLocation;
   private uMask: WebGLUniformLocation;
   private uTime: WebGLUniformLocation;
 
@@ -43,7 +43,6 @@ export class TideWarningPass {
       shaderSrc(fragSrc, defines),
       "TideWarningPass",
     );
-    this.uCamera = gl.getUniformLocation(this.program, "uCamera")!;
     this.uMask = gl.getUniformLocation(this.program, "uMask")!;
     this.uTime = gl.getUniformLocation(this.program, "uTime")!;
     this.vao = createMapQuad(gl, mapW, mapH);
@@ -92,13 +91,12 @@ export class TideWarningPass {
     if (!this.active || this.maskTex === null) return;
     const gl = this.gl;
     gl.useProgram(this.program);
-    gl.uniformMatrix3fv(this.uCamera, false, cameraMatrix);
     gl.uniform1f(this.uTime, (performance.now() - this.startTime) / 1000);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.maskTex);
     gl.uniform1i(this.uMask, 0);
-    gl.bindVertexArray(this.vao);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    // Draped on the 3D terrain like the territory overlay.
+    drawMapSurface(gl, this.vao);
     gl.bindVertexArray(null);
   }
 

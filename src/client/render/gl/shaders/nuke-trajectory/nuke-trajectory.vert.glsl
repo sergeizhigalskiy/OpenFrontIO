@@ -4,7 +4,7 @@ precision highp float;
 // Per-vertex: (t along curve, side: -1 or +1, cumulative arc distance)
 layout(location = 0) in vec3 aVertex;
 
-uniform mat3 uCamera;
+#include "camera"
 uniform vec2 uP0, uP1, uP2, uP3;   // Bezier control points
 uniform float uPixelSize;           // world units per pixel
 uniform float uQuadHalfPx;          // half-width of quad in pixels
@@ -43,6 +43,5 @@ void main() {
   vEdgeDist = side;
   vArcDist = aVertex.z;
 
-  vec3 clip = uCamera * vec3(pos, 1.0);
-  gl_Position = vec4(clip.xy, 0.0, 1.0);
+  gl_Position = groundToClip(pos);
 }

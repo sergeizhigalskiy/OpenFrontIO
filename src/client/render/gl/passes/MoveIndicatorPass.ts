@@ -16,7 +16,6 @@ export class MoveIndicatorPass {
   private program: WebGLProgram;
   private vao: WebGLVertexArrayObject;
 
-  private uCamera: WebGLUniformLocation;
   private uCenter: WebGLUniformLocation;
   private uElapsed: WebGLUniformLocation;
   private uColor: WebGLUniformLocation;
@@ -40,7 +39,6 @@ export class MoveIndicatorPass {
     this.settings = settings;
     this.program = createProgram(gl, vertSrc, fragSrc, "MoveIndicatorPass");
 
-    this.uCamera = gl.getUniformLocation(this.program, "uCamera")!;
     this.uCenter = gl.getUniformLocation(this.program, "uCenter")!;
     this.uElapsed = gl.getUniformLocation(this.program, "uElapsed")!;
     this.uColor = gl.getUniformLocation(this.program, "uColor")!;
@@ -92,7 +90,6 @@ export class MoveIndicatorPass {
 
     const gl = this.gl;
     gl.useProgram(this.program);
-    gl.uniformMatrix3fv(this.uCamera, false, cameraMatrix);
     gl.uniform2f(this.uCenter, this.centerX, this.centerY);
     gl.uniform1f(this.uElapsed, elapsed);
     gl.uniform3f(this.uColor, this.colorR, this.colorG, this.colorB);

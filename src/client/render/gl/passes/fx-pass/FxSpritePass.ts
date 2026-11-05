@@ -189,7 +189,6 @@ export class FxSpritePass {
   private settings: RenderSettings;
 
   private program: WebGLProgram;
-  private uCamera: WebGLUniformLocation;
   private uFxUV: WebGLUniformLocation;
   private uFxWorld: WebGLUniformLocation;
   private vao: WebGLVertexArrayObject;
@@ -217,7 +216,6 @@ export class FxSpritePass {
       spriteFragSrc,
       "FxSpritePass",
     );
-    this.uCamera = gl.getUniformLocation(this.program, "uCamera")!;
     this.uFxUV = gl.getUniformLocation(this.program, "uFxUV")!;
     this.uFxWorld = gl.getUniformLocation(this.program, "uFxWorld")!;
     gl.useProgram(this.program);
@@ -525,7 +523,6 @@ export class FxSpritePass {
     if (this.spriteCount === 0 || !this.atlasReady) return;
     const gl = this.gl;
     gl.useProgram(this.program);
-    gl.uniformMatrix3fv(this.uCamera, false, cameraMatrix);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.atlasTex);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceBuf.buffer);

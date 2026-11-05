@@ -2,6 +2,20 @@
  * WebGL2 utility functions: shader compilation, texture creation, VAO helpers.
  */
 
+import {
+  CAMERA_INCLUDE,
+  HEIGHT_MAP_SAMPLER,
+  HEIGHT_MAP_UNIT,
+} from "../camera/CameraBlock";
+import cameraGlsl from "../shaders/shared/camera.glsl?raw";
+
+/** Expand `#include "camera"` (see camera/CameraBlock.ts). */
+export function expandShaderIncludes(source: string): string {
+  return source.includes(CAMERA_INCLUDE)
+    ? source.replace(CAMERA_INCLUDE, cameraGlsl)
+    : source;
+}
+
 /**
  * Thrown when the WebGL context died while we were building GPU resources —
  * a GPU-process crash, a driver reset, or the browser reclaiming a context
@@ -92,8 +106,20 @@ export function createProgram(
   fragSrc: string,
   name: string,
 ): WebGLProgram {
-  const vs = compileShader(gl, gl.VERTEX_SHADER, vertSrc, `${name} vertex`);
-  const fs = compileShader(gl, gl.FRAGMENT_SHADER, fragSrc, `${name} fragment`);
+  const usesCamera =
+    vertSrc.includes(CAMERA_INCLUDE) || fragSrc.includes(CAMERA_INCLUDE);
+  const vs = compileShader(
+    gl,
+    gl.VERTEX_SHADER,
+    expandShaderIncludes(vertSrc),
+    `${name} vertex`,
+  );
+  const fs = compileShader(
+    gl,
+    gl.FRAGMENT_SHADER,
+    expandShaderIncludes(fragSrc),
+    `${name} fragment`,
+  );
   const program = gl.createProgram()!;
   gl.attachShader(program, vs);
   gl.attachShader(program, fs);
@@ -105,6 +131,16 @@ export function createProgram(
     const err = glFailure(gl, "link", log, name);
     gl.deleteProgram(program);
     throw err;
+  }
+  if (usesCamera) {
+    // The camera block needs no binding call (blocks start at binding 0);
+    // the height-map sampler must point at its reserved unit. Leaves this
+    // program bound — every pass binds its own before setting uniforms.
+    const heightMap = gl.getUniformLocation(program, HEIGHT_MAP_SAMPLER);
+    if (heightMap !== null) {
+      gl.useProgram(program);
+      gl.uniform1i(heightMap, HEIGHT_MAP_UNIT);
+    }
   }
   return program;
 }

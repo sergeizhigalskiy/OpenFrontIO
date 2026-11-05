@@ -5,7 +5,7 @@ layout(location = 0) in vec2 aPos;
 layout(location = 1) in vec3 aInstPos;   // x, y, fxType
 layout(location = 2) in vec2 aInstFlags; // frameIdx (uint8), alpha (uint8)
 
-uniform mat3 uCamera;
+#include "camera"
 uniform vec4 uFxUV[FX_TYPE_COUNT];    // vTop, vSpan, uFrameSpan, 0
 uniform vec4 uFxWorld[FX_TYPE_COUNT]; // worldW, worldH, 0, 0
 
@@ -23,8 +23,7 @@ void main() {
   vec2 center = vec2(aInstPos.x + 0.5, aInstPos.y + 0.5);
   vec2 worldPos = center + (aPos - 0.5) * vec2(world.x, world.y);
 
-  vec3 clip = uCamera * vec3(worldPos, 1.0);
-  gl_Position = vec4(clip.xy, 0.0, 1.0);
+  gl_Position = anchoredToClip(center, worldPos - center);
 
   float u = (frameIdx + aPos.x) * uv.z;
   float v = uv.x + aPos.y * uv.y;

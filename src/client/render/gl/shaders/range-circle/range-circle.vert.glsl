@@ -4,7 +4,7 @@ precision highp float;
 // Unit quad [0,1]
 layout(location = 0) in vec2 aPos;
 
-uniform mat3 uCamera;
+#include "camera"
 uniform vec2 uCenter;   // world-space circle center (tile coords)
 uniform float uRadius;  // world-space radius in tiles
 
@@ -17,8 +17,6 @@ void main() {
   // Expand quad to cover circle bbox in world space
   // Add 1-tile padding for the stroke
   float r = uRadius + 1.0;
-  vec2 worldPos = uCenter + 0.5 + vLocal * r;
 
-  vec3 clip = uCamera * vec3(worldPos, 1.0);
-  gl_Position = vec4(clip.xy, 0.0, 1.0);
+  gl_Position = anchoredToClip(uCenter + 0.5, vLocal * r);
 }

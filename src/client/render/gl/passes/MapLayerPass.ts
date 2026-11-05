@@ -9,6 +9,7 @@
 
 import layerFragSrc from "../shaders/map-layer/layer.frag.glsl?raw";
 import layerVertSrc from "../shaders/map-layer/layer.vert.glsl?raw";
+import { drawMapSurface } from "../terrain/MapSurface";
 import {
   createMapQuad,
   createProgram,
@@ -21,7 +22,6 @@ export class MapLayerPass {
   private layerTex: WebGLTexture;
   private destroyedTex: WebGLTexture;
   private vao: WebGLVertexArrayObject;
-  private uCamera: WebGLUniformLocation;
   private uPlacement: WebGLUniformLocation;
   private uNukeable: WebGLUniformLocation;
   private uVisible: WebGLUniformLocation;
@@ -54,7 +54,6 @@ export class MapLayerPass {
       shaderSrc(layerFragSrc, { MAP_W: mapW, MAP_H: mapH }),
       "MapLayerPass",
     );
-    this.uCamera = gl.getUniformLocation(this.program, "uCamera")!;
     this.uPlacement = gl.getUniformLocation(this.program, "uPlacement")!;
     this.uNukeable = gl.getUniformLocation(this.program, "uNukeable")!;
     this.uVisible = gl.getUniformLocation(this.program, "uVisible")!;
@@ -258,14 +257,12 @@ export class MapLayerPass {
     gl.uniform1i(this.uTerrainBytes, 1);
     gl.uniform1i(this.uDestroyedMask, 2);
 
-    gl.uniformMatrix3fv(this.uCamera, false, cam);
     gl.uniform1i(this.uPlacement, this.placement);
     gl.uniform1i(this.uNukeable, this.nukeable ? 1 : 0);
     gl.uniform1f(this.uVisible, this._visible ? 1.0 : 0.0);
     gl.uniform1f(this.uAlpha, this._alpha);
 
-    gl.bindVertexArray(this.vao);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    drawMapSurface(gl, this.vao);
     gl.bindVertexArray(null);
   }
 

@@ -9,7 +9,7 @@ layout(location = 0) in vec2 aPos;
 uniform sampler2D uPlayerData; // 8 × MAX_PLAYERS, RGBA32F
 
 // Uniforms
-uniform mat3  uCamera;
+#include "camera"
 uniform float uTime;
 uniform float uLerpSpeed;
 uniform float uCullThreshold;
@@ -157,7 +157,7 @@ void main() {
   float nameWorldScale = (nameSize * nameScale) / uFontSize;
 
   // Zoom-based culling (same as name shader)
-  float cameraScale = length(vec2(uCamera[0][0], uCamera[1][0]));
+  float cameraScale = camClipScale();
   float screenSize  = nameWorldScale * uFontBase * cameraScale;
   // Targeted players' icons (incl. the crosshair) stay visible at any zoom,
   // boosted in lockstep with name.vert.glsl so the layout stays aligned.
@@ -251,8 +251,7 @@ void main() {
   vec2 worldPos = iconOrigin + aPos * vec2(quadSize, quadSize);
 
   // Camera transform
-  vec3 clip = uCamera * vec3(worldPos, 1.0);
-  gl_Position = vec4(clip.xy, 0.0, 1.0);
+  gl_Position = billboardToClip(vec2(wx, wy), worldPos - vec2(wx, wy));
 
   // vLocalUV in icon-content space: 0..1 over the icon, <0/>1 in the outline
   // margin. This keeps the drain math below unchanged and samples the

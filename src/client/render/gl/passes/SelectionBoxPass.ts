@@ -27,7 +27,6 @@ export class SelectionBoxPass {
   private program: WebGLProgram;
   private vao: WebGLVertexArrayObject;
 
-  private uCamera: WebGLUniformLocation;
   private uCenter: WebGLUniformLocation;
   private uHalfSize: WebGLUniformLocation;
   private uTime: WebGLUniformLocation;
@@ -40,7 +39,6 @@ export class SelectionBoxPass {
     this.gl = gl;
     this.program = createProgram(gl, vertSrc, fragSrc, "SelectionBoxPass");
 
-    this.uCamera = gl.getUniformLocation(this.program, "uCamera")!;
     this.uCenter = gl.getUniformLocation(this.program, "uCenter")!;
     this.uHalfSize = gl.getUniformLocation(this.program, "uHalfSize")!;
     this.uTime = gl.getUniformLocation(this.program, "uTime")!;
@@ -95,7 +93,6 @@ export class SelectionBoxPass {
 
     const gl = this.gl;
     gl.useProgram(this.program);
-    gl.uniformMatrix3fv(this.uCamera, false, cameraMatrix);
     gl.uniform1f(this.uHalfSize, HALF_SIZE);
     gl.uniform1f(this.uTime, frameTick);
     gl.bindVertexArray(this.vao);

@@ -11,6 +11,7 @@ import { createMapQuad, createProgram } from "../utils/GlUtils";
 
 import gridFragSrc from "../shaders/grid/grid.frag.glsl?raw";
 import overlayVertSrc from "../shaders/map-overlay/overlay.vert.glsl?raw";
+import { drawMapSurface } from "../terrain/MapSurface";
 
 const BASE_CELL_COUNT = 10;
 const MAX_COLUMNS = 50;
@@ -26,7 +27,6 @@ export class CoordinateGridPass {
   private vao: WebGLVertexArrayObject;
   private glyphTex: WebGLTexture;
 
-  private uCamera: WebGLUniformLocation;
   private uMapSize: WebGLUniformLocation;
   private uCellSize: WebGLUniformLocation;
   private uZoom: WebGLUniformLocation;
@@ -58,7 +58,6 @@ export class CoordinateGridPass {
       gridFragSrc,
       "CoordinateGridPass",
     );
-    this.uCamera = gl.getUniformLocation(this.program, "uCamera")!;
     this.uMapSize = gl.getUniformLocation(this.program, "uMapSize")!;
     this.uCellSize = gl.getUniformLocation(this.program, "uCellSize")!;
     this.uZoom = gl.getUniformLocation(this.program, "uZoom")!;
@@ -75,7 +74,6 @@ export class CoordinateGridPass {
     const gl = this.gl;
 
     gl.useProgram(this.program);
-    gl.uniformMatrix3fv(this.uCamera, false, cameraMatrix);
     gl.uniform2f(this.uMapSize, this.mapW, this.mapH);
     gl.uniform1f(this.uCellSize, this.cellSize);
     gl.uniform1f(this.uZoom, zoom);
@@ -85,8 +83,7 @@ export class CoordinateGridPass {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.glyphTex);
 
-    gl.bindVertexArray(this.vao);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    drawMapSurface(gl, this.vao);
   }
 
   dispose(): void {

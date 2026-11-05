@@ -6,11 +6,18 @@
  * live. Vertex shader transforms the map quad by the camera mat3; fragment
  * shader samples the RGBA8 terrain texture with nearest-neighbour filtering
  * so each terrain cell stays pixel-crisp at every zoom level.
+ *
+ * With a relief source set (setRelief), land is hillshaded from the smoothed
+ * height field: normals from neighbouring heights, one fixed light. Flat
+ * ground keeps its exact palette colour; slopes brighten or darken.
  */
 
 import type { TerrainRect } from "../../types";
+import type { RenderSettings } from "../RenderSettings";
 import terrainFragSrc from "../shaders/terrain/terrain.frag.glsl?raw";
 import terrainVertSrc from "../shaders/terrain/terrain.vert.glsl?raw";
+import { drawMapSurface } from "../terrain/MapSurface";
+import { HEIGHT_UNITS_PER_LEVEL, lightDirection } from "../terrain/Relief";
 import {
   buildTerrainRGBA,
   encodeTerrainTile,
@@ -31,7 +38,14 @@ export class TerrainPass {
   private program: WebGLProgram;
   private tex: WebGLTexture;
   private vao: WebGLVertexArrayObject;
-  private uCamera: WebGLUniformLocation;
+  private uShadeStrength: WebGLUniformLocation | null;
+  private uReliefScale: WebGLUniformLocation | null;
+  private uLightDir: WebGLUniformLocation | null;
+  /** Hillshade source: RG8 height field + the live mapView settings. */
+  private relief: {
+    tex: WebGLTexture;
+    view: RenderSettings["mapView"];
+  } | null = null;
   private mapW: number;
   private mapH: number;
   // Base ocean (deep water) color; reused by applyTerrainRects and rebuilds.
@@ -58,10 +72,15 @@ export class TerrainPass {
     this.program = createProgram(
       gl,
       shaderSrc(terrainVertSrc, { MAP_W: mapW, MAP_H: mapH }),
-      terrainFragSrc,
+      shaderSrc(terrainFragSrc, { MAP_W: mapW, MAP_H: mapH }),
       "TerrainPass",
     );
-    this.uCamera = gl.getUniformLocation(this.program, "uCamera")!;
+    this.uShadeStrength = gl.getUniformLocation(this.program, "uShadeStrength");
+    this.uReliefScale = gl.getUniformLocation(this.program, "uReliefScale");
+    this.uLightDir = gl.getUniformLocation(this.program, "uLightDir");
+    gl.useProgram(this.program);
+    gl.uniform1i(gl.getUniformLocation(this.program, "uTerrain"), 0);
+    gl.uniform1i(gl.getUniformLocation(this.program, "uHeightField"), 1);
 
     this.tex = createTexture2D(gl, {
       width: mapW,
@@ -74,6 +93,17 @@ export class TerrainPass {
     });
 
     this.vao = createMapQuad(gl, mapW, mapH);
+  }
+
+  /**
+   * Enable hillshading from an RG8 height field (HeightField.tex). `view` is
+   * the live mapView settings slice, read every draw. Null turns it off.
+   */
+  setRelief(
+    tex: WebGLTexture | null,
+    view: RenderSettings["mapView"] | null,
+  ): void {
+    this.relief = tex !== null && view !== null ? { tex, view } : null;
   }
 
   /**
@@ -150,13 +180,29 @@ export class TerrainPass {
   draw(cameraMatrix: Float32Array): void {
     const gl = this.gl;
     gl.useProgram(this.program);
-    gl.uniformMatrix3fv(this.uCamera, false, cameraMatrix);
+
+    const relief = this.relief;
+    const shade =
+      relief !== null && relief.view.hillshade
+        ? relief.view.hillshadeStrength
+        : 0;
+    gl.uniform1f(this.uShadeStrength, shade);
+    if (relief !== null && shade > 0) {
+      const v = relief.view;
+      gl.uniform1f(this.uReliefScale, v.reliefScale / HEIGHT_UNITS_PER_LEVEL);
+      const [lx, ly, lz] = lightDirection(
+        v.lightAzimuthDeg,
+        v.lightAltitudeDeg,
+      );
+      gl.uniform3f(this.uLightDir, lx, ly, lz);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, relief.tex);
+    }
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.tex);
 
-    gl.bindVertexArray(this.vao);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    drawMapSurface(gl, this.vao);
   }
 
   dispose(): void {

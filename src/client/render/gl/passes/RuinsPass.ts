@@ -26,7 +26,6 @@ export class RuinsPass {
   private vao: WebGLVertexArrayObject;
   private quadBuf: WebGLBuffer;
 
-  private uCamera: WebGLUniformLocation;
   private uCenter: WebGLUniformLocation;
   private uRadius: WebGLUniformLocation;
 
@@ -36,7 +35,6 @@ export class RuinsPass {
     this.gl = gl;
     this.program = createProgram(gl, vertSrc, fragSrc, "RuinsPass");
 
-    this.uCamera = gl.getUniformLocation(this.program, "uCamera")!;
     this.uCenter = gl.getUniformLocation(this.program, "uCenter")!;
     this.uRadius = gl.getUniformLocation(this.program, "uRadius")!;
 
@@ -62,7 +60,6 @@ export class RuinsPass {
     if (this.ruins.length === 0) return;
     const gl = this.gl;
     gl.useProgram(this.program);
-    gl.uniformMatrix3fv(this.uCamera, false, cameraMatrix);
     gl.uniform1f(this.uRadius, RUINS_ICON_RADIUS);
     gl.bindVertexArray(this.vao);
     for (const r of this.ruins) {

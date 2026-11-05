@@ -21,6 +21,7 @@ import type { GhostPreviewData, TerrainRect } from "../../types";
 import type { RenderSettings } from "../RenderSettings";
 import overlayVertSrc from "../shaders/map-overlay/overlay.vert.glsl?raw";
 import railroadFragSrc from "../shaders/railroad/railroad.frag.glsl?raw";
+import { drawMapSurface } from "../terrain/MapSurface";
 import {
   getPaletteSize,
   MAX_TRAIL_COLORS,
@@ -99,7 +100,6 @@ export class RailroadPass {
   private terrainTex: WebGLTexture;
   private vao: WebGLVertexArrayObject;
 
-  private uCamera: WebGLUniformLocation;
   private uMapSize: WebGLUniformLocation;
   private uZoom: WebGLUniformLocation;
   private uTime: WebGLUniformLocation;
@@ -181,7 +181,6 @@ export class RailroadPass {
       "RailroadPass",
     );
 
-    this.uCamera = gl.getUniformLocation(this.program, "uCamera")!;
     this.uMapSize = gl.getUniformLocation(this.program, "uMapSize")!;
     this.uZoom = gl.getUniformLocation(this.program, "uZoom")!;
     this.uTime = gl.getUniformLocation(this.program, "uTime")!;
@@ -417,7 +416,6 @@ export class RailroadPass {
     }
 
     gl.useProgram(this.program);
-    gl.uniformMatrix3fv(this.uCamera, false, cameraMatrix);
     gl.uniform2f(this.uMapSize, this.mapW, this.mapH);
     gl.uniform1f(this.uZoom, zoom);
     gl.uniform1f(this.uTime, (performance.now() - this.startTime) / 1000);
@@ -455,8 +453,7 @@ export class RailroadPass {
     gl.activeTexture(gl.TEXTURE5);
     gl.bindTexture(gl.TEXTURE_2D, this.effectTex);
 
-    gl.bindVertexArray(this.vao);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    drawMapSurface(gl, this.vao);
     gl.activeTexture(gl.TEXTURE0);
   }
 

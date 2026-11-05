@@ -19,6 +19,8 @@ import {
   isCellActive,
   isCellForecast,
 } from "@openfront/engine-lib/game/Weather";
+import { createDrapedQuad, DrapedQuad } from "../terrain/DrapedQuad";
+import { drawMapSurface } from "../terrain/MapSurface";
 import { createMapQuad, createProgram, shaderSrc } from "../utils/GlUtils";
 
 import cellFragSrc from "../shaders/weather/cell.frag.glsl?raw";
@@ -80,15 +82,13 @@ export class WeatherPass {
   private winterProgram: WebGLProgram;
   private cellProgram: WebGLProgram;
   private mapVao: WebGLVertexArrayObject;
-  private cellVao: WebGLVertexArrayObject;
-  private quadBuf: WebGLBuffer;
+  // A draped grid, so a cell lies on the 3D terrain.
+  private cellQuad: DrapedQuad;
 
-  private uWinterCamera: WebGLUniformLocation;
   private uTerrainBytes: WebGLUniformLocation;
   private uWinter: WebGLUniformLocation;
   private uSnowRows: WebGLUniformLocation;
 
-  private uCellCamera: WebGLUniformLocation;
   private uCenter: WebGLUniformLocation;
   private uRadius: WebGLUniformLocation;
   private uKind: WebGLUniformLocation;
@@ -123,7 +123,6 @@ export class WeatherPass {
       "WeatherPass.cell",
     );
 
-    this.uWinterCamera = gl.getUniformLocation(this.winterProgram, "uCamera")!;
     this.uTerrainBytes = gl.getUniformLocation(
       this.winterProgram,
       "uTerrainBytes",
@@ -131,7 +130,6 @@ export class WeatherPass {
     this.uWinter = gl.getUniformLocation(this.winterProgram, "uWinter")!;
     this.uSnowRows = gl.getUniformLocation(this.winterProgram, "uSnowRows")!;
 
-    this.uCellCamera = gl.getUniformLocation(this.cellProgram, "uCamera")!;
     this.uCenter = gl.getUniformLocation(this.cellProgram, "uCenter")!;
     this.uRadius = gl.getUniformLocation(this.cellProgram, "uRadius")!;
     this.uKind = gl.getUniformLocation(this.cellProgram, "uKind")!;
@@ -141,18 +139,7 @@ export class WeatherPass {
 
     this.mapVao = createMapQuad(gl, mapW, mapH);
 
-    this.cellVao = gl.createVertexArray()!;
-    gl.bindVertexArray(this.cellVao);
-    this.quadBuf = gl.createBuffer()!;
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuf);
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array([0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1]),
-      gl.STATIC_DRAW,
-    );
-    gl.enableVertexAttribArray(0);
-    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-    gl.bindVertexArray(null);
+    this.cellQuad = createDrapedQuad(gl);
   }
 
   /**
@@ -168,27 +155,25 @@ export class WeatherPass {
     const gl = this.gl;
     if (this.winter > 0) {
       gl.useProgram(this.winterProgram);
-      gl.uniformMatrix3fv(this.uWinterCamera, false, cameraMatrix);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, this.terrainBytesTex);
       gl.uniform1i(this.uTerrainBytes, 0);
       gl.uniform1f(this.uWinter, this.winter);
       gl.uniform1f(this.uSnowRows, this.snowRows);
-      gl.bindVertexArray(this.mapVao);
-      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      // Draped on the 3D terrain like the territory overlay.
+      drawMapSurface(gl, this.mapVao);
     }
     if (this.cells.length > 0) {
       gl.useProgram(this.cellProgram);
-      gl.uniformMatrix3fv(this.uCellCamera, false, cameraMatrix);
       gl.uniform1f(this.uTime, (performance.now() - this.startMs) / 1000);
-      gl.bindVertexArray(this.cellVao);
+      gl.bindVertexArray(this.cellQuad.vao);
       for (const c of this.cells) {
         gl.uniform2f(this.uCenter, c.x, c.y);
         gl.uniform1f(this.uRadius, c.radius);
         gl.uniform1i(this.uKind, c.kind);
         gl.uniform1f(this.uActive, c.active ? 1 : 0);
         gl.uniform1f(this.uFade, c.fade);
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        gl.drawArrays(gl.TRIANGLES, 0, this.cellQuad.vertexCount);
       }
     }
     gl.bindVertexArray(null);
@@ -198,8 +183,8 @@ export class WeatherPass {
     const gl = this.gl;
     gl.deleteProgram(this.winterProgram);
     gl.deleteProgram(this.cellProgram);
-    gl.deleteBuffer(this.quadBuf);
+    gl.deleteBuffer(this.cellQuad.buffer);
     gl.deleteVertexArray(this.mapVao);
-    gl.deleteVertexArray(this.cellVao);
+    gl.deleteVertexArray(this.cellQuad.vao);
   }
 }

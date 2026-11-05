@@ -50,7 +50,6 @@ export class SpiralRibbonPass {
   private settings: RenderSettings;
 
   private program: WebGLProgram;
-  private uCamera: WebGLUniformLocation;
   private uHeadDist: WebGLUniformLocation;
   private uConeLen: WebGLUniformLocation;
   private uRadius: WebGLUniformLocation;
@@ -92,7 +91,6 @@ export class SpiralRibbonPass {
       "SpiralRibbonPass.program",
     );
     const u = (name: string) => gl.getUniformLocation(this.program, name)!;
-    this.uCamera = u("uCamera");
     this.uHeadDist = u("uHeadDist");
     this.uConeLen = u("uConeLen");
     this.uRadius = u("uRadius");
@@ -315,7 +313,6 @@ export class SpiralRibbonPass {
   ): void {
     const gl = this.gl;
     gl.useProgram(this.program);
-    gl.uniformMatrix3fv(this.uCamera, false, cameraMatrix);
     gl.uniform1i(this.uCorePass, corePass);
     gl.uniform1f(this.uHalfWidth, halfWidth);
     gl.uniform1f(this.uTime, (performance.now() - this.startTime) / 1000);

@@ -5,7 +5,7 @@ layout(location = 0) in vec2 aPos;         // quad corner [0,1]
 layout(location = 1) in vec3 aLightPosIdx;  // x, y, typeIdx
 layout(location = 2) in vec3 aLightColor;   // r, g, b
 
-uniform mat3 uCamera;
+#include "camera"
 uniform float uRadiusMultiplier;
 uniform float uRadius[MAX_LIGHT_TYPES];
 uniform float uIntensity[MAX_LIGHT_TYPES];
@@ -20,8 +20,7 @@ void main() {
   vec2 center = vec2(aLightPosIdx.x + 0.5, aLightPosIdx.y + 0.5);
   vec2 worldPos = center + (aPos - 0.5) * radius * 2.0;
 
-  vec3 clip = uCamera * vec3(worldPos, 1.0);
-  gl_Position = vec4(clip.xy, 0.0, 1.0);
+  gl_Position = anchoredToClip(center, worldPos - center);
 
   vLocalPos = aPos - 0.5; // [-0.5, 0.5]
   vColor = aLightColor.rgb;
