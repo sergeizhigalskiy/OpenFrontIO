@@ -2,8 +2,10 @@
  * UnitPass — GPU-rendered mobile unit sprites.
  *
  * Renders all mobile (non-structure) units: boats, trains, troop convoys,
- * nukes, shells, SAM missiles, and MIRV warheads. All unit types are rotationally symmetric
- * — no rotation needed. Sprites are tiny grayscale PNGs colorized on the
+ * nukes, shells, SAM missiles, MIRV warheads, and the conventional war
+ * planes, drones and missiles. Sprites are never rotated: the symmetric ones
+ * don't need it, and the planes and missiles are drawn nose up (north).
+ * Sprites are tiny grayscale PNGs colorized on the
  * GPU using the standard 3-band gray replacement (180/130/70). MIRV
  * Warhead uses a programmatic 3×3 white square (colorized to border
  * color); Shell is a single white pixel.
@@ -11,9 +13,12 @@
  * Two instanced draw calls per frame — ground units and missiles are
  * split into separate buffers for correct layer ordering:
  *   Ground/sea (boats, trains) → rendered below structures
- *   Missiles (nukes, shells, SAM, MIRV warheads) → rendered above structures
+ *   Missiles (nukes, shells, SAM, MIRV warheads, planes, drones) → rendered above structures
  *
- * Atlas layout (12 columns × 13px cells, pre-built by generate-sprite-atlases.mjs):
+ * Atlas layout (13px cells). Cols 0-11 are unit-atlas.png, pre-built by
+ * generate-sprite-atlases.mjs (not in this repo); cols 12+ are
+ * unit-atlas-ext.png, drawn by scripts/genUnitArt.ts and uploaded right after
+ * it (uploadAtlasStrip):
  *   Col 0: Transport (5×5)
  *   Col 1: Trade Ship (5×5)
  *   Col 2: Warship (11×11)
@@ -25,7 +30,15 @@
  *   Col 8: MIRV Warhead (3×3 white square)
  *   Col 9: Train Engine (5×5)
  *   Col 10: Train Carriage (5×5)
- *   Col 11: Train Carriage Loaded (5×5) — also drawn for troop convoys
+ *   Col 11: Train Carriage Loaded (5×5)
+ *   Col 12: Convoy (7×5 truck)
+ *   Col 13: Airstrike (11×11 bomber)
+ *   Col 14: Airdrop (11×11 transport plane)
+ *   Col 15: Drone (7×7 quadcopter)
+ *   Col 16: Cruise Missile (7×11)
+ *   Col 17: Ballistic Missile (7×11)
+ *   Col 18: Cluster Missile (7×9)
+ *   Col 19: Cluster Warhead (3×5)
  *
  * Data flow:
  *   FrameSnapshot.units → filter by typeToAtlasIdx → instance VBO → GPU
@@ -61,6 +74,7 @@ import { DynamicInstanceBuffer } from "../DynamicBuffer";
 import type { RenderSettings } from "../RenderSettings";
 import unitFragSrc from "../shaders/unit/unit.frag.glsl?raw";
 import unitVertSrc from "../shaders/unit/unit.vert.glsl?raw";
+import { loadAtlasImages, uploadAtlasStrip } from "../utils/AtlasStrip";
 import {
   getPaletteSize,
   MAX_TRAIL_COLORS,
@@ -70,6 +84,8 @@ import {
 import { createProgram, shaderSrc } from "../utils/GlUtils";
 
 const unitAtlasUrl = assetUrl("atlases/unit-atlas.png");
+/** Sprites for the units after the trains (see UNIT_ORDER). */
+const unitAtlasExtUrl = assetUrl("atlases/unit-atlas-ext.png");
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -80,7 +96,7 @@ const unitAtlasUrl = assetUrl("atlases/unit-atlas.png");
  *  they don't match header.unitTypes directly. Train resolution is
  *  handled specially in updateUnits() via trainType + loaded fields.
  */
-const UNIT_ORDER = [
+export const UNIT_ORDER = [
   UT_TRANSPORT,
   UT_TRADE_SHIP,
   UT_WARSHIP,
@@ -93,6 +109,15 @@ const UNIT_ORDER = [
   "TrainEngine",
   "TrainCarriage",
   "TrainCarriageLoaded",
+  // unit-atlas-ext.png, in the order scripts/genUnitArt.ts draws them.
+  UT_CONVOY,
+  UT_AIRSTRIKE,
+  UT_AIRDROP,
+  UT_DRONE,
+  UT_CRUISE_MISSILE,
+  UT_BALLISTIC_MISSILE,
+  UT_CLUSTER_MISSILE,
+  UT_CLUSTER_WARHEAD,
 ] as const;
 
 const ATLAS_COLS = UNIT_ORDER.length;
@@ -103,9 +128,10 @@ const HYDROGEN_BOMB_COL = UNIT_ORDER.indexOf(UT_HYDROGEN_BOMB);
 /** Atlas column of the warship — gates the warship cosmetic effect. */
 const WARSHIP_COL = UNIT_ORDER.indexOf(UT_WARSHIP);
 
-/** First atlas column of the train sprites (engine, carriage, loaded
- *  carriage are contiguous) — gates the train cosmetic effect. */
+/** First and last atlas columns of the train sprites (engine, carriage,
+ *  loaded carriage are contiguous) — gate the train cosmetic effect. */
 const TRAIN_FIRST_COL = UNIT_ORDER.indexOf("TrainEngine");
+const TRAIN_LAST_COL = UNIT_ORDER.indexOf("TrainCarriageLoaded");
 
 // ---------------------------------------------------------------------------
 // Instance data layout
@@ -114,7 +140,7 @@ const TRAIN_FIRST_COL = UNIT_ORDER.indexOf("TrainEngine");
 /**
  * Per-instance data (16 bytes):
  *   float x, y, ownerID   — 12 bytes (3 floats)
- *   uint8 atlasIdx         —  1 byte  (atlas column 0–11)
+ *   uint8 atlasIdx         —  1 byte  (atlas column, see UNIT_ORDER)
  *   uint8 flags            —  1 byte  (0 = normal, 1 = flicker, 2 = angry, 3 = trade-friendly, 4 = retreating, 5 = flicker-untargetable)
  *   uint8 flickerHash      —  1 byte  (per-instance flicker phase offset)
  *   1 byte padding         — aligns to 4-byte boundary
@@ -137,21 +163,18 @@ const TRAIN_CARRIAGE_COL = UNIT_ORDER.indexOf("TrainCarriage");
 const TRAIN_CARRIAGE_LOADED_COL = UNIT_ORDER.indexOf("TrainCarriageLoaded");
 
 /**
- * Conventional war flights, drawn with existing sprites (no atlas column of
- * their own; the atlas generator isn't in this repo): planes as boats, the
- * missiles as the nuke rungs they mirror, drones as SAM missiles. All fly, so
- * all draw in the missile layer, tinted in their owner's colors.
+ * Conventional war flights. All fly, so all draw in the missile layer,
+ * tinted in their owner's colors.
  */
-const BORROWED_SPRITES: ReadonlyMap<string, (typeof UNIT_ORDER)[number]> =
-  new Map([
-    [UT_AIRSTRIKE, UT_TRANSPORT],
-    [UT_AIRDROP, UT_TRANSPORT],
-    [UT_CRUISE_MISSILE, UT_ATOM_BOMB],
-    [UT_BALLISTIC_MISSILE, UT_HYDROGEN_BOMB],
-    [UT_CLUSTER_MISSILE, UT_MIRV],
-    [UT_CLUSTER_WARHEAD, UT_MIRV_WARHEAD],
-    [UT_DRONE, UT_SAM_MISSILE],
-  ]);
+const AIR_TYPES: ReadonlySet<string> = new Set([
+  UT_AIRSTRIKE,
+  UT_AIRDROP,
+  UT_DRONE,
+  UT_CRUISE_MISSILE,
+  UT_BALLISTIC_MISSILE,
+  UT_CLUSTER_MISSILE,
+  UT_CLUSTER_WARHEAD,
+]);
 
 /** Nuke + warhead types — rendered with flickering hot colors */
 const FLICKER_TYPES: ReadonlySet<string> = new Set([
@@ -172,7 +195,7 @@ const MISSILE_TYPES: ReadonlySet<string> = new Set([
   UT_SAM_MISSILE,
   UT_SHELL,
   UT_MIRV_WARHEAD,
-  ...BORROWED_SPRITES.keys(),
+  ...AIR_TYPES,
 ]);
 
 /** Values per smoothing segment in the flat `smoothSegs` array:
@@ -279,7 +302,7 @@ export class UnitPass {
    *  warship/train effects animate at the same pace as the structures effect. */
   private startTime = performance.now();
 
-  /** unitType string → atlas column (0-11) */
+  /** unitType string → atlas column (see UNIT_ORDER) */
   private typeToAtlasCol = new Map<string, number>();
   private mapW: number;
 
@@ -305,9 +328,8 @@ export class UnitPass {
 
     // Build unitType string → atlas column mapping
     for (let i = 0; i < header.unitTypes.length; i++) {
-      const type = header.unitTypes[i];
       const col = UNIT_ORDER.indexOf(
-        BORROWED_SPRITES.get(type) ?? (type as (typeof UNIT_ORDER)[number]),
+        header.unitTypes[i] as (typeof UNIT_ORDER)[number],
       );
       if (col >= 0) {
         this.typeToAtlasCol.set(header.unitTypes[i], col);
@@ -324,6 +346,7 @@ export class UnitPass {
         WARSHIP_COL,
         WARSHIP_EFFECT_ROW_BASE: WARSHIP_EFFECT_BLOCK * MAX_TRAIL_COLORS,
         TRAIN_FIRST_COL,
+        TRAIN_LAST_COL,
         TRAIN_EFFECT_ROW_BASE: TRAIN_EFFECT_BLOCK * MAX_TRAIL_COLORS,
       }),
       "UnitPass",
@@ -420,13 +443,10 @@ export class UnitPass {
   }
 
   private async loadAtlas(): Promise<void> {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.src = unitAtlasUrl;
-    await img.decode();
+    const images = await loadAtlasImages([unitAtlasUrl, unitAtlasExtUrl]);
     const gl = this.gl;
     gl.bindTexture(gl.TEXTURE_2D, this.atlasTex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+    uploadAtlasStrip(gl, images);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   }
@@ -498,12 +518,6 @@ export class UnitPass {
             ? TRAIN_CARRIAGE_LOADED_COL
             : TRAIN_CARRIAGE_COL;
         }
-      }
-
-      // A troop convoy reuses the loaded-carriage sprite (a supply wagon),
-      // tinted in its owner's colors like every unit.
-      if (atlasIdx === undefined && unit.unitType === UT_CONVOY) {
-        atlasIdx = TRAIN_CARRIAGE_LOADED_COL;
       }
 
       if (atlasIdx === undefined) continue;
