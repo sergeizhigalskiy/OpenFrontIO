@@ -187,6 +187,24 @@ export interface RenderSettings {
     friendlyTintR: number;
     friendlyTintG: number;
     friendlyTintB: number;
+    /** Border line width (screen px) when zoomed all the way out. */
+    borderLineMinPx: number;
+    /** Border line width cap (screen px) when zoomed in. */
+    borderLineMaxPx: number;
+    /** Line width gained per screen px of tile size, up to the cap. */
+    borderLineTileFrac: number;
+    /** Dark seam (screen px) at the outer edge of each border line. */
+    borderSeamPx: number;
+    /** Seam color as a multiplier on the border color. */
+    borderSeamDarken: number;
+    /** Soft band (screen px past the line) shading the fill's inner edge. */
+    borderBandPx: number;
+    /** Peak opacity of that band. */
+    borderBandAlpha: number;
+    /** Band color: the border/territory mix times this. */
+    borderBandDarken: number;
+    /** Strength of the relief shading carried by the territory fill (0 = flat). */
+    territoryRelief: number;
   };
   /** Alt-view affiliation colors (0–1 RGB). */
   affiliation: {
@@ -324,6 +342,12 @@ export interface RenderSettings {
     hoverGlowWidth: number;
     /** Peak opacity of the hover glow (0 disables it). */
     hoverGlowAlpha: number;
+    /** A player-colored name outline is lifted this far toward white (0-1). */
+    outlineLift: number;
+    /** Soft halo behind names: px past the outline (capped by the SDF margin). */
+    haloWidth: number;
+    /** Peak opacity of that halo (0 disables it). */
+    haloAlpha: number;
     flagAlpha: number;
   };
   fx: {

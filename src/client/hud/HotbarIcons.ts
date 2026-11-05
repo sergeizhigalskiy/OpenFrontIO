@@ -11,9 +11,9 @@ export const atomBombIcon = assetUrl("images/NukeIconWhite.svg");
 export const portIcon = assetUrl("images/PortIcon.svg");
 export const samLauncherIcon = assetUrl("images/SamLauncherIconWhite.svg");
 export const defensePostIcon = assetUrl("images/ShieldIconWhite.svg");
-// An existing icon: the build hammer, for a field workshop.
-export const siegeCampIcon = assetUrl("images/BuildIconWhite.svg");
-// Naval defense and conventional war (drawn by scripts/genUnitArt.ts).
+// Naval defense, siege camps and conventional war (drawn by
+// scripts/genUnitArt.ts).
+export const siegeCampIcon = assetUrl("images/SiegeCampIconWhite.svg");
 export const minefieldIcon = assetUrl("images/MinefieldIconWhite.svg");
 export const coastalBatteryIcon = assetUrl(
   "images/CoastalBatteryIconWhite.svg",

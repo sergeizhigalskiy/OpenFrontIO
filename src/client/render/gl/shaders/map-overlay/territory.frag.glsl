@@ -3,6 +3,10 @@ precision highp float;
 precision highp usampler2D;
 precision highp sampler2DArray;
 
+// uHeightMap (the smoothed height field, R = height / 255, G = 1 where land
+// may be shaded) comes with the camera block.
+#include "camera"
+
 uniform usampler2D uTileTex;      // R16UI — tile state per cell
 uniform sampler2D  uPalette;      // RGBA32F — player colors
 uniform sampler2D  uPatternMeta;  // RGBA32F — 1D buffer, 1 px per owner. R=hasPattern, G=width, B=height, A=scale
@@ -24,14 +28,40 @@ uniform uint uHighlightOwner;      // 0 = no highlight; otherwise smallID of hov
 uniform float uHighlightBrighten;  // hover contrast boost strength; 0 = disabled
 uniform sampler2D uDefenseCoverageTex; // R8 — 1.0 = tile defended by same-owner post
 uniform float uDefenseDarken;      // multiplier applied to fill on defended tiles
-uniform sampler2D uBorderTex;      // RGBA8 — border flags; R > 0.25 = border tile
 uniform float uSaturation;         // 1 = full color, 0 = grayscale
 uniform float uTerritoryAlpha;     // absolute fill opacity; 1 = fully opaque
 uniform sampler2D uAffiliation;    // RGBA8 — alt-view relation colors (row 0)
 uniform float uAltFillAlpha;       // alt-view translucent fill opacity
+// Relief carried by the fill: the terrain's hillshade, applied to the fill
+// colour too, so blending the fill over the terrain doesn't flatten it.
+uniform float uShadeStrength;      // 0 = flat fill
+uniform float uReliefScale;        // world tiles per height-map unit
+uniform vec3 uLightDir;            // unit vector toward the light
 
 in vec2 vWorldPos;
 out vec4 fragColor;
+
+// The terrain pass's hillshade factor at this point (terrain.frag.glsl), or
+// 1 where the terrain isn't shaded.
+float reliefShade(ivec2 tc) {
+  if (uShadeStrength <= 0.0) return 1.0;
+  if (texelFetch(uHeightMap, tc, 0).g < 0.5) return 1.0;
+  vec2 texel = 1.0 / uMapSize;
+  vec2 uv = vWorldPos * texel;
+  float l = texture(uHeightMap, uv - vec2(texel.x, 0.0)).r;
+  float r = texture(uHeightMap, uv + vec2(texel.x, 0.0)).r;
+  float u = texture(uHeightMap, uv - vec2(0.0, texel.y)).r;
+  float d = texture(uHeightMap, uv + vec2(0.0, texel.y)).r;
+  float zScale = 255.0 * uReliefScale * 0.5;
+  vec3 n = normalize(vec3(-(r - l) * zScale, -(d - u) * zScale, 1.0));
+  float lambert = max(dot(n, uLightDir), 0.0);
+  float shade = 1.0 + uShadeStrength * (lambert / max(uLightDir.z, 1e-3) - 1.0);
+  return clamp(shade, 0.45, 1.45);
+}
+
+vec3 applyShade(vec3 c, float shade) {
+  return shade <= 1.0 ? c * shade : c + (1.0 - c) * (shade - 1.0) * 0.6;
+}
 
 void main() {
   ivec2 tc = ivec2(floor(vWorldPos));
@@ -120,13 +150,9 @@ void main() {
     color.rgb = clamp((color.rgb - 0.5) * contrast + 0.5, 0.0, 1.0);
   }
 
-  // Defense bonus: darken the fill on interior tiles defended by a same-owner
-  // post. Border tiles are skipped — they get the checkerboard overlay from
-  // BorderStampPass instead. Coverage is tested first so the (rarer) defended
-  // tiles are the only ones that pay for the extra border fetch (&& short-
-  // circuits in GLSL ES 3.00; texelFetch is derivative-free so this is safe).
-  if (texelFetch(uDefenseCoverageTex, tc, 0).r > 0.5 &&
-      texelFetch(uBorderTex, tc, 0).r <= 0.25) {
+  // Defense bonus: darken the fill on tiles defended by a same-owner post
+  // (border lines over them are dashed by BorderStampPass as well).
+  if (texelFetch(uDefenseCoverageTex, tc, 0).r > 0.5) {
     color.rgb *= uDefenseDarken;
   }
 
@@ -135,6 +161,9 @@ void main() {
     float luma = dot(color.rgb, vec3(0.299, 0.587, 0.114));
     color.rgb = mix(vec3(luma), color.rgb, uSaturation);
   }
+
+  // Shade the fill like the terrain under it, so the relief survives.
+  color.rgb = applyShade(color.rgb, reliefShade(tc));
 
   color.a = uTerritoryAlpha;
 

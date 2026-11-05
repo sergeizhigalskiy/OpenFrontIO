@@ -76,7 +76,8 @@ describe("siege camp in the client", () => {
       (e) => e.unitType === UnitType.SiegeCamp,
     );
     expect(entry).toBeDefined();
-    expect(entry!.icon).toContain("BuildIconWhite.svg");
+    // Its own catapult glyph (scripts/genUnitArt.ts).
+    expect(entry!.icon).toContain("SiegeCampIconWhite.svg");
     expect(entry!.key).toBe("unit_type.siege_camp");
     expect(entry!.description).toBe("build_menu.desc.siege_camp");
     expect(en.unit_type.siege_camp).toBe("Siege Camp");

@@ -1,18 +1,18 @@
 /**
- * RuinsPass — a stone ruins icon on every unclaimed ruin (world features).
+ * RuinsPass — a stone ruins badge on every unclaimed ruin (world features).
  *
- * Everyone sees every ruin, but not what it holds. The icon is light stone
- * with a dark outline, so it reads on any terrain. One draw call per ruin;
- * a map has at most a few dozen, and they disappear as they are claimed.
+ * Everyone sees every ruin, but not what it holds. The badge matches the
+ * resource sites' (a dark disc with a light emblem and a grey ring), and is
+ * sized like them, so it reads on any terrain at every zoom. One draw call
+ * per ruin; a map has at most a few dozen, and they disappear as they are
+ * claimed.
  */
 
 import { createProgram } from "../utils/GlUtils";
+import { resourceSiteRadius } from "./ResourceSitePass";
 
 import fragSrc from "../shaders/ruins/ruins.frag.glsl?raw";
 import vertSrc from "../shaders/ruins/ruins.vert.glsl?raw";
-
-/** Icon radius in tiles. */
-const RUINS_ICON_RADIUS = 4;
 
 /** A ruin to draw: its tile. */
 export interface RuinMarker {
@@ -56,11 +56,11 @@ export class RuinsPass {
     this.ruins = ruins;
   }
 
-  draw(cameraMatrix: Float32Array): void {
+  draw(cameraMatrix: Float32Array, zoom: number): void {
     if (this.ruins.length === 0) return;
     const gl = this.gl;
     gl.useProgram(this.program);
-    gl.uniform1f(this.uRadius, RUINS_ICON_RADIUS);
+    gl.uniform1f(this.uRadius, resourceSiteRadius(zoom));
     gl.bindVertexArray(this.vao);
     for (const r of this.ruins) {
       gl.uniform2f(this.uCenter, r.x, r.y);

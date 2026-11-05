@@ -495,12 +495,11 @@ export class GPURenderer {
       this.borderPass.patchTile(x, y, prevOwner, newOwner);
       this.defenseCoveragePass.markTileDirty(x, y);
     });
-    // Territory fill darkens on interior tiles defended by a same-owner post;
-    // borderTex lets the fill skip border tiles (those get the checkerboard).
+    // Territory fill darkens on tiles defended by a same-owner post (the
+    // border lines over them are dashed too).
     this.territoryPass.setDefenseCoverageTex(
       this.defenseCoveragePass.getCoverageTex(),
     );
-    this.territoryPass.setBorderTex(this.res.borderTex);
 
     // --- Spawn overlay (needs tileTex) ---
     this.spawnOverlayPass = new SpawnOverlayPass(
@@ -1557,7 +1556,7 @@ export class GPURenderer {
     if (pe.structure) this.structureLevelPass.draw(cam, zoom);
     if (pe.structure && pe.bar) this.reloadBarPass.draw(cam, zoom);
     this.capitalPass.draw(cam);
-    this.ruinsPass.draw(cam);
+    this.ruinsPass.draw(cam, zoom);
     this.volcanoPass.draw(cam);
     this.blockadePass.draw(cam);
     this.resourceSitePass.draw(cam, zoom);

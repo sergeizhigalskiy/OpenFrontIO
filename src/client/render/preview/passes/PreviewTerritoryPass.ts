@@ -30,7 +30,6 @@ export class PreviewTerritoryPass {
   private readonly skinLayerTex: WebGLTexture;
   private readonly skinAnchorTex: WebGLTexture;
   private readonly defenseTex: WebGLTexture;
-  private readonly borderTex: WebGLTexture;
 
   private readonly patternMeta = new Float32Array(getPaletteSize() * 4);
   private readonly patternData = new Uint8Array(
@@ -97,8 +96,8 @@ export class PreviewTerritoryPass {
       type: gl.UNSIGNED_SHORT,
       data: anchors,
     });
-    // No defense posts or borders in the preview: 1×1 zero textures so the
-    // shader's defense-darken lookup always misses.
+    // No defense posts in the preview: a 1×1 zero texture so the shader's
+    // defense-darken lookup always misses.
     this.defenseTex = createTexture2D(gl, {
       width: 1,
       height: 1,
@@ -106,14 +105,6 @@ export class PreviewTerritoryPass {
       format: gl.RED,
       type: gl.UNSIGNED_BYTE,
       data: new Uint8Array(1),
-    });
-    this.borderTex = createTexture2D(gl, {
-      width: 1,
-      height: 1,
-      internalFormat: gl.RGBA8,
-      format: gl.RGBA,
-      type: gl.UNSIGNED_BYTE,
-      data: new Uint8Array(4),
     });
 
     this.skinAtlas = new SkinAtlasArray(gl, [], () => {});
@@ -131,7 +122,6 @@ export class PreviewTerritoryPass {
       settings,
     );
     this.pass.setDefenseCoverageTex(this.defenseTex);
-    this.pass.setBorderTex(this.borderTex);
     this.pass.setLiveRef(tileState);
   }
 
@@ -282,6 +272,5 @@ export class PreviewTerritoryPass {
     gl.deleteTexture(this.skinLayerTex);
     gl.deleteTexture(this.skinAnchorTex);
     gl.deleteTexture(this.defenseTex);
-    gl.deleteTexture(this.borderTex);
   }
 }

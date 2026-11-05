@@ -8,6 +8,8 @@ layout(location = 1) in vec4 aInst0; // x, y, ownerID, underConstruction
 layout(location = 2) in vec2 aInst1; // atlasIdx, markedForDeletion
 
 #include "camera"
+
+const float QUAD_PAD = 1.2;
 uniform float uZoom;
 
 uniform float uIconSize;
@@ -54,18 +56,22 @@ void main() {
 
   float halfSize = uIconSize * iconScale * 0.5 / uZoom * shapeScale;
 
+  // The quad is padded past the shape so its drop shadow has room
+  // (structure.frag.glsl); local coordinates keep the shape's scale.
+  vec2 q = 0.5 + (aPos - 0.5) * QUAD_PAD;
+
   vec2 center = vec2(worldX + 0.5, worldY + 0.5);
-  vec2 worldPos = center + (aPos - 0.5) * halfSize * 2.0;
+  vec2 worldPos = center + (q - 0.5) * halfSize * 2.0;
 
   gl_Position = billboardToClip(center, worldPos - center);
 
-  vLocalPos = aPos - 0.5;
+  vLocalPos = q - 0.5;
 
   // Atlas UV: icons stay the same world size regardless of shape scaling,
   // and are further shrunk by per-shape iconFill (0-1) to add padding inside the frame.
   float uvExpand = shapeScale / uIconFills[shapeIdx];
-  float scaledX = 0.5 + (aPos.x - 0.5) * uvExpand;
-  float scaledY = 0.5 + (aPos.y - 0.5) * uvExpand;
+  float scaledX = 0.5 + (q.x - 0.5) * uvExpand;
+  float scaledY = 0.5 + (q.y - 0.5) * uvExpand;
   float colU = (aInst1.x + scaledX) / float(ATLAS_COLS);
   vAtlasUV = vec2(colU, scaledY);
 }

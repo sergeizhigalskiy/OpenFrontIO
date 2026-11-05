@@ -20,6 +20,7 @@ import {
   droneIcon,
   flakGunIcon,
   minefieldIcon,
+  siegeCampIcon,
 } from "../../../../src/client/hud/HotbarIcons";
 import { flattenedBuildTable } from "../../../../src/client/hud/layers/BuildMenu";
 import {
@@ -71,12 +72,16 @@ describe("unit art atlases", () => {
     }
   });
 
-  it("draws every visible structure with a glyph, a siege camp with the factory's", () => {
+  it("draws every visible structure with a glyph of its own", () => {
+    const columns = new Set<number>();
     for (const type of STRUCTURE_TYPES) {
       if (type === UT_MINEFIELD) continue;
-      expect(structureAtlasColumn(type), type).toBeGreaterThanOrEqual(0);
+      const col = structureAtlasColumn(type);
+      expect(col, type).toBeGreaterThanOrEqual(0);
+      columns.add(col);
     }
-    expect(structureAtlasColumn(UT_SIEGE_CAMP)).toBe(
+    expect(columns.size).toBe(STRUCTURE_ORDER.length);
+    expect(structureAtlasColumn(UT_SIEGE_CAMP)).not.toBe(
       STRUCTURE_ORDER.indexOf(UT_FACTORY),
     );
   });
@@ -99,6 +104,7 @@ describe("unit art atlases", () => {
       droneIcon,
       flakGunIcon,
       minefieldIcon,
+      siegeCampIcon,
     ];
     for (const url of icons) {
       expect(fs.existsSync(path.join(RESOURCES, url)), url).toBe(true);

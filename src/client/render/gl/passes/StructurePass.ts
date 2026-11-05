@@ -67,23 +67,14 @@ export const STRUCTURE_ORDER = [
   UT_COASTAL_BATTERY,
   UT_AIRBASE,
   UT_FLAK_GUN,
+  UT_SIEGE_CAMP,
 ] as const;
 
 const ATLAS_COLS = STRUCTURE_ORDER.length;
 
-/**
- * Structures without an atlas column of their own, drawn with another's
- * glyph and shape. A siege camp is a field workshop for breaking defense
- * lines, so it gets the factory's.
- */
-const BORROWED_ICONS: ReadonlyMap<string, (typeof STRUCTURE_ORDER)[number]> =
-  new Map([[UT_SIEGE_CAMP, UT_FACTORY]]);
-
-/** A structure type's atlas column (its own or the one it borrows), or -1. */
+/** A structure type's atlas column, or -1 if it has no glyph. */
 export function structureAtlasColumn(type: string): number {
-  return STRUCTURE_ORDER.indexOf(
-    BORROWED_ICONS.get(type) ?? (type as (typeof STRUCTURE_ORDER)[number]),
-  );
+  return STRUCTURE_ORDER.indexOf(type as (typeof STRUCTURE_ORDER)[number]);
 }
 
 // ---------------------------------------------------------------------------

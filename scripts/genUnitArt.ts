@@ -11,7 +11,8 @@
 //     same order, after the train columns.
 //   resources/atlases/icon-atlas-ext.png  64 px white structure glyphs, one
 //     column per STRUCTURE_GLYPHS entry. StructurePass uploads them right
-//     after icon-atlas.png's; its STRUCTURE_ORDER lists them after the silo.
+//     after icon-atlas.png's; its STRUCTURE_ORDER lists them after the silo,
+//     and structure.frag.glsl's shapeSDF gives each its frame.
 //   resources/images/<Name>IconWhite.svg  HUD icons for the build menu, the
 //     radial menu and the unit bar: white glyphs like the other *White.svg.
 //
@@ -446,6 +447,37 @@ const ICONS: Record<string, { title: string; icon: Icon }> = {
       },
     ],
   },
+  SiegeCamp: {
+    title: "Siege camp",
+    icon: [
+      {
+        add: [
+          // A catapult: the throwing arm cocked back over an A-frame, a
+          // stone in its cup, on a wheeled base.
+          rect(8, 37, 48, 6),
+          poly([22, 38], [30, 21], [36, 21], [44, 38]),
+          ...stroke(
+            [
+              [50, 33],
+              [17, 14],
+            ],
+            4.8,
+          ),
+          circle(13.5, 11.5, 6.5),
+          // Counterweight on the short end.
+          rect(45, 28, 10, 9),
+        ],
+        // Lighten the frame so it reads as timber, not a block.
+        cut: [poly([28, 38], [33, 28], [38, 38])],
+      },
+      {
+        // Spoked wheels.
+        add: [circle(18, 49, 8.5), circle(46, 49, 8.5)],
+        cut: [circle(18, 49, 4.3), circle(46, 49, 4.3)],
+      },
+      { add: [circle(18, 49, 2.2), circle(46, 49, 2.2)] },
+    ],
+  },
   Minefield: {
     title: "Minefield",
     icon: [
@@ -728,7 +760,12 @@ const ICONS: Record<string, { title: string; icon: Icon }> = {
 };
 
 /** Structure glyphs for the icon atlas, in StructurePass's order. */
-const STRUCTURE_GLYPHS = ["CoastalBattery", "Airbase", "FlakGun"] as const;
+const STRUCTURE_GLYPHS = [
+  "CoastalBattery",
+  "Airbase",
+  "FlakGun",
+  "SiegeCamp",
+] as const;
 
 /** Icon atlas cell size and where the 64-unit design box lands in a cell. */
 const ICON_CELL = 64;
