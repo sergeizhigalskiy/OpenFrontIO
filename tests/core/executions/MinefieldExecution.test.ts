@@ -536,22 +536,41 @@ describe("minefield depletion and removal", () => {
   });
 
   test("a field covers only its radius", async () => {
-    const { game, defender, attacker } = await navalGame({
-      infiniteGold: true,
-    });
-    // A field in the top corner; ships sail the bottom rows, beyond its radius.
-    const field = defender.buildUnit(UnitType.Minefield, game.ref(15, 0), {
+    // A field is wider than the naval test map, so this one uses the world
+    // map: an open ocean row long enough for the center and a lane just
+    // outside the radius.
+    const game = await setup(
+      "world",
+      { infiniteGold: true },
+      humans("defender", "attacker"),
+    );
+    const defender = game.player("defender");
+    const attacker = game.player("attacker");
+    const map = game.map();
+    const r = MINEFIELD_RADIUS;
+    let center: TileRef | null = null;
+    for (let y = 0; y < map.height() && center === null; y += 7) {
+      for (let x = 0; x + r + 9 < map.width() && center === null; x += 7) {
+        let open = true;
+        for (let dx = 0; dx <= r + 8 && open; dx++) {
+          open = map.isOcean(map.ref(x + dx, y));
+        }
+        if (open) center = map.ref(x, y);
+      }
+    }
+    expect(center).not.toBeNull();
+    const field = defender.buildUnit(UnitType.Minefield, center!, {
       density: 100,
     });
     game.addExecution(new MinefieldExecution(field));
     executeTicks(game, 2);
-    const path: TileRef[] = [];
-    for (let x = 8; x <= 15; x++) path.push(game.ref(x, 15));
-    for (let x = 15; x >= 8; x--) path.push(game.ref(x, 14));
+    const lane: TileRef[] = [];
+    for (let dx = r + 1; dx <= r + 8; dx++) {
+      lane.push(map.ref(map.x(center!) + dx, map.y(center!)));
+    }
+    const path = [...lane, ...lane.slice(0, -1).reverse()];
     for (const tile of path) {
-      expect(game.euclideanDistSquared(tile, field.tile())).toBeGreaterThan(
-        MINEFIELD_RADIUS * MINEFIELD_RADIUS,
-      );
+      expect(game.euclideanDistSquared(tile, center!)).toBeGreaterThan(r * r);
     }
     for (let i = 0; i < 10; i++) {
       const ship = transport(game, attacker, path[0]);
@@ -605,10 +624,11 @@ describe("nations lay minefields", () => {
       game.euclideanDistSquared(field.tile(), busiest.tile()),
     ).toBeLessThanOrEqual(MINEFIELD_RADIUS * MINEFIELD_RADIUS);
 
-    // The warship blockades the small port too (BLOCKADE_RANGE covers this
-    // map), so it gets the next field; then every port is mined.
-    expect(behavior.maybeLayMinefield()).toBe(true);
-    executeTicks(game, 3);
+    // A field is wider than this map, so the one field covers the small
+    // port too: every port is mined and no second field is laid.
+    expect(
+      game.euclideanDistSquared(field.tile(), small.tile()),
+    ).toBeLessThanOrEqual(MINEFIELD_RADIUS * MINEFIELD_RADIUS);
     expect(behavior.maybeLayMinefield()).toBe(false);
   });
 });

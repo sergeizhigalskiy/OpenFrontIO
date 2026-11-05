@@ -22,8 +22,11 @@ export {
 // Minefield
 // ---------------------------------------------------------------------------
 
-/** Radius in tiles of the circle a minefield covers around its center tile. */
-export const MINEFIELD_RADIUS = 10;
+/**
+ * Radius in tiles of the circle a minefield covers around its center tile:
+ * wide enough that a few fields wall off a stretch of coast against landings.
+ */
+export const MINEFIELD_RADIUS = 30;
 
 /**
  * A minefield's center must be an ocean tile at most this many tiles
@@ -105,11 +108,18 @@ export function minefieldHitChanceBasisPoints(density: number): number {
 /** A battery's max health as a percent of a warship's max health. */
 export const COASTAL_BATTERY_HEALTH_PERCENT_OF_WARSHIP = 150;
 
-/** Tiles (euclidean) within which a battery shells hostile ships. */
-export const COASTAL_BATTERY_RANGE = 60;
+/**
+ * Tiles (euclidean) within which a battery shells hostile ships: past a
+ * warship's targeting range (130), so a warship can't shell a battery from
+ * where the battery can't answer.
+ */
+export const COASTAL_BATTERY_RANGE = 140;
 
-/** Ticks between two shells from one battery. */
-export const COASTAL_BATTERY_RELOAD_TICKS = 30;
+/**
+ * Ticks between two shells from one battery: faster than a warship (20), so
+ * one battery beats one warship and two warships are about an even fight.
+ */
+export const COASTAL_BATTERY_RELOAD_TICKS = 15;
 
 /** Price of the first battery; each one owned adds this much again. */
 export const COASTAL_BATTERY_BASE_COST = 150_000;

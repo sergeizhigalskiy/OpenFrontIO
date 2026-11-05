@@ -202,8 +202,8 @@ describe("PlayerInfoOverlay", () => {
   });
 
   it("shows a coastal battery's rounds and reload", () => {
-    // Fired at tick 85; at tick 100 its 30-tick reload has 15 ticks to go.
-    overlay.game = batteryGame(makeBattery([85]));
+    // Fired at tick 90; at tick 100 its 15-tick reload has 5 ticks to go.
+    overlay.game = batteryGame(makeBattery([90]));
     overlay.maybeShow(10, 10);
     expect(flatten(overlay.render())).toContain(
       "player_panel.rounds_reloading",
@@ -213,7 +213,7 @@ describe("PlayerInfoOverlay", () => {
       {
         ready: 0,
         rounds: 1,
-        seconds: "1.5",
+        seconds: "0.5",
       },
     );
 

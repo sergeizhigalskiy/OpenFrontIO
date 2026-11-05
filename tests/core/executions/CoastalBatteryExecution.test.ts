@@ -126,6 +126,19 @@ describe("coastal battery placement and cost", () => {
 });
 
 describe("coastal battery fire", () => {
+  test("outranges and outpaces a warship, so it can always answer one", async () => {
+    // A warship that could target the battery from beyond its range would
+    // shell it with impunity; one that fired faster would win every duel.
+    const game = await setup(MAP, {}, []);
+    const config = game.config();
+    expect(COASTAL_BATTERY_RANGE).toBeGreaterThan(
+      config.warshipTargettingRange(),
+    );
+    expect(COASTAL_BATTERY_RELOAD_TICKS).toBeLessThan(
+      config.warshipShellAttackRate(),
+    );
+  });
+
   test("shells a hostile warship in range", async () => {
     const { game, defender, attacker } = await navalGame();
     battery(game, defender);
