@@ -55,6 +55,9 @@ import { LINES_PER_PLAYER, MAX_CHARS } from "./Types";
 // Flag quad aspect ratio — must match FLAG_CELL_W / FLAG_CELL_H in FlagAtlasArray.ts.
 const FLAG_ASPECT = 128 / 85;
 
+/** What a label inside fog shows instead of its troop count. */
+const FOG_TROOP_TEXT = "?";
+
 // Crown cosmetics use square cells (must match the crownAtlas cell size below).
 const CROWN_CELL = 128;
 
@@ -122,6 +125,8 @@ export class NamePass {
   // Cursor in world coords — fades names under it (far off-map = no fade).
   private mouseWorldX = -1e9;
   private mouseWorldY = -1e9;
+  // Fog: smallIDs whose troop count shows as FOG_TROOP_TEXT.
+  private hiddenTroops: ReadonlySet<number> = new Set();
 
   constructor(
     gl: WebGL2RenderingContext,
@@ -489,7 +494,9 @@ export class NamePass {
       ) {
         slot.lastTroopBucket = troopBucket;
         const troops = ps?.troops ?? 0;
-        const troopStr = renderTroops(troops);
+        const troopStr = this.hiddenTroops.has(slot.static.smallID)
+          ? FOG_TROOP_TEXT
+          : renderTroops(troops);
         if (troopStr !== slot.lastTroopStr) {
           slot.troopLen = Math.min(troopStr.length, MAX_CHARS);
           slot.lastTroopStr = troopStr;
@@ -749,6 +756,11 @@ export class NamePass {
   setMouseWorldPos(x: number, y: number): void {
     this.mouseWorldX = x;
     this.mouseWorldY = y;
+  }
+
+  /** Fog: players (smallIDs) whose label hides its troop count. */
+  setHiddenTroops(hidden: ReadonlySet<number>): void {
+    this.hiddenTroops = hidden;
   }
 
   /**

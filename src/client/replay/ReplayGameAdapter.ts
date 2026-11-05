@@ -24,8 +24,17 @@ import type {
   Team,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
-import { GameUpdateType } from "@openfront/engine-api/game/GameUpdates";
+import {
+  GameUpdateType,
+  type WeatherCell,
+  type WeatherKind,
+  type WeatherUpdate,
+} from "@openfront/engine-api/game/GameUpdates";
 import type { Config } from "@openfront/engine-lib/configuration/Config";
+import {
+  fogHidesTroops,
+  weatherKindAt,
+} from "@openfront/engine-lib/game/Weather";
 import { OWNER_MASK } from "../render/gl/utils/TileCodec";
 import type {
   NameEntry,
@@ -287,6 +296,8 @@ export class ReplayGameView {
   showEmojis: () => boolean = () => true;
   /** Events since the HUD last asked, by GameUpdateType. */
   private readonly pending = new Map<number, unknown[]>();
+  /** The live weather cells, from the latest frame that carried them. */
+  private weather: WeatherCell[] = [];
 
   constructor(
     players: readonly PlayerStatic[],
@@ -333,6 +344,10 @@ export class ReplayGameView {
     this.spawnPhase = inSpawnPhase;
     this.stale = true;
     if (seeked) this.pending.clear();
+    const weather = frame.miscUpdates?.Weather as WeatherUpdate[] | undefined;
+    if (weather !== undefined && weather.length > 0) {
+      this.weather = weather[weather.length - 1].cells;
+    }
     for (const [name, list] of Object.entries(frame.miscUpdates ?? {})) {
       if (list.length === 0) continue;
       const type = GameUpdateType[name as keyof typeof GameUpdateType];
@@ -432,6 +447,28 @@ export class ReplayGameView {
   }
   numTilesWithFallout(): number {
     return this.frame?.falloutTiles ?? 0;
+  }
+  /** The weather in effect over a tile, as GameView.weatherAt. */
+  weatherAt(tile: TileRef): WeatherKind | null {
+    return weatherKindAt(
+      this.weather,
+      this.ticks(),
+      this.x(tile),
+      this.y(tile),
+    );
+  }
+  /** Fog over a troop count, from the followed player's side (GameView's rule). */
+  fogHidesTroops(tile: TileRef, owner: ReplayPlayerView | null): boolean {
+    const me = this.focus;
+    const seesThrough =
+      owner !== null && me !== null && (owner === me || me.isFriendly(owner));
+    return fogHidesTroops(
+      this.weather,
+      this.ticks(),
+      this.x(tile),
+      this.y(tile),
+      seesThrough,
+    );
   }
   numLandTiles(): number {
     return this.landTiles;

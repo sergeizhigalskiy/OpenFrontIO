@@ -80,10 +80,13 @@ describe("pushLabels buffer reuse", () => {
   test("reuses the same labelBuf array and objects across frames", () => {
     let captured: unknown[] = [];
     const view = { setAttackTroopLabels: (l: unknown[]) => (captured = l) };
-    const ctrl = new (AttackingTroopsController as any)({}, {}, {}, view);
+    // Off the map, so no fog check applies.
+    const game = { isValidCoord: () => false };
+    const ctrl = new (AttackingTroopsController as any)(game, {}, {}, view);
     ctrl.attacks.set("a", {
       text: "1",
       isIncoming: true,
+      attackerID: 3,
       slots: [
         { curX: 0, curY: 0, srcX: 0, srcY: 0, dstX: 1, dstY: 1, startMs: 0 },
       ],
@@ -102,6 +105,7 @@ describe("pushLabels buffer reuse", () => {
     ctrl.attacks.set("a", {
       text: "2",
       isIncoming: false,
+      attackerID: 0,
       slots: [
         { curX: 1, curY: 1, srcX: 0, srcY: 0, dstX: 2, dstY: 2, startMs: 0 },
       ],
@@ -109,5 +113,42 @@ describe("pushLabels buffer reuse", () => {
     ctrl.pushLabels();
     expect(captured.length).toBe(1);
     expect(captured[0]).toBe(firstItem);
+  });
+});
+
+describe("fog over attack labels", () => {
+  test("hides an incoming attack's troops inside fog, never my own attack's", () => {
+    let captured: { text: string }[] = [];
+    const view = {
+      setAttackTroopLabels: (l: { text: string }[]) => (captured = l),
+    };
+    const attacker = { isPlayer: () => true };
+    const fogged: unknown[][] = [];
+    const game = {
+      isValidCoord: () => true,
+      ref: (x: number, y: number) => y * 100 + x,
+      playerBySmallID: () => attacker,
+      fogHidesTroops: (...args: unknown[]) => {
+        fogged.push(args);
+        return true;
+      },
+    };
+    const ctrl = new (AttackingTroopsController as any)(game, {}, {}, view);
+    const slot = { curX: 5, curY: 7, srcX: 5, srcY: 7, dstX: 5, dstY: 7 };
+    ctrl.attacks.set("in", {
+      text: "12K",
+      isIncoming: true,
+      attackerID: 3,
+      slots: [{ ...slot, startMs: 0 }],
+    });
+    ctrl.attacks.set("out", {
+      text: "9K",
+      isIncoming: false,
+      attackerID: 0,
+      slots: [{ ...slot, startMs: 0 }],
+    });
+    ctrl.pushLabels();
+    expect(captured.map((l) => l.text)).toEqual(["?", "9K"]);
+    expect(fogged).toEqual([[705, attacker]]);
   });
 });

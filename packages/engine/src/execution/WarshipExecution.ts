@@ -482,6 +482,7 @@ export class WarshipExecution implements Execution {
       }
     }
 
+    if (this.stormHolds()) return true;
     this.warship.setTargetTile(retreatPortTile);
     const result = this.pathfinder.next(this.warship.tile(), retreatPortTile);
     switch (result.status) {
@@ -719,6 +720,7 @@ export class WarshipExecution implements Execution {
 
   private huntDownTradeShip() {
     this.warship.updateWarshipState({ isInCombat: true });
+    if (this.stormHolds()) return;
     for (let i = 0; i < 2; i++) {
       const target = this.warship.targetUnit()!;
       const targetTile = target.tile();
@@ -775,7 +777,16 @@ export class WarshipExecution implements Execution {
     return best;
   }
 
+  // weather-seasons hook: a sea storm halves the warship's speed. Only its
+  // moves wait; it still shoots.
+  private stormHolds(): boolean {
+    return (
+      this.mg.weather()?.stormMove(this.warship, this.mg.ticks()).hold ?? false
+    );
+  }
+
   private patrol() {
+    if (this.stormHolds()) return;
     if (this.warship.targetTile() === undefined) {
       this.warship.setTargetTile(this.randomTile());
       if (this.warship.targetTile() === undefined) {

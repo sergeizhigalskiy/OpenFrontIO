@@ -6,7 +6,10 @@
  */
 
 import { Cell, GameType, UnitType } from "@openfront/engine-api/game/GameTypes";
-import { GameUpdateType } from "@openfront/engine-api/game/GameUpdates";
+import {
+  GameUpdateType,
+  WeatherKind,
+} from "@openfront/engine-api/game/GameUpdates";
 import { Config } from "@openfront/engine-lib/configuration/Config";
 import { EventBus } from "@openfront/shared/EventBus";
 import "../../../src/client/hud/layers/EventsDisplay";
@@ -434,6 +437,46 @@ describe("ReplayGameAdapter", () => {
     } finally {
       adapter.restyle([before]);
     }
+  });
+
+  test("reads the weather the frames carry, and fog from the followed side", () => {
+    const tick = 50;
+    const fog = {
+      id: 1,
+      kind: WeatherKind.Fog,
+      x: 10,
+      y: 10,
+      dx: 0,
+      dy: 0,
+      radius: 5,
+      announceTick: 0,
+      activeTick: 0,
+      endTick: 10_000,
+    };
+    adapter.update(
+      {
+        ...reader.seek(tick),
+        miscUpdates: {
+          Weather: [{ type: GameUpdateType.Weather, cells: [fog] }],
+        },
+      } as never,
+      EMPTY,
+      0,
+      false,
+    );
+    const inside = adapter.ref(10, 12);
+    expect(adapter.weatherAt(inside)).toBe(WeatherKind.Fog);
+    expect(adapter.weatherAt(adapter.ref(40, 40))).toBeNull();
+    const [a, b] = adapter.playerViews();
+    adapter.focus = a;
+    expect(adapter.fogHidesTroops(inside, a)).toBe(false);
+    expect(adapter.fogHidesTroops(inside, b)).toBe(!a.isFriendly(b));
+    adapter.focus = null;
+    expect(adapter.fogHidesTroops(inside, a)).toBe(true);
+    // A frame without weather keeps the last cells.
+    adapter.update(reader.seek(tick + 1), EMPTY, 0, false);
+    expect(adapter.weatherAt(inside)).toBe(WeatherKind.Fog);
+    adapter.endHudTick();
   });
 
   test("events are kept until the HUD asks, and dropped on a seek", () => {

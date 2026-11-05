@@ -17,6 +17,8 @@ import {
   GameUpdateViewData,
   SpawnPhaseEndUpdate,
   UnitUpdate,
+  WeatherCell,
+  WeatherKind,
 } from "@openfront/engine-api/game/GameUpdates";
 import {
   GameLike,
@@ -34,6 +36,10 @@ import {
 import { TerrainMapData } from "@openfront/engine-lib/game/TerrainMapLoader";
 import { TerraNulliusImpl } from "@openfront/engine-lib/game/TerraNulliusImpl";
 import { UnitGrid } from "@openfront/engine-lib/game/UnitGrid";
+import {
+  fogHidesTroops,
+  weatherKindAt,
+} from "@openfront/engine-lib/game/Weather";
 import { PlayerCosmetics, WirePlayer } from "@openfront/shared/WireSchemas";
 import { computeAllianceClusters } from "../render/frame/derive/AllianceClusters";
 import { extractAttackRings } from "../render/frame/derive/AttackRings";
@@ -146,6 +152,8 @@ export class GameView implements GameLike {
   };
 
   private toDelete = new Set<number>();
+  /** The live weather cells, from the last WeatherUpdate. */
+  private _weatherCells: WeatherCell[] = [];
 
   private _cosmetics: Map<string, PlayerCosmetics> = new Map();
   private _cosmeticVisibility: CosmeticVisibility = readCosmeticVisibility();
@@ -286,6 +294,10 @@ export class GameView implements GameLike {
     }
     if (gu.updates[GameUpdateType.Win].length > 0) {
       this._gameOver = true;
+    }
+    const weatherUpdates = gu.updates[GameUpdateType.Weather] ?? [];
+    if (weatherUpdates.length > 0) {
+      this._weatherCells = weatherUpdates[weatherUpdates.length - 1].cells;
     }
 
     const myDisplayName = formatPlayerDisplayName(
@@ -907,6 +919,41 @@ export class GameView implements GameLike {
   config(): Config {
     return this._config;
   }
+
+  /** Every live weather cell, forecasts included. */
+  weatherCells(): readonly WeatherCell[] {
+    return this._weatherCells;
+  }
+
+  /** The weather in effect over `tile`, or null. */
+  weatherAt(tile: TileRef): WeatherKind | null {
+    if (this._weatherCells.length === 0) return null;
+    return weatherKindAt(
+      this._weatherCells,
+      this.ticks(),
+      this.x(tile),
+      this.y(tile),
+    );
+  }
+
+  /**
+   * Fog: whether a troop count of `owner`'s shown at `tile` is hidden from
+   * this viewer. Only what the viewer owns or is friendly with shows through.
+   */
+  fogHidesTroops(tile: TileRef, owner: PlayerView | null): boolean {
+    if (this._weatherCells.length === 0) return false;
+    const me = this.myPlayer();
+    const seesThrough =
+      owner !== null && me !== null && (owner === me || me.isFriendly(owner));
+    return fogHidesTroops(
+      this._weatherCells,
+      this.ticks(),
+      this.x(tile),
+      this.y(tile),
+      seesThrough,
+    );
+  }
+
   isSpectator(): boolean {
     return !this.myPlayer()?.isAlive() || this._config.isReplay();
   }

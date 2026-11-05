@@ -11,6 +11,7 @@
  * touch MapRenderer — they never import GPURenderer or Camera.
  */
 
+import type { WeatherCell } from "@openfront/engine-api/game/GameUpdates";
 import type { MapLayer } from "@openfront/engine-api/game/MapFiles";
 import type { Config } from "@openfront/engine-lib/configuration/Config";
 import type { SpiralRibbon } from "../frame/SpiralTrails";
@@ -309,6 +310,20 @@ export class MapRenderer {
   /** Conventional war: the capital stars to draw. */
   updateCapitals(capitals: CapitalMarker[]): void {
     this.renderer?.updateCapitals(capitals);
+  }
+
+  /** Seasons and weather: the live cells and the winter strength (0-1). */
+  updateWeather(
+    cells: readonly WeatherCell[],
+    tick: number,
+    winter: number,
+  ): void {
+    this.renderer?.updateWeather(cells, tick, winter);
+  }
+
+  /** Fog: players (smallIDs) whose name label shows no troop count. */
+  setFogHiddenTroops(hidden: ReadonlySet<number>): void {
+    this.renderer?.setFogHiddenTroops(hidden);
   }
 
   /** Set the small-player glow set (1 byte per owner smallID), or null = off. */

@@ -21,6 +21,7 @@ import {
   COASTAL_BATTERY_HEALTH_PERCENT_OF_WARSHIP,
   MINEFIELD_MAX_DENSITY,
 } from "../game/NavalDefense";
+import { isWinterAt, seasonTroopGrowthMultiplier } from "../game/Seasons";
 import { assertNever } from "../Util";
 
 export interface NukeMagnitude {
@@ -195,6 +196,21 @@ export class Config {
    */
   conventionalWar(): boolean {
     return this._gameConfig.conventionalWar ?? false;
+  }
+
+  /** Seasons (see game/Seasons.ts). On unless the game config turns it off. */
+  seasonsEnabled(): boolean {
+    return this._gameConfig.seasons ?? true;
+  }
+
+  /** Weather systems (see game/Weather.ts). On unless turned off. */
+  weatherEnabled(): boolean {
+    return this._gameConfig.weather ?? true;
+  }
+
+  /** True while a winter lasts, `ticksSinceStart` after the spawn phase. */
+  isWinter(ticksSinceStart: Tick): boolean {
+    return this.seasonsEnabled() && isWinterAt(ticksSinceStart);
   }
 
   isUnitDisabled(unitType: UnitType): boolean {
@@ -451,7 +467,11 @@ export class Config {
     }
   }
 
-  troopIncreaseRate(player: PlayerLike): number {
+  /**
+   * Troops `player` grows this tick. `ticksSinceStart` (the game clock since
+   * the spawn phase) applies the season; without it there is no winter.
+   */
+  troopIncreaseRate(player: PlayerLike, ticksSinceStart?: Tick): number {
     const max = this.maxTroops(player);
 
     let toAdd = 10 + pow(player.troops(), 0.73) / 4;
@@ -481,6 +501,11 @@ export class Config {
           assertNever(this._gameConfig.difficulty);
       }
     }
+
+    // weather-seasons hook: winter slows troop growth (game/Seasons.ts).
+    toAdd *= seasonTroopGrowthMultiplier(
+      ticksSinceStart !== undefined && this.isWinter(ticksSinceStart),
+    );
 
     return Math.min(player.troops() + toAdd, max) - player.troops();
   }

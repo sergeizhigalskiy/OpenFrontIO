@@ -350,6 +350,12 @@ export const GameConfigSchema = z.object({
   // built, and airbases, airstrikes, airdrops, cruise missiles and capitals
   // are on (see engine-lib/game/ConventionalWar.ts). Off when absent.
   conventionalWar: z.boolean().optional(),
+  // Seasons: a 90-second winter every 7 minutes (see
+  // engine-lib/game/Seasons.ts). On when absent.
+  seasons: z.boolean().optional(),
+  // Weather systems: mud fronts, sea storms and fog drifting over the map
+  // (see engine-lib/game/Weather.ts). On when absent.
+  weather: z.boolean().optional(),
 });
 
 // What a host sends in update_game_config. maxPlayers is the private-lobby

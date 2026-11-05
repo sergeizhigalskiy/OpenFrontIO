@@ -1,6 +1,7 @@
 import { TileRef } from "@openfront/engine-api/game/GameMap";
 import { MessageType, UnitType } from "@openfront/engine-api/game/GameTypes";
 import { renderNumber } from "@openfront/engine-lib/Format";
+import { STORM_SPEED_DIVISOR } from "@openfront/engine-lib/game/Weather";
 import {
   zInt,
   zPlayerRef,
@@ -10,6 +11,7 @@ import {
 import { findClosestBy } from "@openfront/engine-lib/Util";
 import { z } from "zod";
 import { Execution, Game, Player, Unit } from "../game/Game";
+import { CALM } from "../game/WeatherSystem";
 import { WaterPathFinder } from "../pathfinding/PathFinder";
 import { PathStatus } from "../pathfinding/types";
 import { execSnapshotType } from "../snapshot/ExecutionSnapshot";
@@ -140,6 +142,11 @@ export class TradeShipExecution implements Execution {
       return;
     }
 
+    // weather-seasons hook: a sea storm halves the ship's speed.
+    const storm = this.mg.weather()?.stormMove(this.tradeShip, ticks) ?? CALM;
+    if (storm.changed) this.motionPlanDst = null; // re-plan at the new speed
+    if (storm.hold) return;
+
     const dst = this._dstPort.tile();
     const result = this.pathFinder.next(curTile, dst);
 
@@ -155,7 +162,7 @@ export class TradeShipExecution implements Execution {
             unitId: this.tradeShip.id(),
             planId: this.motionPlanId,
             startTick: ticks + 1,
-            ticksPerStep: 1,
+            ticksPerStep: storm.slowed ? STORM_SPEED_DIVISOR : 1,
             path,
           });
           this.motionPlanDst = dst;

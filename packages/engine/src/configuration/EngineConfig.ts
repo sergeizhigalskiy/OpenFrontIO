@@ -56,6 +56,11 @@ export interface AttackLogicInput {
   falloutRatio: number | null;
   /** Tiles on the attack front this tick (plus jitter); fixed for the tick. */
   borderSize: number;
+  // weather-seasons hooks (engine-lib/game/Seasons.ts, Weather.ts): 1 when absent.
+  /** Scales the attacker's troop loss (winter on snow land). */
+  weatherLossMultiplier?: number;
+  /** Scales the tile's tick cost (a mud front on enemy land). */
+  weatherTileCostMultiplier?: number;
 }
 
 export interface AttackLogicResult {
@@ -611,6 +616,9 @@ export class EngineConfig extends Config {
   attackLogic(input: AttackLogicInput): AttackLogicResult {
     const { attackTroops, attacker, defender } = input;
     let { mag, tileCost } = terrainAttackBase(input.terrain);
+    // weather-seasons hook: winter and mud (see AttackLogicInput).
+    mag *= input.weatherLossMultiplier ?? 1;
+    tileCost *= input.weatherTileCostMultiplier ?? 1;
 
     if (defender !== null && input.defenderHasDefensePost) {
       mag *= this.defensePostDefenseBonus();

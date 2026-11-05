@@ -10,6 +10,7 @@ import {
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
 import { renderTroops } from "@openfront/engine-lib/Format";
+import { winterAttackLossMultiplier } from "@openfront/engine-lib/game/Seasons";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import {
   zInt,
@@ -417,6 +418,16 @@ export class AttackExecution implements Execution {
         ? this.mg.numTilesWithFallout() / this.mg.numLandTiles()
         : null,
       borderSize,
+      // weather-seasons hooks: winter on snow land, mud on enemy land.
+      weatherLossMultiplier: winterAttackLossMultiplier(
+        this.mg.config().isWinter(this.mg.ticksSinceStart()),
+        this.map,
+        tile,
+      ),
+      weatherTileCostMultiplier:
+        defender === null
+          ? 1
+          : (this.mg.weather()?.attackTileCostMultiplier(tile) ?? 1),
     };
   }
 

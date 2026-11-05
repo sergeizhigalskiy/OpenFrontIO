@@ -1085,10 +1085,12 @@
     "options": "Options",
     "overtime": "Overtime after (minutes)",
     "random_spawn": "Random spawn",
+    "seasons": "Seasons",
     "start": "Start Game",
     "starting": "Starting…",
     "starting_gold": "Starting Gold (Millions)",
     "water_nukes": "Water nukes",
+    "weather": "Weather",
     "win_threshold": "Win threshold (%)"
   },
   "game_starting_modal": {
@@ -2391,6 +2393,14 @@
     "title": "Saved games",
     "unshare": "Unshare"
   },
+  "seasons": {
+    "spring": "Spring",
+    "winter_arrived": "Winter has arrived",
+    "winter_coming": "Winter is coming in {seconds}s",
+    "winter_effects": "Attacks into snow cost 50% more troops. Troops grow 20% slower.",
+    "winter_in": "Winter in {time}",
+    "winter_left": "Winter: {time} left"
+  },
   "select_lang": {
     "title": "Select Language"
   },
@@ -3008,6 +3018,11 @@
     "verified_use": "Use verified",
     "verified_use_custom": "Switch back to a custom name",
     "verified_use_hint": "Play under your verified account name"
+  },
+  "weather": {
+    "fog": "Fog",
+    "mud": "Mud front",
+    "storm": "Sea storm"
   },
   "win_modal": {
     "died": "You died",

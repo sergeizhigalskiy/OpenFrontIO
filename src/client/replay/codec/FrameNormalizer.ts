@@ -82,6 +82,7 @@ const UPDATE_TYPE_ROUTING: Record<
   SpawnPhaseEnd: "events",
   GamePaused: "misc",
   DonateEvent: "misc",
+  Weather: "misc",
 };
 
 /**

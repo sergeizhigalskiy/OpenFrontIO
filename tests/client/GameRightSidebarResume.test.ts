@@ -14,6 +14,7 @@ async function mount(resumedFromSave: boolean) {
     gameConfig: () => ({ gameType: GameType.Singleplayer }),
     doomsdayClockConfig: () => ({ enabled: false }),
     overtimeConfig: () => ({ enabled: false, startMinutes: 0 }),
+    seasonsEnabled: () => false,
     isReplay: () => false,
     listed: false,
   };

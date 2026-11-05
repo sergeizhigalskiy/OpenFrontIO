@@ -148,6 +148,8 @@ const DEFAULT_OPTIONS = {
   customAllianceMinutes: undefined as number | undefined,
   waterNukes: false,
   conventionalWar: false,
+  seasons: true,
+  weather: true,
   doomsdayClock: false,
   doomsdayClockSpeed: "normal" as DoomsdayClockSpeed,
   overtime: false,
@@ -238,6 +240,8 @@ export class SinglePlayerModal extends BaseModal {
     DEFAULT_OPTIONS.customAllianceMinutes;
   @state() private waterNukes: boolean = DEFAULT_OPTIONS.waterNukes;
   @state() private conventionalWar: boolean = DEFAULT_OPTIONS.conventionalWar;
+  @state() private seasons: boolean = DEFAULT_OPTIONS.seasons;
+  @state() private weather: boolean = DEFAULT_OPTIONS.weather;
   @state() private doomsdayClock: boolean = DEFAULT_OPTIONS.doomsdayClock;
   @state() private doomsdayClockSpeed: DoomsdayClockSpeed =
     DEFAULT_OPTIONS.doomsdayClockSpeed;
@@ -612,6 +616,14 @@ export class SinglePlayerModal extends BaseModal {
                     checked: this.conventionalWar,
                   },
                   {
+                    labelKey: "game_settings.seasons",
+                    checked: this.seasons,
+                  },
+                  {
+                    labelKey: "game_settings.weather",
+                    checked: this.weather,
+                  },
+                  {
                     labelKey: "game_settings.doomsday_clock",
                     checked: this.doomsdayClock,
                     doomsdayClockSpeed: this.doomsdayClockSpeed,
@@ -684,6 +696,8 @@ export class SinglePlayerModal extends BaseModal {
       this.customAllianceMinutes !== DEFAULT_OPTIONS.customAllianceMinutes ||
       this.waterNukes !== DEFAULT_OPTIONS.waterNukes ||
       this.conventionalWar !== DEFAULT_OPTIONS.conventionalWar ||
+      this.seasons !== DEFAULT_OPTIONS.seasons ||
+      this.weather !== DEFAULT_OPTIONS.weather ||
       this.doomsdayClock !== DEFAULT_OPTIONS.doomsdayClock ||
       // Pace only matters when the mode is on (startGame drops it when off).
       (this.doomsdayClock &&
@@ -761,6 +775,9 @@ export class SinglePlayerModal extends BaseModal {
             disabledUnits: TUTORIAL_DISABLED_UNITS,
             startingGold: 750_000,
             tutorial: true,
+            // The guide's scripted steps run without winters or weather.
+            seasons: false,
+            weather: false,
           },
           lobbyCreatedAt: Date.now(),
         },
@@ -816,6 +833,8 @@ export class SinglePlayerModal extends BaseModal {
     this.customAllianceMinutes = DEFAULT_OPTIONS.customAllianceMinutes;
     this.waterNukes = DEFAULT_OPTIONS.waterNukes;
     this.conventionalWar = DEFAULT_OPTIONS.conventionalWar;
+    this.seasons = DEFAULT_OPTIONS.seasons;
+    this.weather = DEFAULT_OPTIONS.weather;
     this.doomsdayClock = DEFAULT_OPTIONS.doomsdayClock;
     this.doomsdayClockSpeed = DEFAULT_OPTIONS.doomsdayClockSpeed;
     this.overtime = DEFAULT_OPTIONS.overtime;
@@ -863,6 +882,8 @@ export class SinglePlayerModal extends BaseModal {
       customAllianceMinutes: this.customAllianceMinutes,
       waterNukes: this.waterNukes,
       conventionalWar: this.conventionalWar,
+      seasons: this.seasons,
+      weather: this.weather,
       doomsdayClock: this.doomsdayClock,
       doomsdayClockSpeed: this.doomsdayClockSpeed,
       overtime: this.overtime,
@@ -893,6 +914,8 @@ export class SinglePlayerModal extends BaseModal {
     this.customAllianceMinutes = config.customAllianceMinutes;
     this.waterNukes = config.waterNukes ?? false;
     this.conventionalWar = config.conventionalWar ?? false;
+    this.seasons = config.seasons ?? true;
+    this.weather = config.weather ?? true;
     this.doomsdayClock = config.doomsdayClock ?? false;
     this.doomsdayClockSpeed = config.doomsdayClockSpeed ?? "normal";
     this.overtime = config.overtime ?? false;
@@ -1035,6 +1058,12 @@ export class SinglePlayerModal extends BaseModal {
         break;
       case "game_settings.conventional_war":
         this.conventionalWar = checked;
+        break;
+      case "game_settings.seasons":
+        this.seasons = checked;
+        break;
+      case "game_settings.weather":
+        this.weather = checked;
         break;
       case "game_settings.doomsday_clock":
         this.doomsdayClock = checked;
@@ -1368,6 +1397,9 @@ export class SinglePlayerModal extends BaseModal {
               : {}),
             ...(this.waterNukes ? { waterNukes: true } : {}),
             ...(this.conventionalWar ? { conventionalWar: true } : {}),
+            // On when absent, so only an opt-out is sent.
+            ...(this.seasons ? {} : { seasons: false }),
+            ...(this.weather ? {} : { weather: false }),
             ...(this.doomsdayClock
               ? {
                   doomsdayClock: {

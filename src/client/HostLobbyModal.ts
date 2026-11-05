@@ -124,6 +124,9 @@ export class HostLobbyModal extends BaseModal {
   @state() private allowedPublicIds: string = "";
   @state() private waterNukes: boolean = false;
   @state() private conventionalWar: boolean = false;
+  // On by default (the sim's default too).
+  @state() private seasons: boolean = true;
+  @state() private weather: boolean = true;
   @state() private lobbyId = "";
   @state() private lobbyUrlSuffix = "";
   @state() private clients: ClientInfo[] = [];
@@ -775,6 +778,14 @@ export class HostLobbyModal extends BaseModal {
                     checked: this.conventionalWar,
                   },
                   {
+                    labelKey: "game_settings.seasons",
+                    checked: this.seasons,
+                  },
+                  {
+                    labelKey: "game_settings.weather",
+                    checked: this.weather,
+                  },
+                  {
                     labelKey: "game_settings.doomsday_clock",
                     checked: this.doomsdayClock,
                     doomsdayClockSpeed: this.doomsdayClockSpeed,
@@ -1135,6 +1146,8 @@ export class HostLobbyModal extends BaseModal {
     this.allowedPublicIds = "";
     this.waterNukes = false;
     this.conventionalWar = false;
+    this.seasons = true;
+    this.weather = true;
     this.hostCheatsEnabled = false;
     this.hostCheatInfiniteGold = false;
     this.hostCheatInfiniteTroops = false;
@@ -1240,6 +1253,14 @@ export class HostLobbyModal extends BaseModal {
         break;
       case "game_settings.conventional_war":
         this.conventionalWar = checked;
+        void this.putGameConfig();
+        break;
+      case "game_settings.seasons":
+        this.seasons = checked;
+        void this.putGameConfig();
+        break;
+      case "game_settings.weather":
+        this.weather = checked;
         void this.putGameConfig();
         break;
       case "game_settings.doomsday_clock":
@@ -1775,6 +1796,8 @@ export class HostLobbyModal extends BaseModal {
       customAllianceMinutes: this.customAllianceMinutes,
       waterNukes: this.waterNukes,
       conventionalWar: this.conventionalWar,
+      seasons: this.seasons,
+      weather: this.weather,
       doomsdayClock: this.doomsdayClock,
       doomsdayClockSpeed: this.doomsdayClockSpeed,
       overtime: this.overtime,
@@ -1823,6 +1846,8 @@ export class HostLobbyModal extends BaseModal {
     this.customAllianceMinutes = config.customAllianceMinutes;
     this.waterNukes = config.waterNukes ?? false;
     this.conventionalWar = config.conventionalWar ?? false;
+    this.seasons = config.seasons ?? true;
+    this.weather = config.weather ?? true;
     this.doomsdayClock = config.doomsdayClock ?? false;
     this.doomsdayClockSpeed = config.doomsdayClockSpeed ?? "normal";
     this.overtime = config.overtime ?? false;
@@ -2012,6 +2037,8 @@ export class HostLobbyModal extends BaseModal {
               : [],
             waterNukes: this.waterNukes ? true : null,
             conventionalWar: this.conventionalWar,
+            seasons: this.seasons,
+            weather: this.weather,
             hostCheats: this.hostCheatsEnabled
               ? {
                   infiniteGold: this.hostCheatInfiniteGold || undefined,

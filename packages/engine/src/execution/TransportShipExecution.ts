@@ -7,6 +7,7 @@ import {
 } from "@openfront/engine-api/game/GameTypes";
 import { renderTroops } from "@openfront/engine-lib/Format";
 import { MotionPlanRecord } from "@openfront/engine-lib/game/MotionPlans";
+import { STORM_SPEED_DIVISOR } from "@openfront/engine-lib/game/Weather";
 import {
   zInt,
   zNum,
@@ -17,6 +18,7 @@ import {
 import { z } from "zod";
 import { Execution, Game, Player, Unit } from "../game/Game";
 import { targetTransportTile } from "../game/TransportShipUtils";
+import { CALM } from "../game/WeatherSystem";
 import { WaterPathFinder } from "../pathfinding/PathFinder";
 import { PathStatus } from "../pathfinding/types";
 import { execSnapshotType } from "../snapshot/ExecutionSnapshot";
@@ -193,6 +195,10 @@ export class TransportShipExecution implements Execution {
     if (ticks - this.lastMove < this.ticksPerMove) {
       return;
     }
+    // weather-seasons hook: a sea storm halves the boat's speed.
+    const storm = this.mg.weather()?.stormMove(this.boat, ticks) ?? CALM;
+    if (storm.changed) this.motionPlanDst = null; // re-plan at the new speed
+    if (storm.hold) return;
     this.lastMove = ticks;
 
     // Team mate can conquer disconnected player and get their ships
@@ -323,7 +329,8 @@ export class TransportShipExecution implements Execution {
         unitId: this.boat.id(),
         planId: this.motionPlanId,
         startTick: ticks + this.ticksPerMove,
-        ticksPerStep: this.ticksPerMove,
+        ticksPerStep:
+          this.ticksPerMove * (storm.slowed ? STORM_SPEED_DIVISOR : 1),
         path: fullPath,
       });
       this.motionPlanDst = this.dst;

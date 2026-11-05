@@ -100,7 +100,11 @@ export class PlayerExecution implements Execution {
     // Conventional war: a capital lost within its move window moves later.
     maybeRelocateCapital(this.mg, this.player);
 
-    const troopInc = this.config.troopIncreaseRate(this.player);
+    // weather-seasons hook: the season clock (winter slows troop growth).
+    const troopInc = this.config.troopIncreaseRate(
+      this.player,
+      this.mg.ticksSinceStart(),
+    );
     this.player.addTroops(troopInc);
     const goldFromWorkers = this.config.goldAdditionRate(this.player);
     this.player.addGold(goldFromWorkers);

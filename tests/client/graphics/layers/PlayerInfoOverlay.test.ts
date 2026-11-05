@@ -41,6 +41,7 @@ vi.mock("../../../../src/client/hud/PlayerIcons", () => ({
 }));
 
 import { PlayerType, UnitType } from "@openfront/engine-api/game/GameTypes";
+import { WeatherKind } from "@openfront/engine-api/game/GameUpdates";
 import { EventBus } from "@openfront/shared/EventBus";
 import {
   afterEach,
@@ -111,6 +112,8 @@ describe("PlayerInfoOverlay", () => {
       gameConfig: () => ({}),
     }),
     teamClanTag: () => undefined,
+    weatherAt: (): WeatherKind | null => null,
+    fogHidesTroops: () => false,
   });
 
   beforeEach(() => {
@@ -180,6 +183,70 @@ describe("PlayerInfoOverlay", () => {
     expect(out).toContain("unit_type.coastal_battery");
     expect(out).toContain("Health: 1200 / 1500");
     expect(out).not.toContain("Bob");
+  });
+
+  it("names the weather over the hovered tile", () => {
+    overlay.game = {
+      ...makeGame(null),
+      weatherAt: () => WeatherKind.Mud,
+    } as never;
+
+    overlay.maybeShow(10, 10);
+    const out = flatten(overlay.render());
+
+    expect(out).toContain("weather.mud");
+    expect(out).toContain("Bob");
+  });
+
+  it("shows a card naming the weather over open sea", () => {
+    overlay.game = {
+      ...makeGame(null),
+      owner: () => ({ isPlayer: () => false }),
+      isLand: () => false,
+      weatherAt: () => WeatherKind.Storm,
+    } as never;
+
+    overlay.maybeShow(10, 10);
+    const out = flatten(overlay.render());
+
+    expect(out).toContain("opacity-100 visible");
+    expect(out).toContain("weather.storm");
+  });
+
+  it("hides an enemy's troop counts under fog", () => {
+    const fogged = vi.fn(() => true);
+    overlay.game = {
+      ...makeGame(null),
+      weatherAt: () => WeatherKind.Fog,
+      fogHidesTroops: fogged,
+    } as never;
+
+    overlay.maybeShow(10, 10);
+    const out = flatten(overlay.render());
+
+    expect(out).toContain("weather.fog");
+    expect(out).toContain(">?<");
+    expect(fogged).toHaveBeenCalledWith(42, expect.anything());
+  });
+
+  it("hides a fogged boat's troops but not a clear one's", () => {
+    const boat = {
+      type: () => UnitType.Convoy,
+      tile: () => 42,
+      owner: () => ({ ...hovered, displayName: () => "Erin" }),
+      hasHealth: () => false,
+      troops: () => 5000,
+    };
+    overlay.game = {
+      ...makeGame(null, false, [boat]),
+      fogHidesTroops: () => true,
+    } as never;
+    overlay.maybeShow(10, 10);
+    expect(flatten(overlay.render())).toMatch(/Troops:\s*\?/);
+
+    overlay.game = makeGame(null, false, [boat]) as never;
+    overlay.maybeShow(10, 10);
+    expect(flatten(overlay.render())).toMatch(/Troops:\s*0/);
   });
 
   it("shows a white name when there is no local player", () => {

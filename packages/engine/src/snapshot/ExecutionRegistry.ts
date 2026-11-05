@@ -52,6 +52,7 @@ import { TransportShipExecutionSnapshot } from "../execution/TransportShipExecut
 import { TribeExecutionSnapshot } from "../execution/TribeExecution";
 import { UpgradeStructureExecutionSnapshot } from "../execution/UpgradeStructureExecution";
 import { WarshipExecutionSnapshot } from "../execution/WarshipExecution";
+import { WeatherExecutionSnapshot } from "../execution/WeatherExecution";
 import { WinCheckExecutionSnapshot } from "../execution/WinCheckExecution";
 import type { ExecutionSnapshotType } from "./ExecutionSnapshot";
 
@@ -114,5 +115,6 @@ export const EXECUTION_SNAPSHOT_TYPES = [
   TribeExecutionSnapshot,
   UpgradeStructureExecutionSnapshot,
   WarshipExecutionSnapshot,
+  WeatherExecutionSnapshot,
   WinCheckExecutionSnapshot,
 ] as unknown as readonly ExecutionSnapshotType<unknown>[];
