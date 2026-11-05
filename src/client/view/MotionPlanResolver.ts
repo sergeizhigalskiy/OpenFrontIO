@@ -21,7 +21,16 @@ interface TrainMotionPlan {
   planId: number;
   speed: number;
   spacing: number;
+  /** A copy of the record's: a destroyed car's id is zeroed (unitRemoved). */
   carUnitIds: Uint32Array;
+  /**
+   * The engine was destroyed this tick (a nuke, say). Cars still active
+   * took this tick's step: an engine destroyed before its TrainExecution
+   * ran takes every car with it that same tick, so cars only outlive it
+   * when it was destroyed after the train moved. They take that step at
+   * the next advance, then the plan ends.
+   */
+  engineLost: boolean;
   path: Uint32Array;
   cursor: number;
   usedTilesBuf: Uint32Array;
@@ -71,7 +80,7 @@ export class MotionPlanResolver {
       out.length = 0;
       for (const unitId of this.grid.keys()) out.push(unitId);
       for (const [engineId, plan] of this.trains) {
-        out.push(engineId);
+        if (!plan.engineLost) out.push(engineId);
         for (const carId of plan.carUnitIds) if (carId !== 0) out.push(carId);
       }
     }
@@ -95,12 +104,13 @@ export class MotionPlanResolver {
         const existing = this.trains.get(record.engineUnitId);
         if (existing && record.planId <= existing.planId) continue;
         if (existing) this.clearTrainPlan(record.engineUnitId);
-        const carUnitIds = asUint32(record.carUnitIds);
+        const carUnitIds = Uint32Array.from(record.carUnitIds);
         this.trains.set(record.engineUnitId, {
           planId: record.planId,
           speed: record.speed,
           spacing: record.spacing,
           carUnitIds,
+          engineLost: false,
           path: asUint32(record.path),
           cursor: 0,
           usedTilesBuf: new Uint32Array(
@@ -120,10 +130,28 @@ export class MotionPlanResolver {
     }
   }
 
-  /** A unit went inactive: drop any plan it drives or rides on. */
+  /**
+   * A unit went inactive. A grid unit loses its plan. A train goes on
+   * without a destroyed car, as TrainExecution does, and one whose engine
+   * is gone ends after this tick's advance (see engineLost). A train that
+   * arrives loses every unit at once, so it never moves again.
+   */
   unitRemoved(unitId: number): void {
     if (this.grid.delete(unitId)) this.idsDirty = true;
-    this.clearTrainPlan(unitId);
+    const engineId =
+      this.trainUnitToEngine.get(unitId) ??
+      (this.trains.has(unitId) ? unitId : undefined);
+    if (engineId === undefined) return;
+    this.trainUnitToEngine.delete(unitId);
+    const plan = this.trains.get(engineId);
+    if (plan === undefined) return;
+    this.idsDirty = true;
+    if (unitId === engineId) {
+      plan.engineLost = true;
+      return;
+    }
+    const car = plan.carUnitIds.indexOf(unitId);
+    if (car !== -1) plan.carUnitIds[car] = 0;
   }
 
   /** Drop the train plan a unit drives or rides on, if any. */
@@ -179,12 +207,15 @@ export class MotionPlanResolver {
   private advanceTrains(tick: number, units: PlannedUnits): void {
     const stale: number[] = [];
     for (const [engineId, plan] of this.trains) {
-      if (units.tileOf(engineId) === undefined) {
+      if (!plan.engineLost && units.tileOf(engineId) === undefined) {
         stale.push(engineId);
         continue;
       }
       const steps = tick - plan.lastAdvancedTick;
-      if (steps <= 0) continue;
+      if (steps <= 0) {
+        if (plan.engineLost) stale.push(engineId);
+        continue;
+      }
 
       const { path } = plan;
       const lastIndex = path.length - 1;
@@ -225,6 +256,8 @@ export class MotionPlanResolver {
           }
         }
 
+        // A lost engine's last position came with its Unit update.
+        if (plan.engineLost) continue;
         const newEngineTile = path[plan.cursor];
         if (newEngineTile !== units.tileOf(engineId)) {
           units.move(engineId, newEngineTile);
@@ -235,7 +268,9 @@ export class MotionPlanResolver {
       // The plan stays for the tick the train stops (so it's redrawn there),
       // and goes once it no longer moves. Trains are normally removed with
       // their last Unit update first; this is a fallback.
-      if (!didMove && plan.cursor >= lastIndex) stale.push(engineId);
+      if (plan.engineLost || (!didMove && plan.cursor >= lastIndex)) {
+        stale.push(engineId);
+      }
     }
     for (const engineId of stale) this.clearTrainPlan(engineId);
   }

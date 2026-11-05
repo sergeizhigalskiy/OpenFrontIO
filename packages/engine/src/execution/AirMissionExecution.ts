@@ -96,22 +96,27 @@ function frontNear(
  * engine-lib/game/ConventionalWar.ts):
  *
  * - Airstrike: a plane from a ready airbase within AIRBASE_STRIKE_RANGE. It
- *   destroys the nearest hostile military structure within
+ *   destroys every hostile military structure within
  *   AIRSTRIKE_STRUCTURE_RADIUS of the target, kills a capped share of the
  *   target owner's troops, and a capped share of their attacks whose front is
  *   within AIRSTRIKE_FRONT_RADIUS.
  * - Airdrop: a transport plane from a ready airbase carrying troops. It lands
  *   on the clicked tile and attacks outward from it, like a boat landing.
- * - Cruise missile: from a silo within CRUISE_MISSILE_RANGE; it destroys the
- *   nearest hostile military structure within CRUISE_MISSILE_BLAST_RADIUS.
- * - Ballistic missile: from a level 2+ silo; it destroys every hostile
- *   structure within BALLISTIC_MISSILE_BLAST_RADIUS and kills a share of the
- *   troops of everyone with land there, and of their attacks fighting there.
+ * - Cruise missile: from a silo within CRUISE_MISSILE_RANGE; it destroys
+ *   every hostile military structure within CRUISE_MISSILE_BLAST_RADIUS.
+ * - Ballistic missile: from a level 2+ silo; it destroys every structure
+ *   within BALLISTIC_MISSILE_BLAST_RADIUS, whoever owns it, and kills a share
+ *   of the troops of everyone with land there (the launcher and its allies
+ *   too), and of their attacks fighting there.
  * - Cluster missile: from a level 3+ silo, a carrier that splits
  *   CLUSTER_SEPARATION_DISTANCE short of the target into
  *   CLUSTER_WARHEAD_COUNT cluster warheads, each aimed at its own hostile
- *   structure within CLUSTER_SPREAD_RADIUS (military first). A warhead hits
- *   like a cruise missile.
+ *   structure within CLUSTER_SPREAD_RADIUS (military first). A warhead
+ *   destroys its structure and every military structure within
+ *   CRUISE_MISSILE_BLAST_RADIUS, whoever owns them.
+ *
+ * Airstrikes and cruise missiles only ever hurt enemies; ballistic missiles
+ * and cluster warheads hit friends and the launcher too (friendly fire).
  *
  * None takes land or leaves fallout. All fly a low flat line (the parabola
  * path finder with no height) and carry a nuke-style trajectory, so SAMs
@@ -342,23 +347,27 @@ export class AirMissionExecution implements Execution {
   }
 
   /**
-   * Destroys every hostile military structure within `radius` of the impact
-   * that this weapon can destroy, and a cluster warhead's own structure
-   * (whatever its type) if it is still there and hostile. Returns how many.
+   * Destroys every military structure within `radius` of the impact that
+   * this weapon can destroy, and a cluster warhead's own structure (whatever
+   * its type) if it is still there. Airstrikes and cruise missiles spare the
+   * attacker's and its friends' structures; a cluster warhead doesn't
+   * (friendly fire). Returns how many.
    */
   private destroyStructures(radius: number): number {
+    const friendlyFire = this.type === UnitType.ClusterWarhead;
     const structures = hostileMilitaryStructures(
       this.mg,
       this.player,
       this.dst,
       radius,
       this.type,
+      friendlyFire,
     );
     const own = this.targetStructure;
     if (
       own !== null &&
       own.isActive() &&
-      this.isEnemy(own.owner()) &&
+      (friendlyFire || this.isEnemy(own.owner())) &&
       !structures.includes(own)
     ) {
       structures.unshift(own);
@@ -370,7 +379,10 @@ export class AirMissionExecution implements Execution {
   private destroyStructure(structure: Unit): void {
     const victim = structure.owner();
     const unit = unitTypeKey(structure.type());
-    structure.delete(true, this.player);
+    // As for nukes: friendly fire credits nobody with the kill.
+    structure.delete(true, this.isEnemy(victim) ? this.player : undefined);
+    // Our own structure: nobody to report it to.
+    if (victim === this.player) return;
     this.mg.displayMessage(
       "events_display.air_destroyed_structure",
       MessageType.CAPTURED_ENEMY_UNIT,
@@ -437,9 +449,11 @@ export class AirMissionExecution implements Execution {
   }
 
   /**
-   * Every hostile structure within the blast is destroyed, and each enemy
-   * owning land in it loses a share of their troops and of the troops in
-   * their attacks fighting in it. Land and fallout are untouched.
+   * Every structure within the blast is destroyed, whoever owns it (friendly
+   * fire: the launcher's own and its allies' too), and each player owning
+   * land in it, the launcher and its allies included, loses a share of their
+   * troops and of the troops in their attacks fighting in it. Land and
+   * fallout are untouched.
    */
   private ballisticImpact(): void {
     const mg = this.mg;
@@ -450,14 +464,18 @@ export class AirMissionExecution implements Execution {
     const structures = mg
       .nearbyUnits(this.dst, radius, Structures.types, undefined, true)
       .map(({ unit }) => unit)
-      .filter((unit) => this.isEnemy(unit.owner()))
+      .filter((unit) => unit.isActive())
       .sort((a, b) => a.id() - b.id());
     for (const structure of structures) {
-      structure.delete(true, this.player);
+      // As for nukes: friendly fire credits nobody with the kill.
+      structure.delete(
+        true,
+        this.isEnemy(structure.owner()) ? this.player : undefined,
+      );
       destroyed++;
     }
 
-    // Enemies with land in the blast, by smallID.
+    // Everyone with land in the blast, by smallID.
     const owners = new Map<number, Player>();
     const cx = mg.x(this.dst);
     const cy = mg.y(this.dst);
@@ -466,9 +484,7 @@ export class AirMissionExecution implements Execution {
         if (dx * dx + dy * dy > radiusSquared) continue;
         if (!mg.isValidCoord(cx + dx, cy + dy)) continue;
         const owner = mg.owner(mg.ref(cx + dx, cy + dy));
-        if (owner.isPlayer() && this.isEnemy(owner)) {
-          owners.set(owner.smallID(), owner);
-        }
+        if (owner.isPlayer()) owners.set(owner.smallID(), owner);
       }
     }
     let killedTotal = 0;
@@ -483,6 +499,8 @@ export class AirMissionExecution implements Execution {
         killed += kill;
       }
       killedTotal += killed;
+      // Our own losses are in the launcher's summary below.
+      if (victim === this.player) continue;
       mg.displayMessage(
         "events_display.ballistic_missile_hit_you",
         MessageType.NUKE_DETONATED,

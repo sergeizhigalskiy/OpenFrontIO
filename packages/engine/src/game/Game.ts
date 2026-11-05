@@ -343,6 +343,13 @@ export interface Unit extends UnitLike {
   /** Airbases: the tick the last drone took off, null if none has. */
   lastDroneLaunchTick(): Tick | null;
   recordDroneLaunch(): void;
+  /**
+   * Structures without health: drone hits taken so far (see DroneExecution).
+   * Kept through captures and upgrades.
+   */
+  droneHits(): number;
+  /** Counts one more drone hit and returns the new total. */
+  addDroneHit(): number;
   isInCooldown(): boolean;
   missileTimerQueue(): number[];
   samLauncherState(): SamLauncherState | undefined;
@@ -419,15 +426,17 @@ export interface Player extends PlayerLike {
   spawnTile(): TileRef | undefined;
 
   /**
-   * Conventional war only (see Capital.ts): the capital tile, the spawn tile
-   * until it first moves. Undefined outside conventional war, for tribes, and
-   * before spawning.
+   * Conventional war only (see Capital.ts): the capital tile, which is the
+   * spawn tile for the whole game, whoever holds it. Undefined outside
+   * conventional war, for tribes, and before spawning.
    */
   capitalTile(): TileRef | undefined;
-  /** The tick the capital last moved, or null if it never has. */
-  capitalMovedTick(): Tick | null;
-  /** Moves the capital to `tile` at `tick`. */
-  moveCapital(tile: TileRef, tick: Tick): void;
+  /** The tick the capital loss penalty last hit, or null if it never has. */
+  capitalPenaltyTick(): Tick | null;
+  recordCapitalPenalty(tick: Tick): void;
+  /** Whether the once-per-game rally for retaking the capital is spent. */
+  capitalRallyUsed(): boolean;
+  useCapitalRally(): void;
 
   // Territory
   tiles(): ReadonlyTileSet;

@@ -4,6 +4,7 @@ import {
   PlayerType,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
+import { FLAK_GUN_RANGE } from "@openfront/engine-lib/game/ConventionalWar";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import { assertNever } from "@openfront/engine-lib/Util";
 import { Game, Player, Unit } from "../../game/Game";
@@ -17,6 +18,12 @@ import { randTerritoryTileArray } from "./NationUtils";
  * decorative ponds scattered across the map.
  */
 const MIN_PORT_WATER_COMPONENT_SIZE = 3000;
+
+/**
+ * Conventional war: how much a SAM or flak gun values covering the capital,
+ * in structure levels (a level-3 city counts 3).
+ */
+const CAPITAL_PROTECT_WEIGHT = 4;
 
 interface ReachableStation {
   tile: TileRef;
@@ -123,15 +130,16 @@ export class NationStructurePlacement {
         return this.portValue();
       case UnitType.SAMLauncher:
         return this.samLauncherValue();
+      case UnitType.Airbase:
+        return this.airbaseValue();
+      case UnitType.FlakGun:
+        return this.flakGunValue();
       // Nations don't place these through the land-tile scoring: a minefield
       // goes on water (NationWarshipBehavior.maybeLayMinefield picks the tile)
-      // and nations don't build coastal batteries. No tile, not a throw.
+      // and a coastal battery by the threatened port (NationStructureBehavior).
+      // No tile, not a throw.
       case UnitType.Minefield:
       case UnitType.CoastalBattery:
-      // Conventional war: NationAirBehavior places the one airbase nations
-      // build; they build no flak guns.
-      case UnitType.Airbase:
-      case UnitType.FlakGun:
         return null;
       default:
         throw new Error(`Value function not implemented for ${type}`);
@@ -488,11 +496,18 @@ export class NationStructurePlacement {
         case UnitType.Factory:
         case UnitType.MissileSilo:
         case UnitType.Port:
+        // Conventional war only: none exist otherwise
+        case UnitType.Airbase:
           protectEntries.push({
             tile: unit.tile(),
             weight: weightByLevel ? unit.level() : 1,
           });
       }
+    }
+    // Conventional war: the capital comes first, as losing it costs dearly
+    const capital = this.heldCapital();
+    if (capital !== null) {
+      protectEntries.push({ tile: capital, weight: CAPITAL_PROTECT_WEIGHT });
     }
     const range = game.config().defaultSamRange();
     const rangeSquared = range * range;
@@ -558,6 +573,98 @@ export class NationStructurePlacement {
         }
       }
 
+      return w;
+    };
+  }
+
+  /** Conventional war: our capital tile while we hold it, else null. */
+  private heldCapital(): TileRef | null {
+    const capital = this.player.capitalTile();
+    if (capital === undefined || this.game.owner(capital) !== this.player) {
+      return null;
+    }
+    return capital;
+  }
+
+  /**
+   * Value function for airbases (conventional war).
+   * Like a missile silo: elevation, distance from the border (their reach is
+   * AIRBASE_STRIKE_RANGE, so they need not sit near it), and spacing.
+   */
+  private airbaseValue(): (tile: TileRef) => number {
+    const game = this.game;
+    const borderTiles = this.player.borderTiles();
+    const otherUnits = this.player.units(UnitType.Airbase);
+    const { borderSpacing, structureSpacing } = this.spacingConstants();
+
+    return (tile) => {
+      let w = game.magnitude(tile);
+      // Clamped at borderSpacing, so the ring search may stop there.
+      const closestBorderDist = nearestTileDistCapped(
+        game,
+        borderTiles,
+        tile,
+        borderSpacing,
+      );
+      w += Math.min(closestBorderDist, borderSpacing);
+      const otherTiles: Set<TileRef> = new Set(otherUnits.map((u) => u.tile()));
+      otherTiles.delete(tile);
+      const d = nearestTileDist(game, otherTiles, tile);
+      if (d !== Infinity) w += Math.min(d, structureSpacing);
+      return w;
+    };
+  }
+
+  /**
+   * Value function for flak guns (conventional war).
+   * Like a SAM, but over FLAK_GUN_RANGE: what planes and drones go for (the
+   * capital first, airbases, silos, SAMs, cities), less what our flak
+   * already covers, plus spacing. Easy only spaces them out.
+   */
+  private flakGunValue(): (tile: TileRef) => number {
+    const game = this.game;
+    const player = this.player;
+    const otherUnits = player.units(UnitType.FlakGun);
+    const { structureSpacing } = this.spacingConstants();
+    const { difficulty } = game.config().gameConfig();
+    const weightByLevel =
+      difficulty === Difficulty.Hard || difficulty === Difficulty.Impossible;
+
+    const protectEntries: { tile: TileRef; weight: number }[] = [];
+    for (const unit of player.units()) {
+      switch (unit.type()) {
+        case UnitType.City:
+        case UnitType.Airbase:
+        case UnitType.MissileSilo:
+        case UnitType.SAMLauncher:
+          protectEntries.push({
+            tile: unit.tile(),
+            weight: weightByLevel ? unit.level() : 1,
+          });
+      }
+    }
+    const capital = this.heldCapital();
+    if (capital !== null) {
+      protectEntries.push({ tile: capital, weight: CAPITAL_PROTECT_WEIGHT });
+    }
+    const rangeSquared = FLAK_GUN_RANGE * FLAK_GUN_RANGE;
+    const covered = (tile: TileRef) =>
+      otherUnits.filter(
+        (gun) => game.euclideanDistSquared(gun.tile(), tile) <= rangeSquared,
+      ).length;
+    const coverage = protectEntries.map((entry) => covered(entry.tile));
+
+    return (tile) => {
+      let w = game.magnitude(tile);
+      const otherTiles: Set<TileRef> = new Set(otherUnits.map((u) => u.tile()));
+      otherTiles.delete(tile);
+      const d = nearestTileDist(game, otherTiles, tile);
+      if (d !== Infinity) w += Math.min(d, FLAK_GUN_RANGE);
+      if (difficulty === Difficulty.Easy) return w;
+      protectEntries.forEach((entry, i) => {
+        if (game.euclideanDistSquared(tile, entry.tile) > rangeSquared) return;
+        w += (structureSpacing * entry.weight) / (1 + coverage[i]);
+      });
       return w;
     };
   }

@@ -89,6 +89,7 @@ describe("PlayerInfoOverlay", () => {
     cosmetics: {},
     id: () => "bob",
     smallID: () => 2,
+    state: {},
   };
 
   const makeGame = (
@@ -191,6 +192,24 @@ describe("PlayerInfoOverlay", () => {
     expect(out).toContain("Bob");
     expect(out).toContain("text-white");
     expect(out).not.toContain("text-green-500");
+  });
+
+  it("marks a player whose capital someone else holds", () => {
+    const withCapital = { ...hovered, state: { capitalTile: 7 } };
+    const game = (ownerID: number) => ({
+      ...makeGame(null),
+      owner: () => withCapital,
+      ownerID: () => ownerID,
+    });
+    overlay.game = game(2) as never;
+    overlay.maybeShow(10, 10);
+    expect(flatten(overlay.render())).not.toContain(
+      "player_panel.capital_lost",
+    );
+
+    overlay.game = game(5) as never;
+    overlay.maybeShow(10, 10);
+    expect(flatten(overlay.render())).toContain("player_panel.capital_lost");
   });
 
   it("stays hidden in the onboarding tutorial", () => {

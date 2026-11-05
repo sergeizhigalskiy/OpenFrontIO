@@ -18,8 +18,10 @@ import type {
  * on any change to how frames or packed events (PackedEvents) are encoded.
  * Stored replays are also keyed by build, so this only matters for dev
  * builds, which all share "DEV".
+ *
+ * v2: players carry capitalTile (conventional war).
  */
-export const REPLAY_VERSION = 1;
+export const REPLAY_VERSION = 2;
 
 /**
  * Frames per chunk. Each chunk starts with a keyframe, and keyframes are

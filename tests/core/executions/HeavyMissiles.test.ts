@@ -89,6 +89,37 @@ describe("ballistic missile", () => {
     expect(attack.troops()).toBeLessThan(before * 0.95);
   });
 
+  test("friendly fire: the launcher's and its allies' structures and troops in the blast are hit too", async () => {
+    const { game, players } = await conventionalGame(
+      "big_plains",
+      ["a", "b", "c"],
+      { infiniteGold: true },
+    );
+    const [a, b, c] = players;
+    conquerRect(game, a, 0, 0, 40, 200);
+    conquerRect(game, b, 100, 0, 200, 200);
+    // a's exclave and its ally c's land, both inside the blast.
+    conquerRect(game, a, 140, 95, 145, 100);
+    conquerRect(game, c, 155, 100, 160, 105);
+    a.createAllianceRequest(c)!.accept();
+    structure(game, a, UnitType.MissileSilo, game.ref(10, 100), 2);
+    const own = structure(game, a, UnitType.DefensePost, game.ref(142, 97));
+    const allied = structure(game, c, UnitType.City, game.ref(157, 102));
+    const enemy = structure(game, b, UnitType.City, game.ref(150, 110));
+    a.setTroops(500_000);
+    c.setTroops(100_000);
+    order(game, a, UnitType.BallisticMissile, game.ref(150, 100));
+    executeTicks(game, 3);
+    runUntil(game, () => airborne(game, UnitType.BallisticMissile) === 0, 100);
+    expect(own.isActive()).toBe(false);
+    expect(allied.isActive()).toBe(false);
+    expect(enemy.isActive()).toBe(false);
+    // 10% of everyone's troops with land in the blast, ours included.
+    const kept = 1 - BALLISTIC_MISSILE_TROOP_KILL_PERCENT / 100;
+    expect(a.troops()).toBe(500_000 * kept);
+    expect(c.troops()).toBe(100_000 * kept);
+  });
+
   test("a SAM intercepts it with one missile", async () => {
     const { game, a, b } = await sides();
     structure(game, a, UnitType.MissileSilo, game.ref(10, 100), 2);
@@ -133,6 +164,63 @@ describe("cluster missile", () => {
     }
     expect(far.isActive()).toBe(true);
     expect(b.numTilesOwned()).toBe(owned);
+  });
+
+  test("friendly fire: a warhead destroys our and our allies' military structures within 3 tiles", async () => {
+    const { game, players } = await conventionalGame(
+      "big_plains",
+      ["a", "b", "c"],
+      { infiniteGold: true },
+    );
+    const [a, b, c] = players;
+    conquerRect(game, a, 0, 0, 40, 200);
+    conquerRect(game, b, 100, 0, 200, 200);
+    conquerRect(game, a, 161, 101, 165, 104);
+    conquerRect(game, c, 157, 97, 160, 100);
+    a.createAllianceRequest(c)!.accept();
+    structure(game, a, UnitType.MissileSilo, game.ref(10, 100), 3);
+    // The only hostile structure, so all 8 warheads land on it.
+    const post = structure(game, b, UnitType.DefensePost, game.ref(160, 100));
+    const own = structure(game, a, UnitType.FlakGun, game.ref(161, 101));
+    const allied = structure(game, c, UnitType.DefensePost, game.ref(158, 98));
+    // Economic structures in a warhead's blast are spared, ours too.
+    const ownCity = structure(game, a, UnitType.City, game.ref(162, 102));
+    // Military, but 5 tiles away: spared.
+    const farOwn = structure(game, a, UnitType.FlakGun, game.ref(164, 103));
+    order(game, a, UnitType.ClusterMissile, post.tile());
+    executeTicks(game, 3);
+    runUntil(game, () => airborne(game, UnitType.ClusterWarhead) > 0, 100);
+    runUntil(game, () => airborne(game, UnitType.ClusterWarhead) === 0, 100);
+    expect(post.isActive()).toBe(false);
+    expect(own.isActive()).toBe(false);
+    expect(allied.isActive()).toBe(false);
+    expect(ownCity.isActive()).toBe(true);
+    expect(farOwn.isActive()).toBe(true);
+  });
+
+  test("airstrikes and cruise missiles spare our own and allied structures", async () => {
+    const { game, players } = await conventionalGame("big_plains", ["a", "b"], {
+      infiniteGold: true,
+    });
+    const [a, b] = players;
+    conquerRect(game, a, 0, 0, 40, 200);
+    conquerRect(game, b, 100, 0, 200, 200);
+    conquerRect(game, a, 150, 100, 152, 102);
+    structure(game, a, UnitType.MissileSilo, game.ref(10, 100), 3);
+    structure(game, a, UnitType.Airbase, game.ref(30, 100));
+    const enemy = structure(game, b, UnitType.DefensePost, game.ref(150, 98));
+    const own = structure(game, a, UnitType.FlakGun, game.ref(150, 100));
+    order(game, a, UnitType.CruiseMissile, enemy.tile());
+    executeTicks(game, 3);
+    runUntil(game, () => airborne(game, UnitType.CruiseMissile) === 0, 100);
+    expect(enemy.isActive()).toBe(false);
+    expect(own.isActive()).toBe(true);
+    const enemy2 = structure(game, b, UnitType.DefensePost, game.ref(150, 99));
+    order(game, a, UnitType.Airstrike, game.ref(150, 99));
+    executeTicks(game, 3);
+    runUntil(game, () => airborne(game, UnitType.Airstrike) === 0, 100);
+    expect(enemy2.isActive()).toBe(false);
+    expect(own.isActive()).toBe(true);
   });
 
   test("each warhead can be intercepted; the carrier can't", async () => {

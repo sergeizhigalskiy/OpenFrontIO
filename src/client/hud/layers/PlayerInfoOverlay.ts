@@ -26,6 +26,7 @@ import { Platform } from "../../Platform";
 import { themeProvider } from "../../theme/ThemeProvider";
 import { TransformHandler } from "../../TransformHandler";
 import { UserSettings } from "../../UserSettings";
+import { isCapitalLost } from "../../utilities/Capitals";
 import {
   formatKeyForDisplay,
   getTranslatedPlayerTeamLabel,
@@ -772,6 +773,14 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
                     class="text-gray-400 text-xs font-mono font-normal shrink-0 whitespace-nowrap"
                     >${playerType}</span
                   >`
+            }
+            ${
+              isCapitalLost(this.game, player)
+                ? html`<span
+                    class="text-red-400 text-xs font-mono font-normal shrink-0 whitespace-nowrap"
+                    >★ ${translateText("player_panel.capital_lost")}</span
+                  >`
+                : ""
             }
             ${this.renderPlayerNameIcons(playerIcons)} ${betrayalHtml ?? ""}
             ${allianceHtml ?? ""}

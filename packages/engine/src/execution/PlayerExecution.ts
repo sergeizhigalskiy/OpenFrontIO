@@ -5,11 +5,12 @@ import {
   Structures,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
+import { capitalHoldGoldBonusPct } from "@openfront/engine-lib/game/ConventionalWar";
 import { zInt, zPlayerRef } from "@openfront/engine-lib/snapshot/SnapshotType";
 import { getMode, simpleHash } from "@openfront/engine-lib/Util";
 import { z } from "zod";
 import { EngineConfig } from "../configuration/EngineConfig";
-import { maybeRelocateCapital } from "../game/Capital";
+import { heldEnemyCapitals } from "../game/Capital";
 import { Execution, Game, Player } from "../game/Game";
 import {
   bumpTraversalGeneration,
@@ -97,12 +98,13 @@ export class PlayerExecution implements Execution {
       return;
     }
 
-    // Conventional war: a capital lost within its move window moves later.
-    maybeRelocateCapital(this.mg, this.player);
-
     const troopInc = this.config.troopIncreaseRate(this.player);
     this.player.addTroops(troopInc);
-    const goldFromWorkers = this.config.goldAdditionRate(this.player);
+    // Conventional war: enemy capitals held raise the income (Capital.ts).
+    const goldFromWorkers = this.config.goldAdditionRate(
+      this.player,
+      capitalHoldGoldBonusPct(heldEnemyCapitals(this.mg, this.player)),
+    );
     this.player.addGold(goldFromWorkers);
 
     // Record stats

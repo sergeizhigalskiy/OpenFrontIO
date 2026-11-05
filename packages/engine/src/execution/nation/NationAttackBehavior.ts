@@ -13,6 +13,12 @@ import {
   TerraNullius,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
+import {
+  AIRBASE_STRIKE_RANGE,
+  airdropTroops,
+  CRUISE_MISSILE_RANGE,
+} from "@openfront/engine-lib/game/ConventionalWar";
+import { COASTAL_BATTERY_RANGE } from "@openfront/engine-lib/game/NavalDefense";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import { Versioned } from "@openfront/engine-lib/snapshot/SnapshotType";
 import {
@@ -31,11 +37,23 @@ import type {
   SnapshotReader,
   SnapshotWriter,
 } from "../../snapshot/SnapshotContext";
+import { AirMissionExecution } from "../AirMissionExecution";
 import { AttackExecution } from "../AttackExecution";
 import { DonateTroopsExecution } from "../DonateTroopExecution";
 import { TransportShipExecution } from "../TransportShipExecution";
+import { UpgradeStructureExecution } from "../UpgradeStructureExecution";
+import { nearestTileDistCapped } from "../Util";
 import { AiAttackBehavior, BoatRoute } from "../utils/AiAttackBehavior";
 import { planBotAttacks, walledInBots } from "./BotAnnexation";
+import {
+  hostileFlakCovering,
+  hostileSamsCovering,
+  orderAirstrike,
+  orderCruiseVolley,
+  orderDroneSwarm,
+  priceOf,
+  spareAirGold,
+} from "./NationAirPlanning";
 import { NationAllianceBehavior } from "./NationAllianceBehavior";
 import {
   EMOJI_ASSIST_ACCEPT,
@@ -49,6 +67,41 @@ import type { NationWarshipBehavior } from "./NationWarshipBehavior";
 
 // Reusable neighbor buffer for hot loops; the simulation is single-threaded.
 const NEIGHBOR_SCRATCH: TileRef[] = [0, 0, 0, 0];
+
+/**
+ * Conventional war: an enemy's capital within this many tiles (manhattan) of
+ * our border becomes the spearhead of our land attacks on it, keyed by
+ * difficulty. Easy never aims for capitals.
+ */
+const CAPITAL_FOCUS_RANGE: Record<Difficulty, number> = {
+  [Difficulty.Easy]: 0,
+  [Difficulty.Medium]: 40,
+  [Difficulty.Hard]: 60,
+  [Difficulty.Impossible]: 80,
+};
+
+/** Conventional war: odds (1 in N) of an airdrop per attack tick, keyed by difficulty */
+const AIRDROP_ODDS: Record<Difficulty, number> = {
+  [Difficulty.Easy]: 20,
+  [Difficulty.Medium]: 10,
+  [Difficulty.Hard]: 8,
+  [Difficulty.Impossible]: 6,
+};
+
+/** Random tiles tried around an airbase for an airdrop, as boats try for a landing */
+const AIRDROP_SAMPLES = 200;
+
+/** An airdrop behind a front lands at least this far (manhattan) from our border */
+const AIRDROP_MIN_DEPTH = 20;
+
+/** Enemy land is weakly held below this share of our own troops per tile */
+const WEAKLY_HELD_DENSITY_RATIO = 0.5;
+
+/** Easy flies air support on only 1 in this many attack ticks */
+const EASY_AIR_SUPPORT_ODDS = 4;
+
+/** Front structures weighed for air support per attack tick, to bound the cost */
+const MAX_AIR_SUPPORT_TARGETS = 4;
 
 type Box = { min: Cell; max: Cell } | null | undefined;
 
@@ -205,6 +258,8 @@ export class NationAttackBehavior extends AiAttackBehavior {
     }
 
     const holdBoats = this.holdsBoatsUnderAttack();
+    // Conventional war: now and then an airdrop, picked the way boats pick landings
+    if (!holdBoats && this.maybeAirdrop()) return;
     if (borderingEnemies.length === 0) {
       if (!holdBoats && this.random.chance(5)) {
         this.attackWithRandomBoat();
@@ -358,6 +413,16 @@ export class NationAttackBehavior extends AiAttackBehavior {
       (difficulty === Difficulty.Hard ||
         difficulty === Difficulty.Impossible) &&
       this.retaliate()
+    ) {
+      return;
+    }
+
+    // Conventional war, Hard & Impossible: our lost capital comes right after,
+    // also ahead of the trigger ratio (never below the reserve)
+    if (
+      (difficulty === Difficulty.Hard ||
+        difficulty === Difficulty.Impossible) &&
+      this.recaptureCapital()
     ) {
       return;
     }
@@ -557,24 +622,34 @@ export class NationAttackBehavior extends AiAttackBehavior {
       );
     };
 
+    // Conventional war: take our capital back, or take an enemy's (the land
+    // attack spearheads at it, see capitalFocus). Nothing outside it.
+    const recapture = (): boolean => this.recaptureCapital();
+
+    const capital = (): boolean => {
+      const target = pick((enemies) => this.findCapitalTarget(enemies));
+      return target !== null ? this.sendAttack(target) : false;
+    };
+
     // Return strategies in order based on difficulty
     // Easy nations get the dumbest order, impossible nations get the smartest order
     // Medium and up retaliate in attackBestTarget, ahead of the ratio checks
+    // Hard and up also go for a lost capital there
     switch (difficulty) {
       case Difficulty.Easy:
         // So dumb, they cant even find islanders
         // prettier-ignore
-        return [nuked, bots, retaliate, assist, betray, hated, weakest];
+        return [nuked, bots, retaliate, recapture, assist, betray, hated, weakest];
       case Difficulty.Medium:
         // prettier-ignore
-        return [bots, nuked, assist, betray, hated, afk, traitor, crown, weakest, island, donate];
+        return [recapture, bots, nuked, assist, betray, hated, afk, traitor, crown, weakest, island, donate];
       case Difficulty.Hard:
         // Strong veryWeak and juicy strats after the distracting hated strat, to make the nations weaker than impossible
         // prettier-ignore
-        return [bots, assist, betray, nuked, traitor, afk, hated, veryWeak, juicy, victim, crown, weakest, island, donate];
+        return [bots, assist, betray, nuked, traitor, afk, hated, capital, veryWeak, juicy, victim, crown, weakest, island, donate];
       case Difficulty.Impossible:
         // prettier-ignore
-        return [bots, veryWeak, betray, assist, victim, crown, traitor, juicy, afk, nuked, hated, weakest, island, donate];
+        return [bots, veryWeak, capital, betray, assist, victim, crown, traitor, juicy, afk, nuked, hated, weakest, island, donate];
       default:
         assertNever(difficulty);
     }
@@ -1601,6 +1676,315 @@ export class NationAttackBehavior extends AiAttackBehavior {
       ),
     );
 
+    return true;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Conventional war: capitals, airdrops and air support. Each method returns
+  // at once outside conventional war, before drawing from the PRNG.
+  // ---------------------------------------------------------------------------
+
+  // Medium and up spearhead a land attack at the target's capital when it
+  // lies close enough to our border (CAPITAL_FOCUS_RANGE)
+  protected override sendLandAttack(
+    target: Player | TerraNullius,
+    sendTroops?: (reserveTroops: number) => number,
+    opponent?: Player,
+    focusTile: TileRef | null = null,
+  ): boolean {
+    return super.sendLandAttack(
+      target,
+      sendTroops,
+      opponent,
+      focusTile ?? this.capitalFocus(target),
+    );
+  }
+
+  /** The target's capital, if it holds it and it lies within our focus range. */
+  private capitalFocus(target: Player | TerraNullius): TileRef | null {
+    if (!this.game.config().conventionalWar()) return null;
+    if (!target.isPlayer() || target.type() === PlayerType.Bot) return null;
+    const range =
+      CAPITAL_FOCUS_RANGE[this.game.config().gameConfig().difficulty];
+    if (range === 0) return null;
+    const capital = target.capitalTile();
+    if (capital === undefined || this.game.owner(capital) !== target) {
+      return null;
+    }
+    const dist = nearestTileDistCapped(
+      this.game,
+      this.player.borderTiles(),
+      capital,
+      range,
+    );
+    return dist <= range ? capital : null;
+  }
+
+  /** The enemy holding our capital, or null if we hold it (or a friend does). */
+  private capitalHolder(): Player | null {
+    const capital = this.player.capitalTile();
+    if (capital === undefined) return null;
+    const holder = this.game.owner(capital);
+    if (
+      !holder.isPlayer() ||
+      holder === this.player ||
+      this.player.isFriendly(holder)
+    ) {
+      return null;
+    }
+    return holder;
+  }
+
+  /**
+   * Takes our capital back: a land attack on its holder spearheaded at the
+   * tile, or a boat if we no longer border them. Easy may hold back from a
+   * human as it does for any attack.
+   */
+  private recaptureCapital(): boolean {
+    const holder = this.capitalHolder();
+    if (holder === null) return false;
+    const { difficulty } = this.game.config().gameConfig();
+    if (difficulty === Difficulty.Easy && !this.shouldAttack(holder)) {
+      return false;
+    }
+    if (this.player.sharesBorderWith(holder)) {
+      return this.sendLandAttack(
+        holder,
+        undefined,
+        holder,
+        this.player.capitalTile()!,
+      );
+    }
+    return this.sendAttack(holder, true);
+  }
+
+  /**
+   * Hard & Impossible: the weakest bordering enemy (they come sorted by
+   * troops) whose capital lies within our focus range, to take and hold.
+   * In FFA, never one stronger than us.
+   */
+  private findCapitalTarget(enemies: Player[]): Player | null {
+    if (!this.game.config().conventionalWar()) return null;
+    for (const enemy of enemies) {
+      if (enemy.type() === PlayerType.Bot) continue;
+      if (this.isFFA() && enemy.troops() > this.player.troops()) continue;
+      if (!this.bordersByLand(enemy)) continue;
+      if (this.capitalFocus(enemy) !== null) return enemy;
+    }
+    return null;
+  }
+
+  /**
+   * An airdrop from a ready airbase, picked the way attackWithRandomBoat picks
+   * a landing: random tiles around the airbase (AIRBASE_STRIKE_RANGE), the
+   * first that is behind the front of one of our land attacks or on weakly
+   * held enemy land. Above Easy, never under a hostile SAM's cover; Hard and
+   * up also keep clear of flak. Troops as for a boat, capped like any airdrop.
+   */
+  private maybeAirdrop(): boolean {
+    const game = this.game;
+    const config = game.config();
+    if (!config.conventionalWar() || config.isUnitDisabled(UnitType.Airdrop)) {
+      return false;
+    }
+    const bases = this.player
+      .units(UnitType.Airbase)
+      .filter((b) => !b.isUnderConstruction() && !b.isInCooldown());
+    if (bases.length === 0) return false;
+    if (
+      spareAirGold(game, this.player) <
+      priceOf(game, this.player, UnitType.Airdrop)
+    ) {
+      return false;
+    }
+    const { difficulty } = config.gameConfig();
+    if (!this.random.chance(AIRDROP_ODDS[difficulty])) return false;
+
+    const tile = this.findAirdropTile(this.random.randElement(bases).tile());
+    if (tile === null) return false;
+    const owner = game.owner(tile) as Player;
+    const troops = airdropTroops(
+      Math.min(this.player.troops() / 5, this.troopSendCap()),
+      this.player.troops(),
+      config.maxTroops(this.player),
+    );
+    if (troops < 1 || this.isAttackTooWeak(troops, owner)) return false;
+    game.addExecution(
+      new AirMissionExecution(UnitType.Airdrop, this.player, tile, troops),
+    );
+    return true;
+  }
+
+  private findAirdropTile(base: TileRef): TileRef | null {
+    const game = this.game;
+    const player = this.player;
+    const { difficulty } = game.config().gameConfig();
+    const range = AIRBASE_STRIKE_RANGE;
+    const x = game.x(base);
+    const y = game.y(base);
+    const fronts = new Set<Player | TerraNullius>();
+    for (const attack of player.outgoingAttacks()) {
+      if (attack.sourceTile() === null) fronts.add(attack.target());
+    }
+    const ourDensity = player.troops() / Math.max(1, player.numTilesOwned());
+    for (let i = 0; i < AIRDROP_SAMPLES; i++) {
+      const rx = this.random.nextInt(x - range, x + range);
+      const ry = this.random.nextInt(y - range, y + range);
+      if (!game.isValidCoord(rx, ry)) continue;
+      const tile = game.ref(rx, ry);
+      if (!game.isLand(tile) || game.isImpassable(tile)) continue;
+      const owner = game.owner(tile);
+      if (!owner.isPlayer() || owner === player || player.isFriendly(owner)) {
+        continue;
+      }
+      // As with boats: don't drop into players stronger than us (FFA only)
+      if (this.isFFA() && owner.troops() > player.troops()) continue;
+      const behindFront =
+        fronts.has(owner) &&
+        nearestTileDistCapped(
+          game,
+          player.borderTiles(),
+          tile,
+          AIRDROP_MIN_DEPTH,
+        ) === Infinity;
+      const weaklyHeld =
+        owner.troops() / Math.max(1, owner.numTilesOwned()) <
+        ourDensity * WEAKLY_HELD_DENSITY_RATIO;
+      if (!behindFront && !weaklyHeld) continue;
+      if (
+        difficulty !== Difficulty.Easy &&
+        hostileSamsCovering(game, player, tile).length > 0
+      ) {
+        continue;
+      }
+      if (
+        (difficulty === Difficulty.Hard ||
+          difficulty === Difficulty.Impossible) &&
+        hostileFlakCovering(game, player, tile).length > 0
+      ) {
+        continue;
+      }
+      if (player.canBuild(UnitType.Airdrop, tile) === false) continue;
+      return tile;
+    }
+    return null;
+  }
+
+  /**
+   * Called on attack ticks: air power against the enemy defense posts and
+   * coastal batteries covering the fronts of our attacks (in their range of
+   * the front). A target under a hostile SAM gets a cruise missile volley at
+   * that SAM first, sized to beat it (never a lone missile into a loaded
+   * SAM); one under flak gets a drone swarm at the gun, sized past its loaded
+   * rounds; an open one an airstrike, or a drone swarm when no plane can go.
+   * Easy flies rarely and leaves defended targets alone; Medium fires a
+   * volley only with gold for two; Impossible upgrades a silo in range when
+   * the volley lacks the tubes.
+   */
+  maybeSupportFromTheAir(): boolean {
+    const game = this.game;
+    const config = game.config();
+    if (!config.conventionalWar() || !this.player.isAlive()) return false;
+    // Nothing to fly from: skip the search.
+    if (
+      !this.player.units(UnitType.Airbase).some((b) => !b.isUnderConstruction())
+    ) {
+      return false;
+    }
+    const targets = this.frontStructures();
+    if (targets.length === 0) return false;
+    const { difficulty } = config.gameConfig();
+    if (
+      difficulty === Difficulty.Easy &&
+      !this.random.chance(EASY_AIR_SUPPORT_ODDS)
+    ) {
+      return false;
+    }
+    for (const target of targets) {
+      if (this.strikeFromTheAir(target, difficulty)) return true;
+    }
+    return false;
+  }
+
+  /** Enemy defense posts and coastal batteries covering our attack fronts, by id. */
+  private frontStructures(): Unit[] {
+    const game = this.game;
+    const postRange = game.config().defensePostRange();
+    const found: Unit[] = [];
+    for (const attack of this.player.outgoingAttacks()) {
+      const target = attack.target();
+      if (!attack.isActive() || !target.isPlayer()) continue;
+      if (this.player.isFriendly(target)) continue;
+      for (const unit of target.units(
+        UnitType.DefensePost,
+        UnitType.CoastalBattery,
+      )) {
+        if (unit.isUnderConstruction() || found.includes(unit)) continue;
+        const range =
+          unit.type() === UnitType.DefensePost
+            ? postRange
+            : COASTAL_BATTERY_RANGE;
+        if (this.frontWithin(attack, unit.tile(), range)) found.push(unit);
+      }
+    }
+    return found
+      .sort((a, b) => a.id() - b.id())
+      .slice(0, MAX_AIR_SUPPORT_TARGETS);
+  }
+
+  private frontWithin(attack: Attack, tile: TileRef, range: number): boolean {
+    const rangeSquared = range * range;
+    for (const t of attack.borderTiles()) {
+      if (this.game.euclideanDistSquared(t, tile) <= rangeSquared) return true;
+    }
+    return false;
+  }
+
+  private strikeFromTheAir(target: Unit, difficulty: Difficulty): boolean {
+    const game = this.game;
+    const player = this.player;
+    const sams = hostileSamsCovering(game, player, target.tile());
+    if (sams.length > 0) {
+      // A plane would only be shot down: clear the easiest SAM first.
+      if (difficulty === Difficulty.Easy) return false;
+      const sam = sams[0];
+      const result = orderCruiseVolley(
+        game,
+        player,
+        sam.tile(),
+        difficulty === Difficulty.Medium ? 2n : 1n,
+      );
+      if (result === "no_slots" && difficulty === Difficulty.Impossible) {
+        return this.upgradeSiloFor(sam.tile());
+      }
+      return result === "fired";
+    }
+    const flak = hostileFlakCovering(game, player, target.tile());
+    if (flak.length > 0 && difficulty !== Difficulty.Easy) {
+      // Planes would fly into flak: drones at the gun first.
+      return orderDroneSwarm(game, player, flak[0]);
+    }
+    return (
+      orderAirstrike(game, player, target.tile()) ||
+      orderDroneSwarm(game, player, target)
+    );
+  }
+
+  /** Impossible: one more tube in range of `tile`, from the best upgradable silo. */
+  private upgradeSiloFor(tile: TileRef): boolean {
+    const game = this.game;
+    const player = this.player;
+    const rangeSquared = CRUISE_MISSILE_RANGE * CRUISE_MISSILE_RANGE;
+    let best: Unit | null = null;
+    for (const silo of player.units(UnitType.MissileSilo)) {
+      if (silo.isUnderConstruction() || !player.canUpgradeUnit(silo)) continue;
+      if (game.euclideanDistSquared(silo.tile(), tile) > rangeSquared) continue;
+      if (best === null || silo.level() > best.level()) best = silo;
+    }
+    if (best === null) return false;
+    const upgrade = game.unitInfo(UnitType.MissileSilo).cost(game, player);
+    if (spareAirGold(game, player) < upgrade) return false;
+    game.addExecution(new UpgradeStructureExecution(player, best.id()));
     return true;
   }
 }

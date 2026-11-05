@@ -1,6 +1,10 @@
 import { UnitType } from "@openfront/engine-api/game/GameTypes";
+import { BALLISTIC_MISSILE_COST } from "@openfront/engine-lib/game/ConventionalWar";
 import { AirMissionExecution } from "@openfront/engine/execution/AirMissionExecution";
 import { DroneExecution } from "@openfront/engine/execution/DroneExecution";
+import { NationNukeBehaviorSnapshot } from "@openfront/engine/execution/nation/NationNukeBehavior";
+import { PlayerSnapshot } from "@openfront/engine/game/PlayerImpl";
+import { UnitSnapshot } from "@openfront/engine/game/UnitImpl";
 import {
   conquerRect,
   conventionalGame,
@@ -58,14 +62,60 @@ describe("conventional war snapshots", () => {
     await expectSnapshotRoundTrip(game, BIG, 60);
   }, 60_000);
 
-  test("a moved capital and its move window", async () => {
+  test("a lost capital's penalty window, a spent rally and drone hits", async () => {
     const { game, players } = await conventionalGame(BIG, ["a", "b"]);
     const [a, b] = players;
     conquerRect(game, a, 0, 0, 60, 60);
     conquerRect(game, b, 100, 0, 200, 200);
     a.setSpawnTile(game.ref(20, 20));
+    b.setSpawnTile(game.ref(150, 100));
     b.conquer(game.ref(20, 20));
-    expect(a.capitalMovedTick()).not.toBeNull();
+    expect(a.capitalPenaltyTick()).not.toBeNull();
+    // b's capital held by a, a's own retaken once.
+    a.conquer(game.ref(150, 100));
+    a.conquer(game.ref(20, 20));
+    expect(a.capitalRallyUsed()).toBe(true);
+    const city = structure(game, b, UnitType.City, game.ref(170, 100));
+    city.addDroneHit();
     await expectSnapshotRoundTrip(game, BIG, 10);
+  });
+});
+
+describe("conventional war snapshot migrations", () => {
+  test("player v2: the moved capital is dropped, its window guards the penalty", () => {
+    const v2 = { other: 1, capitalTile: 1234, capitalMovedTick: 900 };
+    expect(PlayerSnapshot.version).toBe(3);
+    expect(PlayerSnapshot.migrations[2](v2)).toEqual({
+      other: 1,
+      capitalPenaltyTick: 900,
+      capitalRallyUsed: false,
+    });
+    expect(
+      PlayerSnapshot.migrations[2]({
+        capitalTile: null,
+        capitalMovedTick: null,
+      }),
+    ).toEqual({ capitalPenaltyTick: null, capitalRallyUsed: false });
+    // v1 goes through v2 first.
+    expect(
+      PlayerSnapshot.migrations[2](PlayerSnapshot.migrations[1]({ other: 2 })),
+    ).toEqual({ other: 2, capitalPenaltyTick: null, capitalRallyUsed: false });
+  });
+
+  test("nation nukes v2: no ballistic missile launched yet", () => {
+    expect(NationNukeBehaviorSnapshot.version).toBe(3);
+    expect(NationNukeBehaviorSnapshot.migrations[2]({ other: 1 })).toEqual({
+      other: 1,
+      ballisticPerceivedCost: BigInt(BALLISTIC_MISSILE_COST),
+      ballisticLastLaunch: null,
+    });
+  });
+
+  test("unit v2: no drone hits yet", () => {
+    expect(UnitSnapshot.version).toBe(3);
+    expect(UnitSnapshot.migrations[2]({ other: 1 })).toEqual({
+      other: 1,
+      droneHits: 0,
+    });
   });
 });

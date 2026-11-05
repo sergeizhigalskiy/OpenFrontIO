@@ -1,33 +1,37 @@
-import { TileRef } from "@openfront/engine-api/game/GameMap";
-import { MessageType, UnitType } from "@openfront/engine-api/game/GameTypes";
+import { MessageType, PlayerType } from "@openfront/engine-api/game/GameTypes";
 import { renderNumber, renderTroops } from "@openfront/engine-lib/Format";
 import {
   CAPITAL_GOLD_LOSS_PERCENT,
-  CAPITAL_MOVE_COOLDOWN_TICKS,
+  CAPITAL_PENALTY_COOLDOWN_TICKS,
   CAPITAL_TROOP_LOSS_PERCENT,
+  capitalRallyTroops,
 } from "@openfront/engine-lib/game/ConventionalWar";
-import { Game, Player, Unit } from "./Game";
+import { Game, Player } from "./Game";
 
 /**
  * Conventional war capitals (numbers in engine-lib/game/ConventionalWar.ts).
  *
- * Every player but a tribe has a capital, their spawn tile until it moves.
- * When an enemy conquers it, the owner loses CAPITAL_TROOP_LOSS_PERCENT of
- * their troops and CAPITAL_GOLD_LOSS_PERCENT of their gold, which goes to the
- * conqueror, and the capital moves to their highest-level city, else near the
- * center of their largest territory.
+ * Every player but a tribe has a capital: their spawn tile, for the whole
+ * game, whoever holds it.
+ * - When an enemy conquers it, the owner loses CAPITAL_TROOP_LOSS_PERCENT of
+ *   their troops and CAPITAL_GOLD_LOSS_PERCENT of their gold, which goes to
+ *   the conqueror. The penalty hits a player at most once per
+ *   CAPITAL_PENALTY_COOLDOWN_TICKS, so a capital changing hands back and
+ *   forth can't chain it.
+ * - The first time they retake it from whoever holds it, they rally:
+ *   CAPITAL_RALLY_PCT of their max troops, never past the max. Once per game.
+ * - While a player holds enemy capitals, their gold income rises by
+ *   CAPITAL_HOLD_GOLD_BONUS_PCT per capital, up to
+ *   CAPITAL_HOLD_GOLD_BONUS_MAX_PCT (heldEnemyCapitals, PlayerExecution).
  *
- * A capital moves at most once per CAPITAL_MOVE_COOLDOWN_TICKS, so the
- * penalty can't chain: a capital conquered within that window costs nothing
- * and stays put until the window ends, then moves (again without a penalty)
- * if its tile is still lost. All state is on the player (capitalTile,
- * capitalMovedTick), so nothing here needs a snapshot.
+ * The state is on the player (capitalPenaltyTick, capitalRallyUsed), so
+ * nothing here needs a snapshot of its own.
  */
 
-/** Whether `player`'s capital may move at `now`. */
-function canMove(player: Player, now: number): boolean {
-  const moved = player.capitalMovedTick();
-  return moved === null || now - moved >= CAPITAL_MOVE_COOLDOWN_TICKS;
+/** Whether `player`'s capital tile is held by anyone else (or nobody). */
+export function capitalLost(game: Game, player: Player): boolean {
+  const capital = player.capitalTile();
+  return capital !== undefined && game.owner(capital) !== player;
 }
 
 /** Called when `conqueror` takes `loser`'s capital tile (GameImpl.conquer). */
@@ -38,7 +42,21 @@ export function onCapitalConquered(
 ): void {
   if (conqueror === loser || conqueror.isFriendly(loser, true)) return;
   const now = game.ticks();
-  if (!canMove(loser, now)) return;
+  const last = loser.capitalPenaltyTick();
+  if (last !== null && now - last < CAPITAL_PENALTY_COOLDOWN_TICKS) {
+    // Lost again inside the window: no penalty this time.
+    game.displayMessage(
+      "events_display.capital_lost_no_penalty",
+      MessageType.ATTACK_FAILED,
+      loser.id(),
+      undefined,
+      { name: conqueror.displayName() },
+      undefined,
+      conqueror.id(),
+    );
+    return;
+  }
+  loser.recordCapitalPenalty(now);
 
   const troops = loser.removeTroops(
     Math.floor((loser.troops() * CAPITAL_TROOP_LOSS_PERCENT) / 100),
@@ -47,8 +65,6 @@ export function onCapitalConquered(
     (loser.gold() * BigInt(CAPITAL_GOLD_LOSS_PERCENT)) / 100n,
   );
   if (gold > 0n) conqueror.addGold(gold);
-  const next = newCapitalTile(game, loser);
-  if (next !== null) loser.moveCapital(next, now);
 
   game.displayMessage(
     "events_display.capital_lost",
@@ -75,108 +91,55 @@ export function onCapitalConquered(
 }
 
 /**
- * Moves `player`'s capital, without a penalty, once the move window allows
- * it, when they no longer own its tile (it was conquered within the window,
- * or lost some other way). Cheap when nothing changed; PlayerExecution calls
- * it every tick.
+ * Called when `player` takes their own capital tile back from `holder`
+ * (GameImpl.conquer): the rally, the first time, then just the message.
  */
-export function maybeRelocateCapital(game: Game, player: Player): void {
-  const capital = player.capitalTile();
-  if (capital === undefined || game.owner(capital) === player) return;
-  if (game.inSpawnPhase()) return;
-  const now = game.ticks();
-  if (!canMove(player, now)) return;
-  const next = newCapitalTile(game, player);
-  if (next === null) return;
-  player.moveCapital(next, now);
+export function onCapitalRetaken(
+  game: Game,
+  player: Player,
+  holder: Player,
+): void {
+  if (holder === player) return;
+  if (player.capitalRallyUsed()) {
+    game.displayMessage(
+      "events_display.capital_recaptured",
+      MessageType.CAPTURED_ENEMY_UNIT,
+      player.id(),
+    );
+    return;
+  }
+  player.useCapitalRally();
+  const troops = capitalRallyTroops(
+    player.troops(),
+    game.config().maxTroops(player),
+  );
+  if (troops > 0) player.addTroops(troops);
   game.displayMessage(
-    "events_display.capital_moved",
-    MessageType.ATTACK_FAILED,
+    "events_display.capital_rally",
+    MessageType.CAPTURED_ENEMY_UNIT,
     player.id(),
+    undefined,
+    { troops: renderTroops(troops) },
   );
 }
 
 /**
- * Where a capital moves: the player's highest-level built city (ties to the
- * lowest id), else the owned tile nearest the center of their largest
- * territory. Null when they own nothing.
+ * How many enemy capitals `player` holds: capital tiles of other living
+ * players, tribes aside, that `player` owns and isn't friendly with. Zero
+ * outside conventional war. PlayerExecution prices the gold bonus from it
+ * every tick, so the prize ends the tick the tile is lost.
  */
-export function newCapitalTile(game: Game, player: Player): TileRef | null {
-  let city: Unit | null = null;
-  for (const c of player.units(UnitType.City)) {
-    if (!c.isActive() || c.isUnderConstruction()) continue;
-    if (game.owner(c.tile()) !== player) continue;
-    if (
-      city === null ||
-      c.level() > city.level() ||
-      (c.level() === city.level() && c.id() < city.id())
-    ) {
-      city = c;
-    }
+export function heldEnemyCapitals(game: Game, player: Player): number {
+  if (!game.config().conventionalWar()) return 0;
+  const smallID = player.smallID();
+  let held = 0;
+  for (const other of game.allPlayers()) {
+    // Cheapest test first: almost no capital is ours.
+    const capital = other.spawnTile();
+    if (capital === undefined || game.ownerID(capital) !== smallID) continue;
+    if (other === player || other.type() === PlayerType.Bot) continue;
+    if (!other.isAlive() || player.isFriendly(other, true)) continue;
+    held++;
   }
-  if (city !== null) return city.tile();
-  return largestTerritoryCenter(game, player);
-}
-
-/**
- * The owned tile nearest the centroid of `player`'s largest connected
- * territory. Independent of tile iteration order: the largest territory wins,
- * ties to the one holding the lowest tile ref, and the nearest tile wins,
- * ties to the lowest ref.
- */
-export function largestTerritoryCenter(
-  game: Game,
-  player: Player,
-): TileRef | null {
-  const owned = player.tiles();
-  const seen = new Set<TileRef>();
-  const neighbors: TileRef[] = [];
-  let best: TileRef[] | null = null;
-  let bestMin = 0;
-  for (const start of owned) {
-    if (seen.has(start)) continue;
-    const cluster: TileRef[] = [start];
-    seen.add(start);
-    let min = start;
-    for (let i = 0; i < cluster.length; i++) {
-      neighbors.length = 0;
-      for (const n of game.neighbors(cluster[i])) neighbors.push(n);
-      for (const n of neighbors) {
-        if (seen.has(n) || game.owner(n) !== player) continue;
-        seen.add(n);
-        cluster.push(n);
-        if (n < min) min = n;
-      }
-    }
-    if (
-      best === null ||
-      cluster.length > best.length ||
-      (cluster.length === best.length && min < bestMin)
-    ) {
-      best = cluster;
-      bestMin = min;
-    }
-  }
-  if (best === null) return null;
-
-  let sumX = 0;
-  let sumY = 0;
-  for (const t of best) {
-    sumX += game.x(t);
-    sumY += game.y(t);
-  }
-  const cx = Math.floor(sumX / best.length);
-  const cy = Math.floor(sumY / best.length);
-  let center = best[0];
-  let centerDist = Infinity;
-  for (const t of best) {
-    const dx = game.x(t) - cx;
-    const dy = game.y(t) - cy;
-    const dist = dx * dx + dy * dy;
-    if (dist < centerDist || (dist === centerDist && t < center)) {
-      center = t;
-      centerDist = dist;
-    }
-  }
-  return center;
+  return held;
 }

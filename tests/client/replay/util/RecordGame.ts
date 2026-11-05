@@ -7,8 +7,9 @@
 
 import { GameUpdateViewData } from "@openfront/engine-api/game/GameUpdates";
 import { Executor } from "@openfront/engine/execution/ExecutionManager";
-import { Game } from "@openfront/engine/game/Game";
+import { Execution, Game } from "@openfront/engine/game/Game";
 import { GameRunner } from "@openfront/engine/GameRunner";
+import type { ExecRecord } from "@openfront/engine/snapshot/SnapshotContext";
 import { gunzipSync, gzipSync } from "zlib";
 import { ReplayReader } from "../../../../src/client/replay/codec/decode/ReplayReader";
 import { StreamingEncoder } from "../../../../src/client/replay/codec/encode/StreamingEncoder";
@@ -19,6 +20,40 @@ import {
   type ReplayData,
 } from "../../../../src/client/replay/codec/ReplayTypes";
 import { terrainOf } from "../../../../src/client/replay/codec/Terrain";
+
+/**
+ * Runs `step` inside every tick, from the tick after it's added, until it
+ * returns anything but false. A change made between ticks never reaches
+ * the update stream (each tick starts a fresh one), so a recorded test
+ * sets up and hits things through this. It runs in execution order: after
+ * the executions added before it, before those added after.
+ */
+export class TickScript implements Execution {
+  private game: Game | null = null;
+  private done = false;
+
+  constructor(private readonly step: (game: Game, tick: number) => unknown) {}
+
+  init(game: Game): void {
+    this.game = game;
+  }
+
+  tick(ticks: number): void {
+    this.done = this.step(this.game!, ticks) !== false;
+  }
+
+  isActive(): boolean {
+    return !this.done;
+  }
+
+  activeDuringSpawnPhase(): boolean {
+    return true;
+  }
+
+  snapshot(): ExecRecord {
+    throw new Error("TickScript is test-only and never snapshotted");
+  }
+}
 
 export const gzip = (d: Uint8Array) => new Uint8Array(gzipSync(d));
 /** Synchronous, so a reader decodes without load() (see ReplayReader). */

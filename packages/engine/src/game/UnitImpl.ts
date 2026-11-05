@@ -57,6 +57,8 @@ export class UnitImpl implements Unit {
   private _missileTimerQueue: number[] = [];
   // Airbases only: the tick the last drone took off (see DroneExecution).
   private _lastDroneLaunch: number | null = null;
+  // Structures without health: drone hits taken (see DroneExecution).
+  private _droneHits = 0;
   private _hasTrainStation: boolean = false;
   private _level: number = 1;
   private _targetable: boolean = true;
@@ -602,6 +604,14 @@ export class UnitImpl implements Unit {
     this._lastDroneLaunch = this.mg.ticks();
   }
 
+  droneHits(): number {
+    return this._droneHits;
+  }
+
+  addDroneHit(): number {
+    return ++this._droneHits;
+  }
+
   setTargetTile(targetTile: TileRef | undefined) {
     this._targetTile = targetTile;
   }
@@ -861,6 +871,7 @@ export class UnitImpl implements Unit {
       troops: this._troops,
       missileTimerQueue: [...this._missileTimerQueue],
       lastDroneLaunch: this._lastDroneLaunch,
+      droneHits: this._droneHits,
       hasTrainStation: this._hasTrainStation,
       level: this._level,
       targetable: this._targetable,
@@ -914,6 +925,7 @@ export class UnitImpl implements Unit {
     this._troops = s.troops;
     this._missileTimerQueue = [...s.missileTimerQueue];
     this._lastDroneLaunch = s.lastDroneLaunch;
+    this._droneHits = s.droneHits;
     this._hasTrainStation = s.hasTrainStation;
     this._level = s.level;
     this._targetable = s.targetable;
@@ -928,10 +940,13 @@ export class UnitImpl implements Unit {
 
 export const UnitSnapshot = snapshotType({
   name: "Unit",
-  // v2 added lastDroneLaunch (airbases launching drones).
-  version: 2,
+  // v2 added lastDroneLaunch (airbases launching drones), v3 droneHits
+  // (drones hitting structures).
+  version: 3,
   migrations: {
     1: (d) => ({ ...(d as Record<string, unknown>), lastDroneLaunch: null }),
+    // Drones could only hit flak guns (one hit kills) and ships before.
+    2: (d) => ({ ...(d as Record<string, unknown>), droneHits: 0 }),
   },
   schema: z.object({
     id: zInt(),
@@ -975,6 +990,7 @@ export const UnitSnapshot = snapshotType({
     troops: zNum(),
     missileTimerQueue: z.array(zInt()),
     lastDroneLaunch: zInt().nullable(),
+    droneHits: zInt(),
     hasTrainStation: z.boolean(),
     level: zInt(),
     targetable: z.boolean(),

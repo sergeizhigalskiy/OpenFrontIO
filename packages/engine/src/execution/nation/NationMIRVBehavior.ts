@@ -4,8 +4,16 @@ import {
   Difficulty,
   Gold,
   PlayerType,
+  Structures,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
+import {
+  CLUSTER_MISSILE_SILO_LEVEL,
+  CLUSTER_SPREAD_RADIUS,
+  CLUSTER_WARHEAD_COUNT,
+  CRUISE_MISSILE_BLAST_RADIUS,
+  MILITARY_STRUCTURE_TYPES,
+} from "@openfront/engine-lib/game/ConventionalWar";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import {
   readVersioned,
@@ -19,13 +27,17 @@ import type {
   SnapshotReader,
   SnapshotWriter,
 } from "../../snapshot/SnapshotContext";
+import { AirMissionExecution } from "../AirMissionExecution";
 import { MirvExecution } from "../MIRVExecution";
+import { UpgradeStructureExecution } from "../UpgradeStructureExecution";
 import { calculateTerritoryCenter } from "../Util";
+import { structureStrikeValue } from "./NationAirPlanning";
 import {
   EMOJI_NUKE,
   NationEmojiBehavior,
   respondToMIRV,
 } from "./NationEmojiBehavior";
+import { findEnemySamsCoveringTile } from "./NationNukePlanning";
 import { randTerritoryTileArray } from "./NationUtils";
 
 // 30 seconds at 10 ticks/second
@@ -251,6 +263,10 @@ export class NationMIRVBehavior {
 
   considerMIRV(): boolean {
     if (this.player === null) throw new Error("not initialized");
+    // Conventional war has no MIRVs: its cluster missile takes their rung.
+    if (this.game.config().conventionalWar()) {
+      return this.considerClusterMissile();
+    }
     if (this.game.config().isUnitDisabled(UnitType.MIRV)) {
       return false;
     }
@@ -421,9 +437,12 @@ export class NationMIRVBehavior {
     return validMirvTargets(this.game, this.player);
   }
 
-  private isInboundMIRVFrom(attacker: Player): boolean {
+  private isInboundMIRVFrom(
+    attacker: Player,
+    types: readonly UnitType[] = [UnitType.MIRV],
+  ): boolean {
     if (this.player === null) throw new Error("not initialized");
-    const enemyMirvs = attacker.units(UnitType.MIRV);
+    const enemyMirvs = attacker.units(types);
     for (const mirv of enemyMirvs) {
       const dst = mirv.targetTile();
       if (!dst) continue;
@@ -463,6 +482,209 @@ export class NationMIRVBehavior {
     if (this.player === null) throw new Error("not initialized");
     return this.game.unitInfo(type).cost(this.game, this.player);
   }
+
+  // ---------------------------------------------------------------------------
+  // Conventional war: cluster missiles, used the way MIRVs are
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Hard & Impossible only: once the gold covers a cluster missile, and
+   * unless they hesitate, at the same targets a MIRV would go for (one
+   * sending cluster missiles at us, one near victory, a steamroller, a
+   * bordering rival), each no more than once per MIRV_COOLDOWN_TICKS, aimed
+   * where its warheads destroy the most (clusterAimTile). With no level-3
+   * silo yet, a silo is upgraded instead.
+   */
+  private considerClusterMissile(): boolean {
+    const game = this.game;
+    const config = game.config();
+    const { difficulty } = config.gameConfig();
+    if (
+      difficulty !== Difficulty.Hard &&
+      difficulty !== Difficulty.Impossible
+    ) {
+      return false;
+    }
+    if (config.isUnitDisabled(UnitType.ClusterMissile)) return false;
+    const silos = this.player
+      .units(UnitType.MissileSilo)
+      .filter((s) => !s.isUnderConstruction());
+    if (silos.length === 0) return false;
+    const price = this.cost(UnitType.ClusterMissile);
+    if (this.player.gold() < price) return false;
+    if (!silos.some((s) => s.level() >= CLUSTER_MISSILE_SILO_LEVEL)) {
+      return this.upgradeSiloForCluster(silos, price);
+    }
+    if (this.random.chance(this.hesitationOdds)) return false;
+
+    const inbound = this.getValidMirvTargetPlayers()
+      .filter((p) =>
+        this.isInboundMIRVFrom(p, [
+          UnitType.ClusterMissile,
+          UnitType.ClusterWarhead,
+        ]),
+      )
+      .sort((a, b) => b.numTilesOwned() - a.numTilesOwned());
+    const candidates = [
+      inbound[0] ?? null,
+      this.selectVictoryDenialTarget(),
+      this.selectSteamrollStopTarget(),
+      this.selectRivalTarget(),
+    ];
+    for (const target of candidates) {
+      if (target === null || this.wasRecentlyMirved(target)) continue;
+      if (this.player.isFriendly(target)) continue;
+      const tile = clusterAimTile(game, this.player, target);
+      if (tile === null) continue;
+      this.emojiBehavior.maybeSendAttackEmoji(target);
+      game.addExecution(
+        new AirMissionExecution(UnitType.ClusterMissile, this.player, tile),
+      );
+      this.recordMirvHit(target);
+      return true;
+    }
+    return false;
+  }
+
+  /** Upgrades the highest upgradable silo, if the gold covers it and the missile. */
+  private upgradeSiloForCluster(silos: Unit[], missilePrice: Gold): boolean {
+    let best: Unit | null = null;
+    for (const silo of silos) {
+      if (!this.player.canUpgradeUnit(silo)) continue;
+      if (
+        best === null ||
+        silo.level() > best.level() ||
+        (silo.level() === best.level() && silo.id() < best.id())
+      ) {
+        best = silo;
+      }
+    }
+    if (best === null) return false;
+    if (this.player.gold() < missilePrice + this.cost(UnitType.MissileSilo)) {
+      return false;
+    }
+    this.game.addExecution(
+      new UpgradeStructureExecution(this.player, best.id()),
+    );
+    return true;
+  }
+}
+
+/** Aim points tried per cluster missile: the target's structures, by id. */
+const CLUSTER_MAX_AIMS = 40;
+
+/** Minimum structure value a cluster missile's warheads must destroy. */
+const CLUSTER_MIN_VALUE = 150_000;
+
+/**
+ * The hostile structures a cluster missile at `aim` splits onto, as
+ * AirMissionExecution.split picks them: military first, then nearest, then
+ * lowest id, doubling up when there are fewer than CLUSTER_WARHEAD_COUNT.
+ */
+function clusterPicks(game: Game, player: Player, aim: TileRef): Unit[] {
+  const picks = game
+    .nearbyUnits(aim, CLUSTER_SPREAD_RADIUS, Structures.types, undefined, true)
+    .filter(
+      ({ unit }) =>
+        unit.owner() !== player && !player.isFriendly(unit.owner(), true),
+    )
+    .map(({ unit, distSquared }) => ({
+      unit,
+      distSquared,
+      military: MILITARY_STRUCTURE_TYPES.includes(unit.type()) ? 0 : 1,
+    }))
+    .sort(
+      (a, b) =>
+        a.military - b.military ||
+        a.distSquared - b.distSquared ||
+        a.unit.id() - b.unit.id(),
+    )
+    .map(({ unit }) => unit);
+  const out: Unit[] = [];
+  for (let i = 0; i < CLUSTER_WARHEAD_COUNT && picks.length > 0; i++) {
+    out.push(picks[i % picks.length]);
+  }
+  return out;
+}
+
+/**
+ * Where a cluster missile at `target` does the most: among the target's
+ * structures (up to CLUSTER_MAX_AIMS, by id), the aim whose warheads destroy
+ * the most structure value, never one whose warhead blasts would take one of
+ * our own or our friends' military structures with them (friendly fire), and
+ * only where enough warheads would get past the SAMs (MIN_MIRV_LEAK_SHARE).
+ * Null when nothing is worth CLUSTER_MIN_VALUE.
+ */
+export function clusterAimTile(
+  game: Game,
+  player: Player,
+  target: Player,
+): TileRef | null {
+  const config = game.config();
+  const minLeak =
+    MIN_MIRV_LEAK_SHARE[config.gameConfig().difficulty] * CLUSTER_WARHEAD_COUNT;
+  const aims = target
+    .units(Structures.types)
+    .filter((u) => !u.isUnderConstruction())
+    .sort((a, b) => a.id() - b.id())
+    .slice(0, CLUSTER_MAX_AIMS)
+    .map((u) => u.tile());
+  let best: TileRef | null = null;
+  let bestValue = CLUSTER_MIN_VALUE - 1;
+  for (const aim of aims) {
+    const picks = clusterPicks(game, player, aim);
+    let value = 0;
+    for (const unit of new Set(picks)) value += structureStrikeValue(unit);
+    if (value <= bestValue) continue;
+    if (picks.some((unit) => hitsFriendlyMilitary(game, player, unit.tile()))) {
+      continue;
+    }
+    if (
+      CLUSTER_WARHEAD_COUNT - samInterceptions(game, player, picks) <
+      minLeak
+    ) {
+      continue;
+    }
+    if (player.canBuild(UnitType.ClusterMissile, aim) === false) continue;
+    best = aim;
+    bestValue = value;
+  }
+  return best;
+}
+
+/** Whether a warhead at `tile` would destroy our own or a friend's military structure. */
+function hitsFriendlyMilitary(
+  game: Game,
+  player: Player,
+  tile: TileRef,
+): boolean {
+  return game
+    .nearbyUnits(
+      tile,
+      CRUISE_MISSILE_BLAST_RADIUS,
+      MILITARY_STRUCTURE_TYPES,
+      undefined,
+      true,
+    )
+    .some(
+      ({ unit }) =>
+        unit.owner() === player || player.isFriendly(unit.owner(), true),
+    );
+}
+
+/** Warheads at `picks` the hostile SAMs covering them would shoot down. */
+function samInterceptions(game: Game, player: Player, picks: Unit[]): number {
+  const inRange = new Map<Unit, number>();
+  for (const pick of picks) {
+    for (const sam of findEnemySamsCoveringTile(game, player, pick.tile())) {
+      inRange.set(sam, (inRange.get(sam) ?? 0) + 1);
+    }
+  }
+  let shots = 0;
+  inRange.forEach((warheads, sam) => {
+    shots += Math.min(sam.level(), warheads);
+  });
+  return Math.min(CLUSTER_WARHEAD_COUNT, shots);
 }
 
 export const NationMIRVBehaviorSnapshot = snapshotType({

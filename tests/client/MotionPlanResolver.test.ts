@@ -87,10 +87,87 @@ describe("MotionPlanResolver", () => {
     expect(Math.max(car1, car2)).toBeLessThan(engine);
     expect(Math.abs(car1 - car2)).toBe(2);
 
-    // Removing any car drops the whole train's plan.
-    r.unitRemoved(3);
+    // Once every unit is gone (it arrived), the plan goes without a move.
+    for (const id of [1, 2, 3]) {
+      r.unitRemoved(id);
+      u.pos.delete(id);
+    }
     expect(r.plannedUnitIds()).toEqual([]);
     r.advance(9, u.store);
-    expect(u.pos.get(1)).toBe(engine);
+    expect(r.plannedUnitIds()).toEqual([]);
+  });
+
+  /** Engine 1 and cars 2-4 on a straight path, advanced to tick 8. */
+  function movingTrain() {
+    const r = new MotionPlanResolver();
+    const u = units([1, 2, 3, 4]);
+    r.applyRecords([
+      {
+        kind: "train",
+        engineUnitId: 1,
+        carUnitIds: Uint32Array.from([2, 3, 4]),
+        planId: 1,
+        startTick: 0,
+        speed: 2,
+        spacing: 2,
+        path: Array.from({ length: 60 }, (_, i) => i),
+      },
+    ]);
+    for (let tick = 1; tick <= 8; tick++) r.advance(tick, u.store);
+    return { r, u };
+  }
+
+  test("a train goes on without a destroyed car", () => {
+    const { r, u } = movingTrain();
+    const before = [1, 2, 4].map((id) => u.pos.get(id)!);
+    // A nuke takes the middle car; TrainExecution keeps the rest moving.
+    r.unitRemoved(3);
+    u.pos.delete(3);
+    expect(r.plannedUnitIds()).toEqual([1, 2, 4]);
+    r.advance(9, u.store);
+    expect([1, 2, 4].map((id) => u.pos.get(id)!)).toEqual(
+      before.map((p) => p + 2),
+    );
+  });
+
+  test("cars that outlive their engine take that tick's step, then stop", () => {
+    const { r, u } = movingTrain();
+    const before = [2, 3].map((id) => u.pos.get(id)!);
+    // The engine and its last car were destroyed after the train moved on
+    // tick 9 (the engine's update carries where it got to).
+    for (const id of [1, 4]) {
+      r.unitRemoved(id);
+      u.pos.delete(id);
+    }
+    expect(r.plannedUnitIds()).toEqual([2, 3]);
+    r.advance(9, u.store);
+    expect([2, 3].map((id) => u.pos.get(id)!)).toEqual(
+      before.map((p) => p + 2),
+    );
+    // TrainExecution removes them on its next tick; until then they stay.
+    expect(r.plannedUnitIds()).toEqual([]);
+    r.advance(10, u.store);
+    expect([2, 3].map((id) => u.pos.get(id)!)).toEqual(
+      before.map((p) => p + 2),
+    );
+  });
+
+  test("the record's car list is left alone", () => {
+    const r = new MotionPlanResolver();
+    const carUnitIds = Uint32Array.from([2, 3]);
+    r.applyRecords([
+      {
+        kind: "train",
+        engineUnitId: 1,
+        carUnitIds,
+        planId: 1,
+        startTick: 0,
+        speed: 2,
+        spacing: 2,
+        path: [0, 1, 2, 3],
+      },
+    ]);
+    r.unitRemoved(3);
+    expect([...carUnitIds]).toEqual([2, 3]);
   });
 });

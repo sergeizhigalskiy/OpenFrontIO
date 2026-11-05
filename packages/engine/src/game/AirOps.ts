@@ -173,7 +173,8 @@ export function clusterMissileSpawn(
 
 /**
  * Whether `unit` is something `player`'s drones may hit: an active enemy
- * flak gun, warship or transport ship, or an enemy convoy at sea. Never a SAM.
+ * structure other than a SAM, warship or transport ship, or an enemy convoy
+ * at sea (DRONE_TARGET_TYPES). Never a SAM or a minefield.
  */
 export function isDroneTarget(game: Game, player: Player, unit: Unit): boolean {
   if (!unit.isActive() || !DRONE_TARGET_TYPES.includes(unit.type())) {
@@ -266,7 +267,8 @@ export function droneSpawn(
  * The military structures (MILITARY_STRUCTURE_TYPES) of anyone `attacker` may
  * attack within `radius` tiles (euclidean) of `tile` that `weapon` can
  * destroy, nearest first, ties to the lowest unit id. SAMs count only when
- * canDestroySam allows.
+ * canDestroySam allows. With `friendlyFire`, the attacker's own and its
+ * friends' structures count too.
  */
 export function hostileMilitaryStructures(
   game: Game,
@@ -274,6 +276,7 @@ export function hostileMilitaryStructures(
   tile: TileRef,
   radius: number,
   weapon: UnitType,
+  friendlyFire = false,
 ): Unit[] {
   const found: { unit: Unit; distSquared: number }[] = [];
   for (const { unit, distSquared } of game.nearbyUnits(
@@ -284,8 +287,13 @@ export function hostileMilitaryStructures(
     true,
   )) {
     const owner = unit.owner();
-    if (!unit.isActive() || owner === attacker) continue;
-    if (attacker.isFriendly(owner, true)) continue;
+    if (!unit.isActive()) continue;
+    if (
+      !friendlyFire &&
+      (owner === attacker || attacker.isFriendly(owner, true))
+    ) {
+      continue;
+    }
     if (
       unit.type() === UnitType.SAMLauncher &&
       !canDestroySam(weapon, unit.level())

@@ -209,10 +209,10 @@ export class PlayerImpl implements Player {
   public _alliances: MutableAlliance[] = [];
 
   private _spawnTile: TileRef | undefined;
-  // Conventional war capitals (see Capital.ts): unset until the capital first
-  // moves away from the spawn tile.
-  public _capitalTile: TileRef | undefined;
-  private _capitalMovedTick: Tick | null = null;
+  // Conventional war capitals (see Capital.ts): the capital is the spawn tile.
+  // The tick its loss penalty last hit, and whether the rally is spent.
+  private _capitalPenaltyTick: Tick | null = null;
+  private _capitalRallyUsed = false;
   private _isDisconnected = false;
   private _disconnectSnapshot: DisconnectSnapshot | null = null;
 
@@ -774,16 +774,23 @@ export class PlayerImpl implements Player {
     if (!this.mg.config().conventionalWar() || this.type() === PlayerType.Bot) {
       return undefined;
     }
-    return this._capitalTile ?? this._spawnTile;
+    return this._spawnTile;
   }
 
-  capitalMovedTick(): Tick | null {
-    return this._capitalMovedTick;
+  capitalPenaltyTick(): Tick | null {
+    return this._capitalPenaltyTick;
   }
 
-  moveCapital(tile: TileRef, tick: Tick): void {
-    this._capitalTile = tile;
-    this._capitalMovedTick = tick;
+  recordCapitalPenalty(tick: Tick): void {
+    this._capitalPenaltyTick = tick;
+  }
+
+  capitalRallyUsed(): boolean {
+    return this._capitalRallyUsed;
+  }
+
+  useCapitalRally(): void {
+    this._capitalRallyUsed = true;
   }
 
   incomingAllianceRequests(): AllianceRequest[] {
@@ -2131,8 +2138,8 @@ export class PlayerImpl implements Player {
       outgoingLandAttacks: this._outgoingLandAttacks.map((a) => w.attack(a)),
       alliances: this._alliances.map((a) => w.alliance(a)),
       spawnTile: this._spawnTile ?? null,
-      capitalTile: this._capitalTile ?? null,
-      capitalMovedTick: this._capitalMovedTick,
+      capitalPenaltyTick: this._capitalPenaltyTick,
+      capitalRallyUsed: this._capitalRallyUsed,
       isDisconnected: this._isDisconnected,
       disconnectSnapshot: this._disconnectSnapshot
         ? { ...this._disconnectSnapshot }
@@ -2210,8 +2217,8 @@ export class PlayerImpl implements Player {
     this._outgoingLandAttacks = s.outgoingLandAttacks.map((i) => r.attack(i));
     this._alliances = s.alliances.map((i) => r.alliance(i));
     this._spawnTile = s.spawnTile ?? undefined;
-    this._capitalTile = s.capitalTile ?? undefined;
-    this._capitalMovedTick = s.capitalMovedTick;
+    this._capitalPenaltyTick = s.capitalPenaltyTick;
+    this._capitalRallyUsed = s.capitalRallyUsed;
     this._isDisconnected = s.isDisconnected;
     this._disconnectSnapshot = s.disconnectSnapshot
       ? { ...s.disconnectSnapshot }
@@ -2232,13 +2239,29 @@ export class PlayerImpl implements Player {
 export const PlayerSnapshot = snapshotType({
   name: "Player",
   // v2 added the conventional war capital (capitalTile, capitalMovedTick).
-  version: 2,
+  // v3 fixed it at the spawn tile: capitalTile is gone, the move window
+  // became the penalty window (capitalPenaltyTick), and the once-per-game
+  // rally was added (capitalRallyUsed).
+  version: 3,
   migrations: {
     1: (d) => ({
       ...(d as Record<string, unknown>),
       capitalTile: null,
       capitalMovedTick: null,
     }),
+    2: (d) => {
+      const rest = { ...(d as Record<string, unknown>) };
+      const moved = rest.capitalMovedTick ?? null;
+      // The capital no longer moves: it is the spawn tile again.
+      delete rest.capitalTile;
+      delete rest.capitalMovedTick;
+      return {
+        ...rest,
+        // A move followed a penalty, so its window still guards the next one.
+        capitalPenaltyTick: moved,
+        capitalRallyUsed: false,
+      };
+    },
   },
   schema: z.object({
     smallID: zInt(),
@@ -2289,8 +2312,8 @@ export const PlayerSnapshot = snapshotType({
     outgoingLandAttacks: z.array(zRef()),
     alliances: z.array(zRef()),
     spawnTile: zTile().nullable(),
-    capitalTile: zTile().nullable(),
-    capitalMovedTick: zInt().nullable(),
+    capitalPenaltyTick: zInt().nullable(),
+    capitalRallyUsed: z.boolean(),
     isDisconnected: z.boolean(),
     disconnectSnapshot: z
       .object({

@@ -212,8 +212,9 @@ export const CRUISE_MISSILE_COST = 750_000;
 export const CRUISE_MISSILE_RANGE = 400;
 
 /**
- * It destroys the military structures within this many tiles. Cluster
- * warheads use it too, so the two stay in sync.
+ * It destroys the hostile military structures within this many tiles.
+ * Cluster warheads use it too, so the two stay in sync, but a warhead
+ * destroys every military structure in it, its launcher's and allies' too.
  */
 export const CRUISE_MISSILE_BLAST_RADIUS = 3;
 
@@ -247,12 +248,16 @@ export const BALLISTIC_MISSILE_SILO_LEVEL = 2;
 /** Tiles per tick: twice a hydrogen bomb's, so SAMs get less time. */
 export const BALLISTIC_MISSILE_SPEED = 20;
 
-/** Every hostile structure within this many tiles is destroyed. */
+/**
+ * Every structure within this many tiles is destroyed, whoever owns it: the
+ * launcher's own and its allies' too (friendly fire).
+ */
 export const BALLISTIC_MISSILE_BLAST_RADIUS = 20;
 
 /**
  * Percent of current troops it kills from each player owning land in the
- * blast, and from each of their attacks whose front lies in it.
+ * blast, the launcher and its allies included, and from each of their
+ * attacks whose front lies in it.
  */
 export const BALLISTIC_MISSILE_TROOP_KILL_PERCENT = 10;
 
@@ -385,13 +390,31 @@ export const DRONE_SPEED = 2;
 /** A drone that hasn't reached its target after this many ticks is lost. */
 export const DRONE_MAX_FLIGHT_TICKS = 600;
 
-/** What a drone can hunt, and nothing else: never SAMs. */
+/**
+ * What a drone can hunt, and nothing else: every structure but a SAM (SAMs
+ * are immune to drones and ignore them), plus warships, transport ships and
+ * convoys at sea. Minefields are never targets: enemies can't see them.
+ */
 export const DRONE_TARGET_TYPES: readonly UnitType[] = [
+  UnitType.City,
+  UnitType.Port,
+  UnitType.Factory,
+  UnitType.DefensePost,
+  UnitType.MissileSilo,
+  UnitType.Airbase,
   UnitType.FlakGun,
+  UnitType.CoastalBattery,
   UnitType.Warship,
   UnitType.TransportShip,
   UnitType.Convoy,
 ];
+
+/**
+ * A drone detonating at its target hits every valid drone target within this
+ * many tiles (euclidean) of it, the target included, each with its own
+ * per-type effect.
+ */
+export const DRONE_BLAST_RADIUS = 1;
 
 /** A click picks the nearest valid target within this many tiles of it. */
 export const DRONE_TARGET_PICK_RADIUS = 8;
@@ -413,6 +436,19 @@ export function droneWarshipDamage(maxHealth: number): number {
   return Math.ceil(maxHealth / DRONE_HITS_TO_SINK_WARSHIP);
 }
 
+/**
+ * Hits that destroy a structure, the same rule as for warships: one with
+ * health (a coastal battery) loses a third of its max health per hit, one
+ * without counts its hits. Levels add no hits and a hit never downgrades. A
+ * flak gun is the exception: one hit destroys it.
+ */
+export const DRONE_HITS_TO_DESTROY_STRUCTURE = 3;
+
+/** Damage one drone hit does to a structure with health (a coastal battery). */
+export function droneStructureDamage(maxHealth: number): number {
+  return Math.ceil(maxHealth / DRONE_HITS_TO_DESTROY_STRUCTURE);
+}
+
 /** Percent chance each warship shell aimed at a drone shoots it down. */
 export const WARSHIP_DRONE_HIT_PERCENT = 50;
 
@@ -429,5 +465,34 @@ export const CAPITAL_TROOP_LOSS_PERCENT = 25;
 /** Percent of current gold a player loses with their capital, to the captor. */
 export const CAPITAL_GOLD_LOSS_PERCENT = 25;
 
-/** A capital moves at most once per this many ticks (2 minutes). */
-export const CAPITAL_MOVE_COOLDOWN_TICKS = 1200;
+/**
+ * The loss penalty hits a player at most once per this many ticks (2
+ * minutes), so a capital changing hands back and forth can't chain it.
+ */
+export const CAPITAL_PENALTY_COOLDOWN_TICKS = 1200;
+
+/**
+ * Retaking your own capital from whoever holds it adds this percent of your
+ * max troops, once per game, never past the max.
+ */
+export const CAPITAL_RALLY_PCT = 10;
+
+/** Gold income bonus, in percent, per enemy capital a player holds... */
+export const CAPITAL_HOLD_GOLD_BONUS_PCT = 10;
+
+/** ...never more than this in total. */
+export const CAPITAL_HOLD_GOLD_BONUS_MAX_PCT = 30;
+
+/** Troops the rally adds to a player holding `troops` of `maxTroops`. */
+export function capitalRallyTroops(troops: number, maxTroops: number): number {
+  const surge = Math.floor((Math.max(0, maxTroops) * CAPITAL_RALLY_PCT) / 100);
+  return Math.max(0, Math.min(surge, Math.floor(maxTroops - troops)));
+}
+
+/** The gold income bonus, in whole percent, for holding `held` enemy capitals. */
+export function capitalHoldGoldBonusPct(held: number): number {
+  return Math.min(
+    CAPITAL_HOLD_GOLD_BONUS_MAX_PCT,
+    Math.max(0, Math.floor(held)) * CAPITAL_HOLD_GOLD_BONUS_PCT,
+  );
+}

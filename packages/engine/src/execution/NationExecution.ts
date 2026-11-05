@@ -32,7 +32,6 @@ import type {
   SnapshotReader,
   SnapshotWriter,
 } from "../snapshot/SnapshotContext";
-import { considerAirPower } from "./nation/NationAirBehavior";
 import { NationAllianceBehavior } from "./nation/NationAllianceBehavior";
 import { NationAttackBehavior } from "./nation/NationAttackBehavior";
 import { NationEmojiBehavior } from "./nation/NationEmojiBehavior";
@@ -268,8 +267,9 @@ export class NationExecution implements Execution {
     this.attackBehavior.maybeAttack();
     this.warshipBehavior.counterWarshipInfestation();
     this.nukeBehavior.maybeSendNuke();
-    // Conventional war only; stateless, so nothing to snapshot.
-    considerAirPower(this.mg, this.player);
+    // Conventional war only: air support for our attacks, drones at warships.
+    this.attackBehavior.maybeSupportFromTheAir();
+    this.warshipBehavior.maybeSendDronesAtWarships();
   }
 
   private initializeBehaviors(): void {
