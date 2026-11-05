@@ -1,4 +1,9 @@
 import { UnitType } from "@openfront/engine-api/game/GameTypes";
+import {
+  RESOURCE_SITE_KINDS,
+  resourceSiteHolderTile,
+  resourceSiteStands,
+} from "@openfront/engine-lib/game/ResourceSites";
 // Type-only, like WebGLFrameBuilder's: a value import would pull the passes'
 // `.glsl?raw` shaders into non-Vite consumers.
 import type { MapRenderer } from "./render/gl";
@@ -30,32 +35,29 @@ export class EconomyOverlaySync {
 
   private syncSites(gameView: GameView, view: MapRenderer): void {
     absorbResourceSites(gameView);
-    const sites = resourceSitesOf(gameView);
-    let key = "";
-    for (const s of sites) {
-      const owner = gameView.isLand(s.tile) ? gameView.ownerID(s.tile) : -1;
-      key += `${s.tile}:${owner},`;
-    }
-    if (key === this.lastSitesKey) return;
-    this.lastSitesKey = key;
-
     const markers: ResourceSiteMarker[] = [];
-    for (const s of sites) {
+    let key = "";
+    for (const s of resourceSitesOf(gameView)) {
       // Dug out by a canal or a water nuke: nothing left to hold.
-      if (!gameView.isLand(s.tile)) continue;
-      const owner = gameView.owner(s.tile);
-      const c = owner.isPlayer()
-        ? owner.territoryColor().toRgb()
-        : { r: 0, g: 0, b: 0 };
+      if (!resourceSiteStands(gameView, s)) continue;
+      // Its tile's owner, or for fishing grounds the nearest coast's.
+      const holder = resourceSiteHolderTile(gameView, s);
+      const owner = holder === null ? null : gameView.owner(holder);
+      const held = owner !== null && owner.isPlayer();
+      key += `${s.tile}:${held ? owner.smallID() : 0},`;
+      const c = held ? owner.territoryColor().toRgb() : { r: 0, g: 0, b: 0 };
       markers.push({
         x: gameView.x(s.tile),
         y: gameView.y(s.tile),
-        owned: owner.isPlayer(),
+        kind: RESOURCE_SITE_KINDS.indexOf(s.kind),
+        owned: held,
         r: c.r / 255,
         g: c.g / 255,
         b: c.b / 255,
       });
     }
+    if (key === this.lastSitesKey) return;
+    this.lastSitesKey = key;
     view.updateResourceSites(markers);
   }
 

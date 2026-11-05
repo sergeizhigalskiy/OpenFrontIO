@@ -188,9 +188,13 @@ export class NationAttackBehavior extends AiAttackBehavior {
       if (n.isPlayer()) borderingPlayerSet.add(n);
     }
     // Weakest first, a target holding resource sites counting as a bit weaker.
+    // Weighed once per player up front: fishing grounds look for their coast.
+    const weight = new Map<Player, number>();
+    for (const p of borderingPlayerSet) {
+      weight.set(p, mineWeightedTroops(this.game, p));
+    }
     const borderingPlayers = [...borderingPlayerSet].sort(
-      (a, b) =>
-        mineWeightedTroops(this.game, a) - mineWeightedTroops(this.game, b),
+      (a, b) => weight.get(a)! - weight.get(b)!,
     );
     const borderingFriends = borderingPlayers.filter(
       (o) => this.player?.isFriendly(o) === true,

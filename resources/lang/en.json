@@ -1467,8 +1467,8 @@
     "goldIncomePerMin": "Gold Income/min",
     "launchers": "Launchers",
     "maxtroops": "Max Troops",
-    "mineGoldPerMin": "Mine Gold/min",
-    "mines": "Mines",
+    "mineGoldPerMin": "Site gold/min",
+    "mines": "Sites",
     "owned": "Owned",
     "piracyGoldPerMin": "Piracy Gold/min",
     "player": "Player",
@@ -2332,10 +2332,13 @@
     "heading": "Thank you"
   },
   "resource_sites": {
+    "fishing_grounds": "Fishing grounds",
     "gold_mine": "Gold mine",
     "held_by": "Held by {name}",
     "income": "+{gold} gold/s to its holder",
-    "unclaimed": "Unclaimed: take its land to hold it"
+    "oil_field": "Oil field",
+    "unclaimed": "Unclaimed: take its land to hold it",
+    "unclaimed_coast": "Unclaimed: take the nearest coast to hold it"
   },
   "reward_track": {
     "after_level": "After level {level}",
