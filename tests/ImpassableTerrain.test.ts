@@ -18,7 +18,11 @@ import { PlayerExecution } from "@openfront/engine/execution/PlayerExecution";
 import { Game, Player } from "@openfront/engine/game/Game";
 import { createGame } from "@openfront/engine/game/GameImpl";
 import { PathFinding } from "@openfront/engine/pathfinding/PathFinder";
-import { encodeTerrainTile } from "../src/client/render/gl/utils/ColorUtils";
+import renderDefaults from "../src/client/render/gl/render-settings.json";
+import {
+  encodeTerrainTile,
+  hexToRgb,
+} from "../src/client/render/gl/utils/ColorUtils";
 import { TestConfig } from "./util/TestConfig";
 import { executeTicks } from "./util/utils";
 
@@ -391,10 +395,10 @@ describe("Impassable Terrain", () => {
   test("encodeTerrainTile renders plains normally (not background)", () => {
     const out = new Uint8Array(4);
     encodeTerrainTile(LAND_PLAINS, out, 0);
-    // Plains: r=190, g=220, b=138 — clearly different from background.
-    expect(out[0]).toBe(190);
-    expect(out[1]).toBe(220);
-    expect(out[2]).toBe(138);
+    // The default plains colour, clearly different from the background.
+    const [r, g, b] = hexToRgb(renderDefaults.terrain.plainsColor)!;
+    expect([out[0], out[1], out[2]]).toEqual([r, g, b]);
+    expect([r, g, b]).not.toEqual([60, 60, 60]);
   });
 
   // ── Nation AI: nearby() next to impassable terrain ───────────────────

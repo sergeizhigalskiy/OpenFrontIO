@@ -66,18 +66,22 @@ export interface RenderSettings {
   terrain: {
     /**
      * Map background color as a "#rrggbb" hex string — the clear color drawn
-     * outside the map quad. Impassable terrain is baked to the same color so
+     * outside the map quad. Impassable terrain is drawn in the same color so
      * the map keeps its non-rectangular silhouette.
      */
     backgroundColor: string;
     /**
-     * Base (shallowest) color of deep water as a "#rrggbb" hex string. The
-     * per-depth brightness gradient is preserved relative to this color.
+     * Open water a few tiles from shore, as a "#rrggbb" hex string. The
+     * terrain shader lightens it in the shallows and darkens it with depth.
      */
     oceanColor: string;
+    /** Beaches along low coasts. */
     sandColor: string;
+    /** Low ground; the palette blends to highland by elevation. */
     plainsColor: string;
+    /** High ground; bare rock above it is derived from this colour. */
     highlandColor: string;
+    /** The highest peaks (snow by default); lower mountains are rock. */
     mountainColor: string;
   };
   /** Map camera and terrain relief (gl/camera, gl/terrain). */

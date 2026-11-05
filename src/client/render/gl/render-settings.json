@@ -19,9 +19,9 @@
   "terrain": {
     "backgroundColor": "#3c3c3c",
     "oceanColor": "#4785b5",
-    "sandColor": "#CCCB9E",
-    "plainsColor": "#BEDC8A",
-    "highlandColor": "#DCCB9E",
+    "sandColor": "#d6cca2",
+    "plainsColor": "#b1c987",
+    "highlandColor": "#d0c19a",
     "mountainColor": "#e6e6e6"
   },
   "mapView": {

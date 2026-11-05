@@ -74,7 +74,6 @@ import { SpawnOverlayPass } from "./passes/SpawnOverlayPass";
 import { SpiralRibbonPass } from "./passes/SpiralRibbonPass";
 import { StructureLevelPass } from "./passes/StructureLevelPass";
 import { StructurePass } from "./passes/StructurePass";
-import { TerrainFeaturePass } from "./passes/TerrainFeaturePass";
 import { TerrainPass } from "./passes/TerrainPass";
 import { TerritoryPass } from "./passes/TerritoryPass";
 import { TideWarningPass } from "./passes/TideWarningPass";
@@ -93,6 +92,7 @@ import {
   getPaletteSize,
   hexToRgb,
   MAX_TRAIL_COLORS,
+  type TerrainColorOverrides,
 } from "./utils/ColorUtils";
 import { renderDpr } from "./utils/Dpr";
 import {
@@ -198,8 +198,6 @@ export class GPURenderer {
   private storedLayers: MapLayer[] = [];
   /** Stored layer images for context-restore re-creation. */
   private storedLayerImages: Map<string, ImageBitmap> = new Map();
-  /** Forests, rivers and fords; null on maps without a feature layer. */
-  private terrainFeaturePass: TerrainFeaturePass | null = null;
 
   private paletteTex: WebGLTexture;
   private paletteData: Float32Array;
@@ -308,35 +306,8 @@ export class GPURenderer {
     // Bake once and let the array go — nothing below retains map-sized
     // terrain bytes; re-bakes call terrainSource again.
     const terrainBytes = terrainSource();
-    this.terrainPass = new TerrainPass(
-      gl,
-      terrainSource,
-      terrainBytes,
-      mapW,
-      mapH,
-      {
-        backgroundColor:
-          hexToRgb(this.settings.terrain.backgroundColor) ?? undefined,
-        oceanColor: hexToRgb(this.settings.terrain.oceanColor) ?? undefined,
-        sandColor: hexToRgb(this.settings.terrain.sandColor) ?? undefined,
-        plainsColor: hexToRgb(this.settings.terrain.plainsColor) ?? undefined,
-        highlandColor:
-          hexToRgb(this.settings.terrain.highlandColor) ?? undefined,
-        mountainColor:
-          hexToRgb(this.settings.terrain.mountainColor) ?? undefined,
-      },
-    );
-    this.heightField = new HeightField(
-      gl,
-      terrainSource,
-      terrainBytes,
-      mapW,
-      mapH,
-    );
-    this.terrainPass.setRelief(this.heightField.tex, this.settings.mapView);
-    this.mapSurface = new MapSurface(gl, mapW, mapH);
-
-    // --- Terrain bytes R8UI texture (shared by map-layer passes) ---
+    // Raw terrain bytes (R8UI), shared by the terrain, map-layer, weather
+    // and railroad passes; kept current by applyTerrainRects.
     this.terrainBytesTex = createTexture2D(gl, {
       width: mapW,
       height: mapH,
@@ -346,6 +317,24 @@ export class GPURenderer {
       data: terrainBytes,
       filter: gl.NEAREST,
     });
+    this.terrainPass = new TerrainPass(
+      gl,
+      terrainSource,
+      terrainBytes,
+      this.terrainBytesTex,
+      mapW,
+      mapH,
+      this.terrainColors(),
+    );
+    this.heightField = new HeightField(
+      gl,
+      terrainSource,
+      terrainBytes,
+      mapW,
+      mapH,
+    );
+    this.terrainPass.setRelief(this.settings.mapView);
+    this.mapSurface = new MapSurface(gl, mapW, mapH);
 
     // --- Shared palette texture (RGBA32F, 4096×2) ---
     this.paletteData = paletteData;
@@ -1058,14 +1047,15 @@ export class GPURenderer {
   /**
    * Update terrain texels for regions whose terrain bytes changed (e.g. water
    * nukes converting land → water). Each rect's bytes are stored row-major,
-   * concatenated in `bytes` in rect order. Forwards to both TerrainPass (RGBA
-   * color) and RailroadPass (R8UI water-detection for bridges). One
+   * concatenated in `bytes` in rect order. Forwards to TerrainPass (surface
+   * field), the height field and RailroadPass (R8UI water-detection for
+   * bridges), then updates the shared terrain-bytes texture. One
    * texSubImage2D per rect — per-tile uploads cost hundreds of ms for a
    * massive bomb.
    */
   applyTerrainRects(rects: readonly TerrainRect[], bytes: Uint8Array): void {
     if (rects.length === 0) return;
-    this.terrainPass.applyTerrainRects(rects, bytes);
+    this.terrainPass.applyTerrainRects(rects);
     this.heightField.applyTerrainRects(rects);
     this.railroadPass.applyTerrainRects(rects, bytes);
     // Update the shared R8UI terrain-bytes texture used by map-layer passes.
@@ -1092,20 +1082,25 @@ export class GPURenderer {
   }
 
   /**
-   * Rebuild the terrain texture from the current `settings.terrain` colors.
-   * Terrain is baked into a GPU texture rather than read per-frame, so a
-   * settings change needs this explicit rebuild.
+   * Apply the current `settings.terrain` colors to the terrain. The palette
+   * is a set of uniforms, so this is cheap; it stays an explicit call since
+   * settings are only read when it is made.
    */
   rebuildTerrain(): void {
-    this.terrainPass.setTerrainColors({
-      backgroundColor:
-        hexToRgb(this.settings.terrain.backgroundColor) ?? undefined,
-      oceanColor: hexToRgb(this.settings.terrain.oceanColor) ?? undefined,
-      sandColor: hexToRgb(this.settings.terrain.sandColor) ?? undefined,
-      plainsColor: hexToRgb(this.settings.terrain.plainsColor) ?? undefined,
-      highlandColor: hexToRgb(this.settings.terrain.highlandColor) ?? undefined,
-      mountainColor: hexToRgb(this.settings.terrain.mountainColor) ?? undefined,
-    });
+    this.terrainPass.setTerrainColors(this.terrainColors());
+  }
+
+  /** The terrain colour overrides from settings.terrain. */
+  private terrainColors(): TerrainColorOverrides {
+    const t = this.settings.terrain;
+    return {
+      backgroundColor: hexToRgb(t.backgroundColor) ?? undefined,
+      oceanColor: hexToRgb(t.oceanColor) ?? undefined,
+      sandColor: hexToRgb(t.sandColor) ?? undefined,
+      plainsColor: hexToRgb(t.plainsColor) ?? undefined,
+      highlandColor: hexToRgb(t.highlandColor) ?? undefined,
+      mountainColor: hexToRgb(t.mountainColor) ?? undefined,
+    };
   }
 
   applyConquestEvents(events: ConquestFx[]): void {
@@ -1516,6 +1511,7 @@ export class GPURenderer {
     gl.clearColor(bgR / 255, bgG / 255, bgB / 255, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.disable(gl.BLEND);
+    // Terrain draws the map's features (forests, rivers, fords) too.
     if (pe.terrain) this.terrainPass.draw(cam);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -1525,7 +1521,6 @@ export class GPURenderer {
       if (this.altView && layerPass.placement === 0) continue;
       layerPass.draw(cam);
     }
-    this.terrainFeaturePass?.draw(cam);
     if (pe.territory) this.territoryPass.draw(cam);
   }
 
@@ -1632,25 +1627,17 @@ export class GPURenderer {
   }
 
   /**
-   * Draw the map's terrain features (one TerrainFeature byte per tile)
-   * between terrain and territory. Called once per map, and again after a
-   * context restore.
+   * The map's terrain features (one TerrainFeature byte per tile), drawn by
+   * the terrain pass. Called once per map, and again after a context
+   * restore.
    */
   setTerrainFeatures(features: Uint8Array): void {
-    this.terrainFeaturePass?.dispose();
-    this.terrainFeaturePass = null;
-    if (!this.terrainBytesTex) return;
     if (features.length !== this.mapW * this.mapH) {
       console.warn("[Renderer] terrain feature layer does not match the map");
+      this.terrainPass.setFeatures(null);
       return;
     }
-    this.terrainFeaturePass = new TerrainFeaturePass(
-      this.gl,
-      this.terrainBytesTex,
-      features,
-      this.mapW,
-      this.mapH,
-    );
+    this.terrainPass.setFeatures(features);
   }
 
   /** Toggle visibility of a single layer (driven by graphics settings). */
@@ -1692,8 +1679,6 @@ export class GPURenderer {
     this.stopLoop();
     for (const p of this.mapLayerPasses.values()) p.dispose();
     this.mapLayerPasses.clear();
-    this.terrainFeaturePass?.dispose();
-    this.terrainFeaturePass = null;
     if (this.terrainBytesTex) {
       this.gl.deleteTexture(this.terrainBytesTex);
       this.terrainBytesTex = null;

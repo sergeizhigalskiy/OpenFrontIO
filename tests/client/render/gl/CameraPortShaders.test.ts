@@ -23,7 +23,7 @@ import { ReloadBarPass } from "../../../../src/client/render/gl/passes/ReloadBar
 import { ResourceSitePass } from "../../../../src/client/render/gl/passes/ResourceSitePass";
 import { RuinsPass } from "../../../../src/client/render/gl/passes/RuinsPass";
 import { StructurePass } from "../../../../src/client/render/gl/passes/StructurePass";
-import { TerrainFeaturePass } from "../../../../src/client/render/gl/passes/TerrainFeaturePass";
+import { TerrainPass } from "../../../../src/client/render/gl/passes/TerrainPass";
 import { TideWarningPass } from "../../../../src/client/render/gl/passes/TideWarningPass";
 import { UnitPass } from "../../../../src/client/render/gl/passes/UnitPass";
 import { VolcanoPass } from "../../../../src/client/render/gl/passes/VolcanoPass";
@@ -112,17 +112,22 @@ const PASSES: PassCase[] = [
       ),
     camera: true,
   },
-  // terrain-maps: forests, rivers and fords
+  // map surface: land, water, forests, rivers and fords
   {
-    name: "TerrainFeaturePass",
-    build: (gl) =>
-      new TerrainFeaturePass(
+    name: "TerrainPass",
+    build: (gl) => {
+      const terrain = new Uint8Array(MAP_W * MAP_H).fill(0x85);
+      const pass = new TerrainPass(
         gl,
+        () => terrain,
+        terrain,
         tex,
-        new Uint8Array(MAP_W * MAP_H),
         MAP_W,
         MAP_H,
-      ),
+      );
+      pass.setFeatures(new Uint8Array(MAP_W * MAP_H));
+      return pass;
+    },
     camera: true,
   },
   // resources-canals: mine icons and canal digs

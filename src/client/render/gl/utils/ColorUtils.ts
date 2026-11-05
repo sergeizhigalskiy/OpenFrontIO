@@ -57,26 +57,66 @@ export function hexToRgb(hex: string): [number, number, number] | null {
   return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
 }
 
-/**
- * Default base (shallowest, magnitude 0) color for deep water. Derived from
- * the `terrain.oceanColor` default in render-settings.json (the single source
- * of truth); used as a fallback when no override color is supplied.
- */
-const DEEP_WATER_BASE: readonly [number, number, number] = hexToRgb(
-  renderDefaults.terrain.oceanColor,
-)!;
+type Rgb = readonly [number, number, number];
+
+/** A "#rrggbb" default from render-settings.json, as RGB. */
+function defaultColor(hex: string): Rgb {
+  return hexToRgb(hex)!;
+}
+
+/** Terrain colours a player may override in graphics settings. */
+export interface TerrainColorOverrides {
+  backgroundColor?: Rgb;
+  oceanColor?: Rgb;
+  sandColor?: Rgb;
+  plainsColor?: Rgb;
+  highlandColor?: Rgb;
+  mountainColor?: Rgb;
+}
 
 /**
- * Default map background color, from `terrain.backgroundColor` in
- * render-settings.json; used as a fallback when no override is supplied.
+ * The terrain palette, 0-255 RGB: the base colours the terrain shader
+ * (shaders/terrain/terrain.frag.glsl) builds every surface colour from.
+ *   background  impassable terrain, and the clear colour outside the map
+ *   ocean       open water a few tiles out; the shader lightens it toward
+ *               the shore and darkens it with depth
+ *   sand        beaches along low coasts
+ *   plains, highland  the land palette by elevation (bare rock above the
+ *               highlands is derived from the highland colour)
+ *   mountain    the highest peaks: snow by default
  */
-const BACKGROUND_BASE: readonly [number, number, number] = hexToRgb(
-  renderDefaults.terrain.backgroundColor,
-)!;
+export interface TerrainPalette {
+  background: Rgb;
+  ocean: Rgb;
+  sand: Rgb;
+  plains: Rgb;
+  highland: Rgb;
+  mountain: Rgb;
+}
 
 /**
- * Compute a static RGBA8 texture from raw terrain bytes.
- * The single source of truth for terrain colors.
+ * The palette from settings, falling back to the defaults in
+ * render-settings.json (`terrain.*`, the single source of truth).
+ */
+export function resolveTerrainPalette(
+  colors?: TerrainColorOverrides,
+): TerrainPalette {
+  const d = renderDefaults.terrain;
+  return {
+    background: colors?.backgroundColor ?? defaultColor(d.backgroundColor),
+    ocean: colors?.oceanColor ?? defaultColor(d.oceanColor),
+    sand: colors?.sandColor ?? defaultColor(d.sandColor),
+    plains: colors?.plainsColor ?? defaultColor(d.plainsColor),
+    highland: colors?.highlandColor ?? defaultColor(d.highlandColor),
+    mountain: colors?.mountainColor ?? defaultColor(d.mountainColor),
+  };
+}
+
+/**
+ * Flat base colour of one tile from its terrain byte, written as RGBA into
+ * `out[offset..offset+3]` — the palette entry the shader starts from,
+ * without its smoothing, depth shading, features or relief. For code that
+ * needs a tile's colour without the GPU.
  *
  * Terrain byte layout per tile:
  *   bit 7: isLand
@@ -84,114 +124,31 @@ const BACKGROUND_BASE: readonly [number, number, number] = hexToRgb(
  *   bit 5: isOcean  (water only)
  *   bits 0-4: magnitude (0-31)
  *
- * Impassable terrain is encoded as isLand=1 + magnitude=31. It renders as
- * the map background colour (matching `gl.clearColor` in Renderer.ts) so the
- * map appears non-rectangular — the impassable regions are visually
- * indistinguishable from the area outside the map.
+ * Impassable terrain is encoded as isLand=1 + magnitude=31. It takes the map
+ * background colour (matching `gl.clearColor` in Renderer.ts) so the map
+ * appears non-rectangular: impassable regions read as outside the map.
  */
-/** Encode one terrain byte → RGBA, writing into `out[offset..offset+3]`. */
-export interface TerrainColorOverrides {
-  backgroundColor?: readonly [number, number, number];
-  oceanColor?: readonly [number, number, number];
-  sandColor?: readonly [number, number, number];
-  plainsColor?: readonly [number, number, number];
-  highlandColor?: readonly [number, number, number];
-  mountainColor?: readonly [number, number, number];
-}
-
 export function encodeTerrainTile(
   tb: number,
   out: Uint8Array,
   offset: number,
   colors?: TerrainColorOverrides,
 ): void {
-  const backgroundColor = colors?.backgroundColor;
-  const oceanColor = colors?.oceanColor;
-  const sandColor = colors?.sandColor;
-  const plainsColor = colors?.plainsColor;
-  const highlandColor = colors?.highlandColor;
-  const mountainColor = colors?.mountainColor;
-
+  const palette = resolveTerrainPalette(colors);
   const isLand = (tb & 0x80) !== 0;
   const isShoreline = (tb & 0x40) !== 0;
   const magnitude = tb & 0x1f;
 
-  let r: number, g: number, b: number;
+  let rgb: Rgb;
+  if (!isLand) rgb = palette.ocean;
+  else if (magnitude === 31) rgb = palette.background;
+  else if (isShoreline) rgb = palette.sand;
+  else if (magnitude < 10) rgb = palette.plains;
+  else if (magnitude < 20) rgb = palette.highland;
+  else rgb = palette.mountain;
 
-  const terrainColors = {
-    ocean: oceanColor ?? DEEP_WATER_BASE,
-    shoreWater: [100, 143, 255],
-    sand: sandColor ?? [204, 203, 158],
-    plains: plainsColor ?? [190, 220, 138],
-    highland: highlandColor ?? [200, 183, 138],
-    mountain: mountainColor ?? [230, 230, 230],
-    peak: backgroundColor ?? BACKGROUND_BASE,
-  };
-
-  // Impassable terrain: render as the map background colour so it blends
-  // with the area outside the map quad. Must match the clear colour in
-  // Renderer.ts drawBaseLayer() (settings.terrain.backgroundColor).
-  if (isLand && magnitude === 31) {
-    [r, g, b] = terrainColors.peak;
-  } else if (isLand && isShoreline) {
-    [r, g, b] = terrainColors.sand;
-  } else if (isLand) {
-    if (magnitude < 10) {
-      // Plains
-      const base = terrainColors.plains;
-
-      r = base[0];
-      g = base[1] - 2 * magnitude;
-      b = base[2];
-    } else if (magnitude < 20) {
-      // Highland
-      const base = terrainColors.highland;
-      const m = magnitude - 10;
-
-      r = Math.min(255, base[0] + 2 * m);
-      g = Math.min(255, base[1] + 2 * m);
-      b = Math.min(255, base[2] + 2 * m);
-    } else {
-      // Mountain
-      const base = terrainColors.mountain;
-      const m = Math.floor(magnitude / 2);
-
-      r = Math.min(255, base[0] + m);
-      g = Math.min(255, base[1] + m);
-      b = Math.min(255, base[2] + m);
-    }
-  } else if (isShoreline) {
-    // Shoreline water — computed dynamically by blending 70% ocean color and 30% white
-    const base = oceanColor ?? DEEP_WATER_BASE;
-    r = Math.round(0.7 * base[0] + 76.5);
-    g = Math.round(0.7 * base[1] + 76.5);
-    b = Math.round(0.7 * base[2] + 76.5);
-  } else {
-    // Deep water — darkens with depth (magnitude). The base color sets the
-    // shallowest (brightest) shade; the per-depth gradient is preserved by
-    // subtracting the depth from each channel.
-    const m = Math.min(magnitude, 10);
-    const base = terrainColors.ocean;
-    r = Math.max(0, base[0] - m);
-    g = Math.max(0, base[1] - m);
-    b = Math.max(0, base[2] - m);
-  }
-
-  out[offset] = r;
-  out[offset + 1] = g;
-  out[offset + 2] = b;
+  out[offset] = rgb[0];
+  out[offset + 1] = rgb[1];
+  out[offset + 2] = rgb[2];
   out[offset + 3] = 255;
-}
-
-export function buildTerrainRGBA(
-  terrainBytes: Uint8Array,
-  w: number,
-  h: number,
-  colors?: TerrainColorOverrides,
-): Uint8Array {
-  const pixels = new Uint8Array(w * h * 4);
-  for (let i = 0; i < w * h; i++) {
-    encodeTerrainTile(terrainBytes[i], pixels, i * 4, colors);
-  }
-  return pixels;
 }
