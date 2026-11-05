@@ -125,6 +125,12 @@ export class TrainExecution implements Execution {
 
     this.reconcileCurrentRailroadSplit();
 
+    // Cut under the train (see RailCuts.ts): it is lost and pays nothing.
+    if (this.currentRailroad?.isCut()) {
+      this.deleteTrain();
+      return;
+    }
+
     if (!this.activeSourceOrDestination()) {
       this.deleteTrain();
       return;
@@ -254,7 +260,8 @@ export class TrainExecution implements Execution {
       const railRoad =
         getOrientedRailroad(this.stations[0], this.stations[1]) ??
         this.resolveSplitRailroad();
-      if (railRoad) {
+      // A rail cut ahead ends the trip at this station.
+      if (railRoad && !railRoad.isCut()) {
         this.currentRailroad = railRoad;
         return true;
       }

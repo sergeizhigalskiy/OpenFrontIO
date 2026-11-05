@@ -1,4 +1,8 @@
-import { PlayerType } from "@openfront/engine-api/game/GameTypes";
+import { PlayerType, UnitType } from "@openfront/engine-api/game/GameTypes";
+import {
+  BLOCKADE_CHECK_INTERVAL,
+  findPortBlockader,
+} from "@openfront/engine-lib/game/TradeRoutes";
 import { assetUrl } from "@openfront/shared/AssetUrls";
 import {
   type EffectAttributesFor,
@@ -22,6 +26,7 @@ import {
 } from "./render/types";
 // Value import from the leaf module (not the ./render/gl barrel) so non-Vite
 // consumers don't pull in GPURenderer and its shaders — see note above.
+import type { BlockadeMarker } from "./render/gl/passes/BlockadePass";
 import type { CapitalMarker } from "./render/gl/passes/CapitalPass";
 import {
   EFFECT_PALETTE_BLOCKS,
@@ -156,6 +161,9 @@ export class WebGLFrameBuilder {
   private readonly lastSpawnTile = new Map<number, number>();
   /** The capitals last sent to the renderer (see syncCapitals). */
   private lastCapitalsKey = "";
+  /** The blockaded ports last sent to the renderer (see syncBlockades). */
+  private lastBlockadesKey = "";
+  private lastBlockadeScanTick = -Infinity;
   /** Skin atlas allocated once on first syncPlayers — player set is locked at game start. */
   private skinsInitialized = false;
   // The renderer needs to know which player is "me" so affiliation tint,
@@ -181,6 +189,8 @@ export class WebGLFrameBuilder {
     this.effectPalette.fill(0);
     this.lastSpawnTile.clear();
     this.lastCapitalsKey = "";
+    this.lastBlockadesKey = "";
+    this.lastBlockadeScanTick = -Infinity;
     this.localPlayerSmallID = 0;
     this.skinsInitialized = false;
   }
@@ -243,6 +253,7 @@ export class WebGLFrameBuilder {
     this.syncLocalPlayer(gameView);
     this.syncSpawnOverlay(gameView);
     this.syncCapitals(gameView);
+    this.syncBlockades(gameView);
     this.syncSmallPlayerGlow(gameView);
     this.syncTerrainDeltas(gameView);
     this.syncNukeImpacts(gameView);
@@ -451,6 +462,39 @@ export class WebGLFrameBuilder {
     if (key === this.lastCapitalsKey) return;
     this.lastCapitalsKey = key;
     this.view.updateCapitals(capitals);
+  }
+
+  /**
+   * A ring on every blockaded port, for everyone. The view applies the
+   * engine's rule (engine-lib TradeRoutes) to the warships it sees, as often
+   * as the engine checks. Re-sent only when the set of ports changes.
+   */
+  private syncBlockades(gameView: GameView): void {
+    const tick = gameView.ticks();
+    if (
+      tick >= this.lastBlockadeScanTick &&
+      tick - this.lastBlockadeScanTick < BLOCKADE_CHECK_INTERVAL
+    ) {
+      return;
+    }
+    this.lastBlockadeScanTick = tick;
+    const markers: BlockadeMarker[] = [];
+    let key = "";
+    for (const port of gameView.units(UnitType.Port)) {
+      if (port.isUnderConstruction()) continue;
+      const blockader = findPortBlockader(
+        gameView,
+        port.tile(),
+        port.owner(),
+        (a, b) => a.isFriendly(b),
+      );
+      if (blockader === null) continue;
+      key += `${port.id()},`;
+      markers.push({ x: gameView.x(port.tile()), y: gameView.y(port.tile()) });
+    }
+    if (key === this.lastBlockadesKey) return;
+    this.lastBlockadesKey = key;
+    this.view.updateBlockades(markers);
   }
 
   /**

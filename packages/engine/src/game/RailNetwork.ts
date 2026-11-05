@@ -12,6 +12,8 @@ export interface RailNetwork {
   overlappingRailroads(unitType: UnitType, tile: TileRef): TileRef[];
   computeGhostRailPaths(unitType: UnitType, tile: TileRef): TileRef[][];
   recomputeClusters(): void;
+  /** Cuts and reconnects rails by who holds their tiles (see RailCuts.ts). */
+  refreshCuts(): void;
   /** Digest of every station and rail, for the game-state hash. */
   hash(): number;
 }

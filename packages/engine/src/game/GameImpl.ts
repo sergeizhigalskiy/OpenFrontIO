@@ -587,6 +587,13 @@ export class GameImpl implements Game {
         id: railroad.id,
         tiles: railroad.tiles,
       });
+      if (railroad.isCut()) {
+        this.addUpdate({
+          type: GameUpdateType.RailroadCutEvent,
+          id: railroad.id,
+          cut: true,
+        });
+      }
     }
     if (this.startTick !== null) {
       this.addUpdate({

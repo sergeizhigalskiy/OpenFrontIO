@@ -54,7 +54,7 @@ class StationGraphAdapter implements AStarAdapter {
     if (!station) return 0;
 
     let count = 0;
-    for (const n of station.neighbors()) {
+    for (const n of station.routableNeighbors()) {
       buffer[count++] = n.id;
     }
     return count;

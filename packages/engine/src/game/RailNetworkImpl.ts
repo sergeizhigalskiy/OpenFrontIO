@@ -13,6 +13,7 @@ import type {
   SnapshotWriter,
 } from "../snapshot/SnapshotContext";
 import { Game, Unit } from "./Game";
+import { inheritRailCuts, refreshRailCuts, trackRailOwners } from "./RailCuts";
 import { RailNetwork } from "./RailNetwork";
 import { Railroad } from "./Railroad";
 import { RailSpatialGrid } from "./RailroadSpatialGrid";
@@ -387,6 +388,7 @@ export class RailNetworkImpl implements RailNetwork {
     const rails = this.railGrid.query(station.tile(), this.stationRadius);
 
     const editedClusters = new Set<Cluster>();
+    const halves: Railroad[] = [];
     for (const rail of rails) {
       const from = rail.from;
       const to = rail.to;
@@ -416,6 +418,10 @@ export class RailNetworkImpl implements RailNetwork {
         rail.tiles.slice(closestRailIndex),
         this.nextId++,
       );
+      // Cut tiles stay cut on the half that has them.
+      inheritRailCuts(rail, newRailFrom, 0);
+      inheritRailCuts(rail, newRailTo, closestRailIndex);
+      halves.push(newRailFrom, newRailTo);
 
       // New station is connected to both new rails
       station.addRailroad(newRailFrom);
@@ -444,6 +450,8 @@ export class RailNetworkImpl implements RailNetwork {
     if (editedClusters.size > 1) {
       this.mergeClusters(editedClusters);
     }
+    // The view adds the halves intact; cut ones split the merged cluster.
+    for (const half of halves) this.syncRailroadCut(half, false);
     return editedClusters.size !== 0;
   }
 
@@ -830,6 +838,7 @@ export class RailNetworkImpl implements RailNetwork {
     path: TileRef[],
   ): void {
     const railroad = new Railroad(from, to, path, this.nextId++);
+    trackRailOwners(this.game, railroad);
     this.game.addUpdate({
       type: GameUpdateType.RailroadConstructionEvent,
       id: railroad.id,
@@ -912,7 +921,8 @@ export class RailNetworkImpl implements RailNetwork {
       if (visited.has(current)) continue;
       visited.add(current);
 
-      for (const neighbor of current.neighbors()) {
+      // A cut rail splits the cluster: trains can't cross it.
+      for (const neighbor of current.routableNeighbors()) {
         if (!visited.has(neighbor)) queue.push(neighbor);
       }
     }
@@ -925,6 +935,39 @@ export class RailNetworkImpl implements RailNetwork {
     for (const cluster of clustersToMerge) {
       merged.merge(cluster);
     }
+  }
+
+  refreshCuts(): void {
+    refreshRailCuts(this.game, this);
+  }
+
+  /**
+   * Tells the view that `rail` was cut (no trains or income over it) or
+   * reconnected, if it changed since it was `wasCut`, and keeps the clusters
+   * in step: a cut marks its cluster for a split, an intact rail joins the
+   * clusters on its two sides if they differ.
+   */
+  syncRailroadCut(rail: Railroad, wasCut: boolean): void {
+    const cut = rail.isCut();
+    if (cut !== wasCut) {
+      this.game.addUpdate({
+        type: GameUpdateType.RailroadCutEvent,
+        id: rail.id,
+        cut,
+      });
+      const cluster = rail.from.getCluster();
+      if (cut && cluster !== null) this.dirtyClusters.add(cluster);
+    }
+    if (!cut) this.joinClusters(rail);
+  }
+
+  private joinClusters(rail: Railroad): void {
+    const a = rail.from.getCluster();
+    const b = rail.to.getCluster();
+    if (a === null || b === null || a === b) return;
+    a.merge(b);
+    // A split pending on the emptied cluster now applies to the joined one.
+    if (this.dirtyClusters.delete(b)) this.dirtyClusters.add(a);
   }
 
   /**
@@ -942,6 +985,7 @@ export class RailNetworkImpl implements RailNetwork {
         const ends =
           tiles.length === 0 ? 0 : tiles[0] * 3 + tiles[tiles.length - 1];
         hash = (hash + (rail.id + 1) * (tiles.length * 31 + ends)) >>> 0;
+        if (rail.isCut()) hash = (hash + (rail.id + 1) * 17) >>> 0;
       }
     }
     return hash;

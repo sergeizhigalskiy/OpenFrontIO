@@ -35,6 +35,7 @@ import type {
 import { considerAirPower } from "./nation/NationAirBehavior";
 import { NationAllianceBehavior } from "./nation/NationAllianceBehavior";
 import { NationAttackBehavior } from "./nation/NationAttackBehavior";
+import { considerBlockade } from "./nation/NationBlockadeBehavior";
 import { NationEmojiBehavior } from "./nation/NationEmojiBehavior";
 import { NationMIRVBehavior } from "./nation/NationMIRVBehavior";
 import { NationNukeBehavior } from "./nation/NationNukeBehavior";
@@ -270,6 +271,8 @@ export class NationExecution implements Execution {
     this.nukeBehavior.maybeSendNuke();
     // Conventional war only; stateless, so nothing to snapshot.
     considerAirPower(this.mg, this.player);
+    // Hard and Impossible only; stateless too.
+    considerBlockade(this.mg, this.player);
   }
 
   private initializeBehaviors(): void {

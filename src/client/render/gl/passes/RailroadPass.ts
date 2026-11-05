@@ -9,7 +9,8 @@
  * Also renders ghost railroad paths (semi-transparent) for build-mode preview.
  *
  * Data flow:
- *   Uint8Array railroadState → R8UI texture (rail type per tile, 0=none, 1-6=type)
+ *   Uint8Array railroadState → R8UI texture (rail type per tile, 0=none, 1-6=type,
+ *                              | RAIL_CUT_FLAG on cut rails, drawn red and dashed)
  *   GhostPreviewData         → R8UI ghost texture (ghost rail paths)
  *   R8UI terrainTex           → water detection for bridge rendering (shader neighbor lookup)
  *   R16UI tileTex (shared)   → owner lookup for rail color
@@ -17,6 +18,7 @@
  *   RGBA32F effectTex (shared) → per-owner railroad cosmetic effect
  */
 
+import { RAIL_CUT_FLAG } from "../../frame/RailroadCache";
 import type { GhostPreviewData, TerrainRect } from "../../types";
 import type { RenderSettings } from "../RenderSettings";
 import overlayVertSrc from "../shaders/map-overlay/overlay.vert.glsl?raw";
@@ -176,6 +178,7 @@ export class RailroadPass {
       shaderSrc(railroadFragSrc, {
         PALETTE_SIZE: getPaletteSize(),
         RAILROAD_EFFECT_ROW_BASE: RAILROAD_EFFECT_BLOCK * MAX_TRAIL_COLORS,
+        RAIL_CUT_FLAG,
         ...TILE_DEFINES,
       }),
       "RailroadPass",

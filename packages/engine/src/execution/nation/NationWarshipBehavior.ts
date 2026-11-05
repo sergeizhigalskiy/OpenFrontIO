@@ -25,6 +25,7 @@ import type {
   SnapshotWriter,
 } from "../../snapshot/SnapshotContext";
 import { ConstructionExecution } from "../ConstructionExecution";
+import { blockadedPortToMine } from "./NationBlockadeBehavior";
 import {
   EMOJI_WARSHIP_RETALIATION,
   NationEmojiBehavior,
@@ -135,6 +136,8 @@ export class NationWarshipBehavior {
         port = p;
       }
     }
+    // A blockade is a threat at any port, not just the busiest one.
+    port = blockadedPortToMine(game, this.player) ?? port;
     if (port === null) return false;
 
     const portTile = port.tile();

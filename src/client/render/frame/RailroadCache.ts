@@ -17,6 +17,7 @@ import {
   GameUpdateType,
   GameUpdateViewData,
   RailroadConstructionUpdate,
+  RailroadCutUpdate,
   RailroadDestructionUpdate,
   RailroadSnapUpdate,
 } from "@openfront/engine-api/game/GameUpdates";
@@ -44,6 +45,13 @@ interface RailroadAnim {
 }
 
 const RAIL_INCREMENT = 3;
+
+/**
+ * Set in a railroadState value on the tiles of a cut railroad (an enemy holds
+ * one of its tiles), which the railroad shader draws red and dashed. The low
+ * three bits keep the rail type.
+ */
+export const RAIL_CUT_FLAG = 8;
 
 // ---------------------------------------------------------------------------
 // Orientation helpers
@@ -123,7 +131,14 @@ export class RailroadCache {
    */
   private tileRefCount = new Map<number, number>();
 
-  /** Per-tile railroad state (0=none, 1-6 = RailType+1). Ready for GPU upload. */
+  /** Cut railroad ids, and per tile how many cut railroads cover it. */
+  private cutRails = new Set<number>();
+  private tileCutCount = new Map<number, number>();
+
+  /**
+   * Per-tile railroad state (0=none, 1-6 = RailType+1, plus RAIL_CUT_FLAG on
+   * cut rails). Ready for GPU upload.
+   */
   readonly railroadState: Uint8Array;
 
   /** True if railroadState changed this tick. */
@@ -157,6 +172,10 @@ export class RailroadCache {
     const destructs = (gu.updates[GameUpdateType.RailroadDestructionEvent] ??
       []) as RailroadDestructionUpdate[];
     for (const evt of destructs) this.removeRailroad(evt.id);
+
+    const cuts = (gu.updates[GameUpdateType.RailroadCutEvent] ??
+      []) as RailroadCutUpdate[];
+    for (const evt of cuts) this.setCut(evt.id, evt.cut);
 
     this.tickAnimations();
   }
@@ -200,6 +219,8 @@ export class RailroadCache {
   reset(): void {
     this.anims.clear();
     this.tileRefCount.clear();
+    this.cutRails.clear();
+    this.tileCutCount.clear();
     this.railroadState.fill(0);
     this.railroadDirty = false;
   }
@@ -224,7 +245,7 @@ export class RailroadCache {
     }
 
     if (complete) {
-      for (const rt of tiles) this.railroadState[rt.ref] = rt.type + 1;
+      for (const rt of tiles) this.railroadState[rt.ref] = this.tileValue(rt);
       this.railroadDirty = true;
     }
   }
@@ -232,6 +253,7 @@ export class RailroadCache {
   private removeRailroad(id: number): void {
     const anim = this.anims.get(id);
     if (!anim) return;
+    this.setCut(id, false);
 
     // Decrement ref counts; only clear tiles whose count drops to zero
     for (const rt of anim.tiles) {
@@ -248,6 +270,30 @@ export class RailroadCache {
     this.railroadDirty = true;
   }
 
+  /** The railroadState value of a rail tile: its type, and the cut flag. */
+  private tileValue(rt: RailTile): number {
+    return (rt.type + 1) | (this.tileCutCount.has(rt.ref) ? RAIL_CUT_FLAG : 0);
+  }
+
+  private setCut(id: number, cut: boolean): void {
+    const anim = this.anims.get(id);
+    if (!anim || this.cutRails.has(id) === cut) return;
+    if (cut) this.cutRails.add(id);
+    else this.cutRails.delete(id);
+    for (const rt of anim.tiles) {
+      const count = (this.tileCutCount.get(rt.ref) ?? 0) + (cut ? 1 : -1);
+      if (count > 0) this.tileCutCount.set(rt.ref, count);
+      else this.tileCutCount.delete(rt.ref);
+      // Tiles still being drawn in get the flag when they are revealed.
+      const state = this.railroadState[rt.ref];
+      if (state !== 0) {
+        this.railroadState[rt.ref] =
+          (state & ~RAIL_CUT_FLAG) | (count > 0 ? RAIL_CUT_FLAG : 0);
+      }
+    }
+    this.railroadDirty = true;
+  }
+
   private tickAnimations(): void {
     this.revealedRailTiles.length = 0;
     for (const anim of this.anims.values()) {
@@ -255,7 +301,7 @@ export class RailroadCache {
       if (anim.tailIndex - anim.headIndex <= 2 * RAIL_INCREMENT) {
         for (let i = anim.headIndex; i < anim.tailIndex; i++) {
           const t = anim.tiles[i]!;
-          this.railroadState[t.ref] = t.type + 1;
+          this.railroadState[t.ref] = this.tileValue(t);
           this.revealedRailTiles.push(t.ref);
         }
         anim.headIndex = anim.tailIndex;
@@ -264,12 +310,12 @@ export class RailroadCache {
       } else {
         for (let i = anim.headIndex; i < anim.headIndex + RAIL_INCREMENT; i++) {
           const t = anim.tiles[i]!;
-          this.railroadState[t.ref] = t.type + 1;
+          this.railroadState[t.ref] = this.tileValue(t);
           this.revealedRailTiles.push(t.ref);
         }
         for (let i = anim.tailIndex - RAIL_INCREMENT; i < anim.tailIndex; i++) {
           const t = anim.tiles[i]!;
-          this.railroadState[t.ref] = t.type + 1;
+          this.railroadState[t.ref] = this.tileValue(t);
           this.revealedRailTiles.push(t.ref);
         }
         anim.headIndex += RAIL_INCREMENT;

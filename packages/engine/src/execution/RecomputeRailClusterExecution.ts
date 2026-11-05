@@ -1,3 +1,4 @@
+import { RAIL_CUT_CHECK_INTERVAL } from "@openfront/engine-lib/game/TradeRoutes";
 import { z } from "zod";
 import { Execution, Game } from "../game/Game";
 import { RailNetwork } from "../game/RailNetwork";
@@ -18,6 +19,10 @@ export class RecomputeRailClusterExecution implements Execution {
   init(mg: Game, ticks: number): void {}
 
   tick(ticks: number): void {
+    // Cuts first, so the clusters they split are recomputed this tick.
+    if (ticks % RAIL_CUT_CHECK_INTERVAL === 0) {
+      this.railNetwork.refreshCuts();
+    }
     this.railNetwork.recomputeClusters();
   }
 

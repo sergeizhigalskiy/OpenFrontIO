@@ -30,6 +30,7 @@ import type {
   TerrainRect,
   UnitState,
 } from "../types";
+import type { BlockadeMarker } from "./passes/BlockadePass";
 import type { CapitalMarker } from "./passes/CapitalPass";
 import type { SpawnCenter } from "./passes/SpawnOverlayPass";
 import type { AttackTroopLabel } from "./passes/WorldTextPass";
@@ -309,6 +310,11 @@ export class MapRenderer {
   /** Conventional war: the capital stars to draw. */
   updateCapitals(capitals: CapitalMarker[]): void {
     this.renderer?.updateCapitals(capitals);
+  }
+
+  /** The blockaded ports to ring (see BlockadePass). */
+  updateBlockades(ports: BlockadeMarker[]): void {
+    this.renderer?.updateBlockades(ports);
   }
 
   /** Set the small-player glow set (1 byte per owner smallID), or null = off. */

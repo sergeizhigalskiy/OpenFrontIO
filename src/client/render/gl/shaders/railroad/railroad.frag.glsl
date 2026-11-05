@@ -2,7 +2,8 @@
 precision highp float;
 precision highp usampler2D;
 
-uniform usampler2D uRailroadTex;     // R8UI — rail type per tile (0=none, 1-6)
+uniform usampler2D uRailroadTex;     // R8UI — rail type per tile (0=none, 1-6),
+                                     //   | RAIL_CUT_FLAG on cut rails
 uniform usampler2D uGhostRailTex;    // R8UI — ghost rail type per tile (0=none, 1-6)
 uniform usampler2D uTileTex;         // R16UI — tile state (for owner lookup)
 uniform sampler2D  uPalette;         // RGBA32F — player colors
@@ -165,11 +166,15 @@ void main() {
   if (tc.x < 0 || tc.y < 0 || tc.x >= int(uMapSize.x) || tc.y >= int(uMapSize.y))
     discard;
 
-  uint railType = texelFetch(uRailroadTex, tc, 0).r;
+  uint railRaw = texelFetch(uRailroadTex, tc, 0).r;
+  uint railType = railRaw & 7u;
   uint ghostRailType = texelFetch(uGhostRailTex, tc, 0).r;
   vec2 f = fract(vWorldPos);
 
   bool detailMode = uZoom >= uRailDetailZoom;
+  // A cut rail (an enemy holds one of its tiles). In line mode the neighbors
+  // that draw this fragment decide, below.
+  bool railCut = detailMode && (railRaw & uint(RAIL_CUT_FLAG)) != 0u;
 
   // Compute coverage for real and ghost rails. In line mode, real coverage is
   // accumulated from the 3x3 neighborhood below so thick lines can spill into
@@ -191,10 +196,13 @@ void main() {
       ivec2 ntc = tc + ivec2(dx, dy);
       if (ntc.x < 0 || ntc.y < 0 || ntc.x >= int(uMapSize.x) || ntc.y >= int(uMapSize.y))
         continue;
-      uint nRail = texelFetch(uRailroadTex, ntc, 0).r;
+      uint nRaw = texelFetch(uRailroadTex, ntc, 0).r;
+      uint nRail = nRaw & 7u;
       if (nRail == 0u) continue;
       if (!detailMode) {
-        realCov = max(realCov, railLineCoverage(nRail, vWorldPos - vec2(ntc)));
+        float nCov = railLineCoverage(nRail, vWorldPos - vec2(ntc));
+        realCov = max(realCov, nCov);
+        if (nCov > 0.001 && (nRaw & uint(RAIL_CUT_FLAG)) != 0u) railCut = true;
       }
       if (hitBridge) continue;
       uint nTerr = texelFetch(uTerrainTex, ntc, 0).r;
@@ -202,6 +210,11 @@ void main() {
       ivec2 lp = fp - ntc * 2;
       if (isBridgePixel(nRail, lp)) hitBridge = true;
     }
+  }
+
+  // Cut rails are dashed: two tiles drawn, two left out.
+  if (railCut && mod(floor((vWorldPos.x + vWorldPos.y) * 0.5), 2.0) > 0.5) {
+    realCov = 0.0;
   }
 
   bool hitRail = (realCov * uRailAlpha > 0.001);
@@ -235,6 +248,8 @@ void main() {
         railroadEffectColor(int(owner), effectRGB)) {
       railColor = effectRGB;
     }
+    // Cut rails are red, over any owner color or cosmetic.
+    if (railCut) railColor = vec3(0.86, 0.16, 0.16);
     // Overlapping railroad highlight — green tint
     if (highlighted) railColor = vec3(0.2, 0.85, 0.3);
     if (hitBridge) {

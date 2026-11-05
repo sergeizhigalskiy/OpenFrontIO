@@ -130,6 +130,20 @@ export class TrainStation {
     return neighbors;
   }
 
+  /**
+   * Neighbors over rails that aren't cut: where trains can go, and what
+   * clusters are made of. neighbors() still counts cut rails, so building
+   * stations never lays a second rail around a cut.
+   */
+  routableNeighbors(): TrainStation[] {
+    const neighbors: TrainStation[] = [];
+    for (const r of this.railroads) {
+      if (r.isCut()) continue;
+      neighbors.push(r.from !== this ? r.from : r.to);
+    }
+    return neighbors;
+  }
+
   tile(): TileRef {
     return this.unit.tile();
   }

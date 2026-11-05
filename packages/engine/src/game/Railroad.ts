@@ -5,6 +5,7 @@ import {
   zInt,
   zRef,
   zTiles,
+  zU16Array,
 } from "@openfront/engine-lib/snapshot/SnapshotType";
 import { z } from "zod";
 import type {
@@ -15,12 +16,26 @@ import { Game } from "./Game";
 import { TrainStation } from "./TrainStation";
 
 export class Railroad {
+  /**
+   * Trade-route cutting (see RailCuts.ts). `owners` is each tile's owner
+   * small id at the last scan; empty until the rail is first scanned.
+   * `cutTiles` are the tiles a hostile capture cut and that haven't healed.
+   * While there are any, trains don't route over the rail and it carries no
+   * income.
+   */
+  owners: Uint16Array = new Uint16Array(0);
+  cutTiles: TileRef[] = [];
+
   constructor(
     public from: TrainStation,
     public to: TrainStation,
     public tiles: TileRef[],
     public id: number,
   ) {}
+
+  isCut(): boolean {
+    return this.cutTiles.length > 0;
+  }
 
   delete(game: Game) {
     game.addUpdate({
@@ -57,6 +72,8 @@ export class Railroad {
       from: w.station(this.from),
       to: w.station(this.to),
       tiles: w.tiles(this.tiles),
+      owners: this.owners.slice(),
+      cutTiles: w.tiles(this.cutTiles),
     };
   }
 
@@ -66,17 +83,31 @@ export class Railroad {
     this.from = r.station(s.from);
     this.to = r.station(s.to);
     this.tiles = Array.from(s.tiles);
+    this.owners = s.owners.slice();
+    this.cutTiles = Array.from(s.cutTiles);
   }
 }
 
 export const RailroadSnapshot = snapshotType({
   name: "Railroad",
-  version: 1,
+  // v2 added owners and cutTiles (trade-route cutting, see RailCuts.ts).
+  version: 2,
+  migrations: {
+    // Older builds never cut rails. With no owners, the next scan only
+    // records who holds each tile; captures after that cut.
+    1: (d) => ({
+      ...(d as Record<string, unknown>),
+      owners: new Uint16Array(0),
+      cutTiles: new Uint32Array(0),
+    }),
+  },
   schema: z.object({
     id: zInt(),
     from: zRef(),
     to: zRef(),
     tiles: zTiles(),
+    owners: zU16Array(),
+    cutTiles: zTiles(),
   }),
 });
 export type RailroadState = z.infer<typeof RailroadSnapshot.schema>;
@@ -116,6 +147,10 @@ export class OrientedRailroad {
 
   getEnd(): TrainStation {
     return this.forward ? this.railroad.to : this.railroad.from;
+  }
+
+  isCut(): boolean {
+    return this.railroad.isCut();
   }
 
   /** The wrapped railroad and direction, for game snapshots. */

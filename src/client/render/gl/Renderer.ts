@@ -32,6 +32,7 @@ import type {
 import { Camera } from "./Camera";
 import { GLUnavailableError, initGL } from "./initGL";
 import { BarPass } from "./passes/BarPass";
+import { BlockadeMarker, BlockadePass } from "./passes/BlockadePass";
 import { BorderComputePass } from "./passes/BorderComputePass";
 import { BorderStampPass } from "./passes/BorderStampPass";
 import { CapitalMarker, CapitalPass } from "./passes/CapitalPass";
@@ -139,6 +140,7 @@ export class GPURenderer {
   private rangeCirclePass: RangeCirclePass;
   private minefieldPass: MinefieldPass;
   private capitalPass: CapitalPass;
+  private blockadePass: BlockadePass;
   private samRadiusPass: SAMRadiusPass;
   private crosshairPass: CrosshairPass;
   private railroadPass: RailroadPass;
@@ -564,6 +566,9 @@ export class GPURenderer {
 
     // --- Capital stars (conventional war) ---
     this.capitalPass = new CapitalPass(gl);
+
+    // --- Blockade rings on ports (trade-route cutting) ---
+    this.blockadePass = new BlockadePass(gl);
 
     // --- SAM radius overlay (dashed green circles during build mode) ---
     this.samRadiusPass = new SAMRadiusPass(gl, mapW, this.settings);
@@ -1123,6 +1128,11 @@ export class GPURenderer {
     this.capitalPass.update(capitals);
   }
 
+  /** The blockaded ports to ring. */
+  updateBlockades(ports: BlockadeMarker[]): void {
+    this.blockadePass.update(ports);
+  }
+
   updateSmallPlayerGlow(set: Uint8Array | null): void {
     this.smallPlayerGlowPass.update(set);
   }
@@ -1394,6 +1404,7 @@ export class GPURenderer {
     if (pe.structure) this.structurePass.draw(cam, zoom);
     if (pe.structure) this.structureLevelPass.draw(cam, zoom);
     this.capitalPass.draw(cam);
+    this.blockadePass.draw(cam);
     // Small-player glow draws after structures so buildings can't hide it.
     this.smallPlayerGlowPass.draw(cam);
     if (pe.bar) this.barPass.draw(cam);
@@ -1529,6 +1540,7 @@ export class GPURenderer {
     this.rangeCirclePass.dispose();
     this.minefieldPass.dispose();
     this.capitalPass.dispose();
+    this.blockadePass.dispose();
     this.samRadiusPass.dispose();
     this.crosshairPass.dispose();
     this.structurePass.dispose();

@@ -962,6 +962,8 @@
     "naval_invasion_inbound": "Naval invasion incoming from {name} ({troops})",
     "no_boats_available": "No boats available, max {max}",
     "plane_shot_down_by_flak": "{name}'s flak shot down your {unit}",
+    "port_blockaded": "{name}'s warships are blockading your port",
+    "rail_cut": "{name} cut one of your rail lines",
     "received_gold_from_captured_ship": "Received {gold} gold from ship captured from {name}",
     "received_gold_from_conquest": "Conquered {name}, received {gold} gold",
     "received_gold_from_player": "Received {gold} gold from {name}",

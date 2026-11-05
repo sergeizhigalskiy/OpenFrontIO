@@ -82,6 +82,8 @@ const UPDATE_TYPE_ROUTING: Record<
   SpawnPhaseEnd: "events",
   GamePaused: "misc",
   DonateEvent: "misc",
+  // Not rebuilt on seek: replays draw cut rails like intact ones.
+  RailroadCutEvent: "misc",
 };
 
 /**
