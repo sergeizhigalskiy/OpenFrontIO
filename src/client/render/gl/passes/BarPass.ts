@@ -3,11 +3,12 @@
  *
  * Three draw calls per frame (all share one program + instance buffer):
  *   1. Health bars (11x3 tiles, above warships)
- *   2. Progress bars (14x3 tiles, below structures — construction + missile readiness)
+ *   2. Progress bars (14x3 tiles, below structures — construction + deletion;
+ *      reloads are ReloadBarPass's)
  *   3. Veterancy pips (solid gold rank bars stacked at a warship's bottom-right)
  *
  * Data flow:
- *   UnitState.health / .missileTimerQueue / .constructionStartTick → CPU progress
+ *   UnitState.health / .markedForDeletion / .constructionStartTick → CPU progress
  *   → instance VBO (x, y, progress) → GPU colored rectangle
  *   UnitState.veterancy → one instance per level (x, y, slot) → solid gold rect
  */
@@ -16,12 +17,7 @@ import { UnitType } from "@openfront/engine-api/game/GameTypes";
 import type { Config } from "@openfront/engine-lib/configuration/Config";
 import { maxHealthWithVeterancy } from "@openfront/engine-lib/game/Veterancy";
 import type { RendererConfig, UnitState } from "../../types";
-import {
-  UT_MINEFIELD,
-  UT_MISSILE_SILO,
-  UT_SAM_LAUNCHER,
-  UT_WARSHIP,
-} from "../../types";
+import { UT_MINEFIELD, UT_WARSHIP } from "../../types";
 import type { RenderSettings } from "../RenderSettings";
 import { createProgram } from "../utils/GlUtils";
 
@@ -336,35 +332,7 @@ export class BarPass {
       return Math.min(1, Math.max(0, elapsed / duration));
     }
 
-    // Missile readiness (Silo / SAM)
-    if (
-      unit.unitType === UT_MISSILE_SILO ||
-      unit.unitType === UT_SAM_LAUNCHER
-    ) {
-      const readiness = this.missileReadiness(unit, gameTick);
-      if (readiness < 1) return readiness;
-    }
-
+    // Missile readiness is ReloadBarPass's (a pip per round).
     return null;
-  }
-
-  private missileReadiness(unit: UnitState, gameTick: number): number {
-    const maxMissiles = unit.level;
-    const reloading = unit.missileTimerQueue.length;
-    if (reloading === 0) return 1;
-
-    const ready = maxMissiles - reloading;
-
-    const cooldown =
-      unit.unitType === UT_SAM_LAUNCHER
-        ? this.config.SAMCooldown()
-        : this.config.SiloCooldown();
-
-    let readiness = ready / maxMissiles;
-    for (const timer of unit.missileTimerQueue) {
-      const progress = gameTick - timer;
-      readiness += progress / cooldown / maxMissiles;
-    }
-    return Math.max(0, Math.min(1, readiness));
   }
 }

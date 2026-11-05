@@ -1950,6 +1950,8 @@
     "report_submit": "Submit report",
     "report_title": "Report player",
     "reported": "Reported",
+    "rounds_ready": "Rounds {ready}/{rounds}",
+    "rounds_reloading": "Rounds {ready}/{rounds}, next in {seconds} s",
     "send_alliance": "Send Alliance",
     "send_gold": "Send Gold",
     "send_troops": "Send Troops",

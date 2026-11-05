@@ -27,6 +27,11 @@ import { ShellExecution } from "./ShellExecution";
  * shelling it first, then transport ships and convoys, then other warships,
  * nearest first. Warships shell batteries back (WarshipExecution); a battery
  * at 0 health is destroyed. It is captured with its tile like any structure.
+ *
+ * lastShellAttack decides when it may fire. Each shell is also put on the
+ * unit's missile timer queue (Unit.launch) and taken off once reloaded, only
+ * so the client can draw the reload: the queue is on the wire and in the
+ * unit's snapshot.
  */
 export class CoastalBatteryExecution implements Execution {
   private mg: Game;
@@ -54,6 +59,13 @@ export class CoastalBatteryExecution implements Execution {
     for (const unit of this.alreadySentShell) {
       if (!unit.isActive()) this.alreadySentShell.delete(unit);
     }
+    const firedAt = this.battery.missileTimerQueue()[0];
+    if (
+      firedAt !== undefined &&
+      this.mg.ticks() - firedAt >= COASTAL_BATTERY_RELOAD_TICKS
+    ) {
+      this.battery.reloadMissile();
+    }
     if (this.mg.ticks() - this.lastShellAttack < COASTAL_BATTERY_RELOAD_TICKS) {
       return;
     }
@@ -61,6 +73,7 @@ export class CoastalBatteryExecution implements Execution {
     if (target === null) return;
 
     this.lastShellAttack = this.mg.ticks();
+    this.battery.launch();
     this.mg.addExecution(
       new ShellExecution(
         this.battery.tile(),
