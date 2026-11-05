@@ -16,7 +16,7 @@ import {
   FLAK_GUN_RANGE,
   FLAK_ROUNDS,
 } from "@openfront/engine-lib/game/ConventionalWar";
-import { droneAirbases, droneTargetAt, isDroneTarget } from "../../game/AirOps";
+import { droneTargetAt, isDroneTarget } from "../../game/AirOps";
 import { Game, Player, Unit } from "../../game/Game";
 import { UniversalPathFinding } from "../../pathfinding/PathFinder";
 import { AirMissionExecution } from "../AirMissionExecution";
@@ -228,9 +228,10 @@ export function isFlatFlightInterceptable(
 }
 
 /**
- * A drone swarm at `target`, sized by droneSwarmSize, when an airbase is in
- * range, the gold past the reserve pays for every drone, and no drones of
- * ours are already at it. The swarm takes off and pays like a human's.
+ * A drone swarm at `target`, sized by droneSwarmSize, when it is within
+ * DRONE_RANGE of our land (no airbase needed), the gold past the reserve
+ * pays for every drone, and no drones of ours are already at it. The swarm
+ * takes off and pays like a human's.
  */
 export function orderDroneSwarm(
   game: Game,
@@ -240,7 +241,6 @@ export function orderDroneSwarm(
   if (game.config().isUnitDisabled(UnitType.Drone)) return false;
   if (!isDroneTarget(game, player, target)) return false;
   if (dronesInFlightAt(player, target)) return false;
-  if (droneAirbases(game, player, target.tile()).length === 0) return false;
   const size = droneSwarmSize(game, player, target);
   if (size === null) return false;
   if (
@@ -250,6 +250,7 @@ export function orderDroneSwarm(
   }
   // The order picks the target nearest the tile it is given: make it this one.
   if (droneTargetAt(game, player, target.tile()) !== target) return false;
+  // Last, as it scans our border for the launch tile: in range of our land.
   if (player.canBuild(UnitType.Drone, target.tile()) === false) return false;
   game.addExecution(new DroneSwarmExecution(player, target.tile(), size));
   return true;

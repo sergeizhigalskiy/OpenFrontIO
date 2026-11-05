@@ -84,10 +84,15 @@ describe("airbase sorties", () => {
     expect(base.owner().id()).toBe(b.id());
   });
 
-  test("an airstrike needs an enemy tile", async () => {
+  test("an airstrike hits any tile in range, as a nuke does, and spares our own", async () => {
     const { game, a } = await twoSides();
-    structure(game, a, UnitType.Airbase, game.ref(90, 100));
-    expect(a.canBuild(UnitType.Airstrike, game.ref(80, 100))).toBe(false);
+    const base = structure(game, a, UnitType.Airbase, game.ref(90, 100));
+    // Our own land is a valid target; the blast spares what is ours.
+    const own = structure(game, a, UnitType.City, game.ref(80, 100));
+    expect(a.canBuild(UnitType.Airstrike, own.tile())).toBe(base.tile());
+    order(game, a, UnitType.Airstrike, own.tile());
+    landAll(game);
+    expect(own.isActive()).toBe(true);
   });
 });
 
@@ -100,7 +105,7 @@ describe("airstrike effects", () => {
     expect(capped.reduce((s, k) => s + k, 0)).toBe(AIRSTRIKE_MAX_FRONT_KILL);
   });
 
-  test("destroys military structures within 2 tiles, spares economy and land", async () => {
+  test("destroys every enemy structure within 2 tiles, levels and all, never land", async () => {
     const { game, a, b } = await twoSides();
     structure(game, a, UnitType.Airbase, game.ref(90, 100));
     const target = game.ref(140, 100);
@@ -118,8 +123,8 @@ describe("airstrike effects", () => {
       UnitType.Airbase,
       game.ref(140 - (AIRSTRIKE_STRUCTURE_RADIUS + 1), 100),
     );
-    const city = structure(game, b, UnitType.City, game.ref(139, 100));
-    const port = b.buildUnit(UnitType.Factory, game.ref(140, 99), {});
+    const city = structure(game, b, UnitType.City, game.ref(139, 100), 3);
+    const factory = b.buildUnit(UnitType.Factory, game.ref(140, 99), {});
     // SAMs shoot planes down: keep this SAM's tube spent.
     sam.launch();
     b.setTroops(500_000);
@@ -130,8 +135,8 @@ describe("airstrike effects", () => {
     expect(post.isActive()).toBe(false);
     expect(sam.isActive()).toBe(false);
     expect(flak.isActive()).toBe(true);
-    expect(city.isActive()).toBe(true);
-    expect(port.isActive()).toBe(true);
+    expect(city.isActive()).toBe(false);
+    expect(factory.isActive()).toBe(false);
     expect(b.numTilesOwned()).toBe(tilesBefore);
     expect(game.owner(target)).toBe(b);
     // 4% of 500k, plus troop regen in between.

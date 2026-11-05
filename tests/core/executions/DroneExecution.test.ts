@@ -7,12 +7,14 @@ import {
   DRONE_BLAST_RADIUS,
   DRONE_COST,
   DRONE_LAUNCH_INTERVAL_TICKS,
+  DRONE_RANGE,
   droneStructureDamage,
   droneWarshipDamage,
   WARSHIP_DRONE_HIT_PERCENT,
 } from "@openfront/engine-lib/game/ConventionalWar";
 import { ShellExecution } from "@openfront/engine/execution/ShellExecution";
 import { WarshipExecution } from "@openfront/engine/execution/WarshipExecution";
+import { droneLaunchTile } from "@openfront/engine/game/AirOps";
 import { Game, Player, Unit } from "@openfront/engine/game/Game";
 import {
   conquerRect,
@@ -73,33 +75,74 @@ function settle(game: Game, max = 400): void {
 }
 
 describe("drone swarms", () => {
-  test("cost 40k each, one per airbase every 10 ticks", async () => {
+  test("no airbase: one 40k drone every 2 ticks from our land tile nearest the target", async () => {
     const { game, a, b } = await land(false);
     const gun = structure(game, b, UnitType.FlakGun, game.ref(120, 100));
-    // Two airbases in range (100 tiles), one out of it.
-    structure(game, a, UnitType.Airbase, game.ref(40, 90));
-    structure(game, a, UnitType.Airbase, game.ref(40, 110));
-    structure(game, a, UnitType.Airbase, game.ref(5, 190));
+    expect(a.units(UnitType.Airbase)).toHaveLength(0);
     setGold(a, 1_000_000n);
     expect(game.unitInfo(UnitType.Drone).cost(game, a)).toBe(
       BigInt(DRONE_COST),
     );
+    // a's land ends at x 49: (49, 100) is the tile nearest the gun.
+    const from = game.ref(49, 100);
+    expect(a.canBuild(UnitType.Drone, gun.tile())).toBe(from);
+    const launches = vi.spyOn(a, "buildUnit");
     const before = a.gold();
-    order(game, a, UnitType.Drone, gun.tile(), { count: 5 });
-    executeTicks(game, 3);
-    expect(drones(game)).toHaveLength(2);
-    expect(before - a.gold()).toBe(2n * BigInt(DRONE_COST));
+    order(game, a, UnitType.Drone, gun.tile(), { count: 3 });
+    runUntil(game, () => drones(game).length > 0, 5);
+    expect(drones(game)).toHaveLength(1);
+    expect(before - a.gold()).toBe(BigInt(DRONE_COST));
     executeTicks(game, DRONE_LAUNCH_INTERVAL_TICKS - 1);
-    expect(drones(game)).toHaveLength(2);
+    expect(drones(game)).toHaveLength(1);
     executeTicks(game, 1);
-    expect(drones(game)).toHaveLength(4);
+    expect(drones(game)).toHaveLength(2);
     executeTicks(game, DRONE_LAUNCH_INTERVAL_TICKS);
-    expect(drones(game)).toHaveLength(5);
-    expect(before - a.gold()).toBe(5n * BigInt(DRONE_COST));
-    // Drones don't use the airstrike sortie.
-    for (const base of a.units(UnitType.Airbase)) {
-      expect(base.isInCooldown()).toBe(false);
-    }
+    expect(drones(game)).toHaveLength(3);
+    expect(before - a.gold()).toBe(3n * BigInt(DRONE_COST));
+    // Every one took off from that tile.
+    const tiles = launches.mock.calls
+      .filter(([type]) => type === UnitType.Drone)
+      .map(([, tile]) => tile);
+    expect(tiles).toEqual([from, from, from]);
+    executeTicks(game, DRONE_LAUNCH_INTERVAL_TICKS);
+    expect(
+      game
+        .executions()
+        .some((e) => e.constructor.name === "DroneSwarmExecution"),
+    ).toBe(false);
+  });
+
+  test("the target must be within 100 tiles of our land", async () => {
+    const { game, a, b } = await land();
+    expect(DRONE_RANGE).toBe(100);
+    // 100 tiles from (49, 100): in range. 101 from (49, 140): out of it.
+    const near = structure(game, b, UnitType.FlakGun, game.ref(149, 100));
+    const far = structure(game, b, UnitType.FlakGun, game.ref(150, 140));
+    expect(a.canBuild(UnitType.Drone, near.tile())).toBe(game.ref(49, 100));
+    expect(a.canBuild(UnitType.Drone, far.tile())).toBe(false);
+    order(game, a, UnitType.Drone, far.tile(), { count: 2 });
+    executeTicks(game, 5);
+    expect(drones(game)).toHaveLength(0);
+    order(game, a, UnitType.Drone, near.tile(), { count: 1 });
+    runUntil(game, () => drones(game).length > 0, 5);
+    expect(drones(game)).toHaveLength(1);
+  });
+
+  test("the launch tile is our land tile nearest the target, ties to the lowest TileRef", async () => {
+    const { game, players } = await conventionalGame("big_plains", ["a"], {
+      infiniteGold: true,
+    });
+    const [a] = players;
+    // Two lone tiles, equally far from the target.
+    a.conquer(game.ref(10, 10));
+    a.conquer(game.ref(12, 10));
+    const target = game.ref(11, 60);
+    expect(droneLaunchTile(game, a, target)).toBe(game.ref(10, 10));
+    // A nearer one wins.
+    a.conquer(game.ref(30, 40));
+    expect(droneLaunchTile(game, a, target)).toBe(game.ref(30, 40));
+    // Past 100 tiles there is none.
+    expect(droneLaunchTile(game, a, game.ref(150, 190))).toBeNull();
   });
 
   test("swarm size is validated to 1-20 and charged per drone launched", async () => {
@@ -116,7 +159,6 @@ describe("drone swarms", () => {
     // 100k buys two drones: the queue stops when the gold runs out.
     const { game, a, b } = await land(false);
     const gun = structure(game, b, UnitType.FlakGun, game.ref(120, 100));
-    structure(game, a, UnitType.Airbase, game.ref(40, 100));
     setGold(a, 100_000n);
     order(game, a, UnitType.Drone, gun.tile(), { count: 5 });
     executeTicks(game, 60);
@@ -131,7 +173,6 @@ describe("drone swarms", () => {
 
   test("every hostile structure but a SAM is a target, and ships", async () => {
     const { game, a, b } = await land();
-    structure(game, a, UnitType.Airbase, game.ref(40, 100));
     const sam = structure(game, b, UnitType.SAMLauncher, game.ref(100, 100));
     expect(a.canBuild(UnitType.Drone, sam.tile())).toBe(false);
     // 10 tiles apart, so each click (8 tiles) can only pick its own.
@@ -148,7 +189,7 @@ describe("drone swarms", () => {
       const target = b.buildUnit(type, game.ref(110, y), {});
       expect(a.canBuild(UnitType.Drone, target.tile()), type).not.toBe(false);
     }
-    // Never our own, and never too far from every airbase (100 tiles).
+    // Never our own, and never more than 100 tiles from our land.
     const own = structure(game, a, UnitType.City, game.ref(20, 20));
     expect(a.canBuild(UnitType.Drone, own.tile())).toBe(false);
     const far = structure(game, b, UnitType.FlakGun, game.ref(190, 100));
@@ -159,7 +200,6 @@ describe("drone swarms", () => {
 describe("drones against structures", () => {
   test("a city survives 2 drone hits and dies to 3, whatever its level", async () => {
     const { game, a, b } = await land();
-    structure(game, a, UnitType.Airbase, game.ref(40, 100));
     const city = structure(game, b, UnitType.City, game.ref(100, 100), 4);
     order(game, a, UnitType.Drone, city.tile(), { count: 2 });
     executeTicks(game, 3);
@@ -176,7 +216,6 @@ describe("drones against structures", () => {
 
   test("a siege camp survives 2 drone hits and dies to 3", async () => {
     const { game, a, b } = await land();
-    structure(game, a, UnitType.Airbase, game.ref(40, 100));
     const camp = structure(game, b, UnitType.SiegeCamp, game.ref(100, 100));
     expect(a.canBuild(UnitType.Drone, camp.tile())).not.toBe(false);
     order(game, a, UnitType.Drone, camp.tile(), { count: 2 });
@@ -192,7 +231,6 @@ describe("drones against structures", () => {
 
   test("a coastal battery loses a third of its health per hit", async () => {
     const { game, a, b } = await land();
-    structure(game, a, UnitType.Airbase, game.ref(40, 100));
     const battery = b.buildUnit(
       UnitType.CoastalBattery,
       game.ref(100, 100),
@@ -211,7 +249,6 @@ describe("drones against structures", () => {
 
   test("the 1-tile blast hits every valid target next to the target, never a SAM", async () => {
     const { game, a, b } = await land();
-    structure(game, a, UnitType.Airbase, game.ref(40, 100));
     const gun = b.buildUnit(UnitType.FlakGun, game.ref(100, 100), {});
     // One tile away: hit. Two tiles away: spared.
     const near = b.buildUnit(UnitType.FlakGun, game.ref(101, 100), {});
@@ -235,7 +272,6 @@ describe("drones against structures", () => {
 
   test("the blast sinks ships next to the target too", async () => {
     const { game, a, b } = await sea();
-    structure(game, a, UnitType.Airbase, game.ref(2, 8));
     const ship = warship(game, b, game.ref(13, 8));
     const boat = b.buildUnit(UnitType.TransportShip, game.ref(13, 9), {
       troops: 1_000,
@@ -253,7 +289,6 @@ describe("drones against structures", () => {
 describe("drones against flak guns", () => {
   test("a drone destroys an undefended flak gun", async () => {
     const { game, a, b } = await land();
-    structure(game, a, UnitType.Airbase, game.ref(40, 100));
     const gun = b.buildUnit(UnitType.FlakGun, game.ref(100, 100), {});
     // No FlakGunExecution: the gun never fires.
     order(game, a, UnitType.Drone, gun.tile(), { count: 1 });
@@ -271,7 +306,6 @@ describe("drones against flak guns", () => {
       for (let k = 0; k < i; k++) {
         a.buildUnit(UnitType.City, game.ref(1 + (k % 40), 1 + (k % 7)), {});
       }
-      structure(game, a, UnitType.Airbase, game.ref(30, 100));
       const gun = structure(game, b, UnitType.FlakGun, game.ref(120, 100));
       order(game, a, UnitType.Drone, gun.tile(), { count: 1 });
       executeTicks(game, 3);
@@ -285,7 +319,6 @@ describe("drones against flak guns", () => {
       for (let k = 0; k < i; k++) {
         a.buildUnit(UnitType.City, game.ref(1 + k, 1), {});
       }
-      structure(game, a, UnitType.Airbase, game.ref(30, 100));
       const gun = structure(game, b, UnitType.FlakGun, game.ref(120, 100));
       order(game, a, UnitType.Drone, gun.tile(), { count: 8 });
       executeTicks(game, 3);
@@ -298,7 +331,6 @@ describe("drones against flak guns", () => {
 describe("drones against ships", () => {
   test("a drone sinks a transport ship with its troops", async () => {
     const { game, a, b } = await sea();
-    structure(game, a, UnitType.Airbase, game.ref(2, 8));
     const boat = b.buildUnit(UnitType.TransportShip, game.ref(13, 8), {
       troops: 5_000,
     });
@@ -316,7 +348,6 @@ describe("drones against ships", () => {
       WARSHIP_MAX_HEALTH,
     );
     const { game, a, b } = await sea();
-    structure(game, a, UnitType.Airbase, game.ref(2, 8));
     // No WarshipExecution: it neither moves nor shoots back.
     const ship = warship(game, b, game.ref(13, 8));
     order(game, a, UnitType.Drone, ship.tile(), { count: 2 });
@@ -334,7 +365,6 @@ describe("drones against ships", () => {
 
   test("drones follow a moving warship", async () => {
     const { game, a, b } = await sea();
-    structure(game, a, UnitType.Airbase, game.ref(2, 2));
     const ship = warship(game, b, game.ref(12, 1));
     order(game, a, UnitType.Drone, ship.tile(), { count: 1 });
     executeTicks(game, 3);
@@ -355,7 +385,6 @@ describe("drones against ships", () => {
 
   test("a drone whose target is gone retargets one nearby, else is lost", async () => {
     const { game, a, b } = await sea();
-    structure(game, a, UnitType.Airbase, game.ref(2, 8));
     const first = b.buildUnit(UnitType.TransportShip, game.ref(13, 8), {
       troops: 1_000,
     });

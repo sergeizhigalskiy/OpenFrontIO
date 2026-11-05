@@ -9,6 +9,7 @@ import {
   GameMode,
   GameType,
   Gold,
+  LaunchBlock,
   MAX_UPGRADE_AMOUNT,
   PlayerBuildable,
   PlayerBuildableUnitType,
@@ -72,12 +73,10 @@ import type {
   SnapshotWriter,
 } from "../snapshot/SnapshotContext";
 import {
-  airdropSpawn,
-  airstrikeSpawn,
-  ballisticMissileSpawn,
-  clusterMissileSpawn,
-  cruiseMissileSpawn,
-  droneSpawn,
+  airLaunch,
+  airLaunchBlockAnywhere,
+  isAirOrderType,
+  launchTile,
 } from "./AirOps";
 import { AttackImpl } from "./AttackImpl";
 import { canalMenuPrice, canalPrice, canalSpawn } from "./Canal";
@@ -1659,11 +1658,11 @@ export class PlayerImpl implements Player {
           ? config.minefieldCost(mg, this, MINEFIELD_MIN_DENSITY)
           : cost;
 
-      if (
-        tile !== null &&
-        this.canBuildUnitType(u, affordCost) &&
-        !inSpawnPhase
-      ) {
+      // Air orders: why one can't go (shown in the build menu and bar).
+      let blocked: LaunchBlock | undefined;
+      const affordable = this.canBuildUnitType(u, affordCost);
+
+      if (tile !== null && affordable && !inSpawnPhase) {
         if (this.canUpgradeUnitType(u)) {
           const existingUnit = this.findExistingUnitToUpgrade(u, tile);
           if (
@@ -1677,7 +1676,25 @@ export class PlayerImpl implements Player {
             );
           }
         }
-        canBuild = this.canSpawnUnitType(u, tile, validTiles);
+        if (isAirOrderType(u)) {
+          // The call canSpawnUnitType makes, kept for its reason.
+          const launch = airLaunch(mg, this, u, tile);
+          canBuild = launchTile(launch);
+          if (typeof launch === "string") blocked = launch;
+        } else {
+          canBuild = this.canSpawnUnitType(u, tile, validTiles);
+        }
+      } else if (
+        isAirOrderType(u) &&
+        !config.isUnitDisabled(u) &&
+        this.isAlive()
+      ) {
+        // canBuildUnitType only fails on the gold here.
+        blocked = !affordable
+          ? "gold"
+          : inSpawnPhase
+            ? "spawn_protection"
+            : (airLaunchBlockAnywhere(mg, this, u) ?? undefined);
       }
 
       // A hold-to-build preview may need the new placement's rails even
@@ -1710,6 +1727,7 @@ export class PlayerImpl implements Player {
         ghostRailPaths: buildNew
           ? rail.computeGhostRailPaths(u, canBuild as TileRef)
           : [],
+        ...(blocked !== undefined ? { blocked } : {}),
       };
     }
 
@@ -1768,17 +1786,13 @@ export class PlayerImpl implements Player {
       case UnitType.SiegeCamp:
         return this.siegeCampSpawn(targetTile, validTiles);
       case UnitType.Airstrike:
-        return airstrikeSpawn(this.mg, this, targetTile);
       case UnitType.Airdrop:
-        return airdropSpawn(this.mg, this, targetTile);
       case UnitType.CruiseMissile:
-        return cruiseMissileSpawn(this.mg, this, targetTile);
       case UnitType.Drone:
-        return droneSpawn(this.mg, this, targetTile);
       case UnitType.BallisticMissile:
-        return ballisticMissileSpawn(this.mg, this, targetTile);
       case UnitType.ClusterMissile:
-        return clusterMissileSpawn(this.mg, this, targetTile);
+        // The build menu's reason comes from the same call (buildableUnits).
+        return launchTile(airLaunch(this.mg, this, unitType, targetTile));
       case UnitType.ClusterWarhead:
         // Only a cluster missile splitting creates them.
         return targetTile;

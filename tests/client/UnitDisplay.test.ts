@@ -4,6 +4,7 @@ import {
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
 import { EventBus } from "@openfront/shared/EventBus";
+import { html, render } from "lit";
 import { describe, expect, test, vi } from "vitest";
 import type { UnitDisplay } from "../../src/client/hud/layers/UnitDisplay";
 import "../../src/client/hud/layers/UnitDisplay";
@@ -1154,6 +1155,42 @@ describe("mobile UnitDisplay layout", () => {
         null,
         "GUIclick",
       );
+    } finally {
+      display.remove();
+    }
+  });
+});
+
+describe("UnitDisplay air orders", () => {
+  test("the engine's tile-less reason decides; drones need no airbase", () => {
+    const { display } = makeDisplay();
+    try {
+      const air = (type: UnitType, blocked?: string) => ({
+        type,
+        canBuild: false,
+        canUpgrade: false,
+        cost: 1n,
+        overlappingRailroads: [],
+        ghostRailPaths: [],
+        ...(blocked === undefined ? {} : { blocked }),
+      });
+      (display as any).playerBuildables = [
+        air(UnitType.Drone),
+        air(UnitType.Airstrike, "no_airbase"),
+      ];
+      const canBuild = (type: UnitType) => (display as any).canBuild(type);
+      // No airbase, yet drones can go.
+      expect(canBuild(UnitType.Drone)).toBe(true);
+      expect(canBuild(UnitType.Airstrike)).toBe(false);
+      const host = document.createElement("div");
+      render(
+        html`${(display as any).renderBlockedReason(UnitType.Airstrike)}`,
+        host,
+      );
+      // (Tests load no translations: the text is its key.)
+      expect(host.textContent).toContain("build_menu.blocked.no_airbase");
+      (display as any).playerBuildables = [air(UnitType.Drone, "gold")];
+      expect(canBuild(UnitType.Drone)).toBe(false);
     } finally {
       display.remove();
     }

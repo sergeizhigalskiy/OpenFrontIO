@@ -177,7 +177,7 @@ describe("silo level gates the heavy missiles", () => {
     expect(a.canBuild(UnitType.ClusterMissile, target)).toBe(silo.tile());
   });
 
-  test("cruise missiles reach 400 tiles; own and empty land are no target", async () => {
+  test("cruise missiles strike any tile, own and empty land too, from a loaded silo", async () => {
     const { game, players } = await conventionalGame("big_plains", ["a", "b"], {
       infiniteGold: true,
     });
@@ -185,10 +185,18 @@ describe("silo level gates the heavy missiles", () => {
     conquerRect(game, a, 0, 0, 20, 20);
     conquerRect(game, b, 30, 30, 60, 60);
     const silo = structure(game, a, UnitType.MissileSilo, game.ref(5, 5));
-    expect(a.canBuild(UnitType.CruiseMissile, game.ref(40, 40))).toBe(
-      silo.tile(),
-    );
-    expect(a.canBuild(UnitType.CruiseMissile, game.ref(10, 10))).toBe(false);
-    expect(a.canBuild(UnitType.CruiseMissile, game.ref(150, 150))).toBe(false);
+    // Like a nuke: the blast decides what it hits, not the tile's owner.
+    for (const [x, y] of [
+      [40, 40],
+      [10, 10],
+      [150, 150],
+    ]) {
+      expect(a.canBuild(UnitType.CruiseMissile, game.ref(x, y))).toBe(
+        silo.tile(),
+      );
+    }
+    // Its one missile spent: nothing can go until it reloads.
+    silo.launch();
+    expect(a.canBuild(UnitType.CruiseMissile, game.ref(40, 40))).toBe(false);
   });
 });

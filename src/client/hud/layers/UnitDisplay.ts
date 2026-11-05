@@ -49,7 +49,7 @@ import {
   warshipIcon,
 } from "../HotbarIcons";
 import { TutorialHighlight, TutorialHighlightEvent } from "../Tutorial";
-import { droneSwarmSlider } from "./AirOrders";
+import { airBlockedText, droneSwarmSlider } from "./AirOrders";
 import { displayedCost, minefieldDensitySlider } from "./MinefieldDensity";
 
 /** How long a build button has to be held before it shows its details (cost etc.) */
@@ -426,6 +426,10 @@ export class UnitDisplay extends LitElement implements Controller {
     tooltip.style.left = `${left - rootBounds.left + tooltipBounds.width / 2}px`;
   }
 
+  private buildable(item: UnitType): BuildableUnit | undefined {
+    return this.playerBuildables?.find((bu) => bu.type === item);
+  }
+
   private cost(item: UnitType): Gold {
     for (const bu of this.playerBuildables ?? []) {
       if (bu.type === item) {
@@ -455,17 +459,14 @@ export class UnitDisplay extends LitElement implements Controller {
       case UnitType.CruiseMissile:
       case UnitType.BallisticMissile:
       case UnitType.ClusterMissile:
-        return (
-          this.cost(item) <= (player?.gold() ?? 0n) &&
-          (player?.units(UnitType.MissileSilo).length ?? 0) > 0
-        );
       case UnitType.Airstrike:
       case UnitType.Airdrop:
-      case UnitType.Drone:
-        return (
-          this.cost(item) <= (player?.gold() ?? 0n) &&
-          (player?.units(UnitType.Airbase).length ?? 0) > 0
-        );
+      case UnitType.Drone: {
+        // The engine's tile-less answer: gold, spawn protection and the
+        // launcher (no airbase for drones). blocked says which.
+        const unit = this.buildable(item);
+        return unit !== undefined && unit.blocked === undefined;
+      }
       default:
         return this.cost(item) <= (player?.gold() ?? 0n);
     }
@@ -853,6 +854,14 @@ export class UnitDisplay extends LitElement implements Controller {
     `;
   }
 
+  /** An air order's reason it can't be launched, in the tooltip. */
+  private renderBlockedReason(unitType: PlayerBuildableUnitType) {
+    const text = airBlockedText(this.buildable(unitType));
+    return text === null
+      ? null
+      : html`<div class="px-2 pb-1 text-red-400">${text}</div>`;
+  }
+
   private renderUnitTooltip() {
     // A peek wins over a hover: it is the one the player asked for by
     // holding the button.
@@ -890,6 +899,7 @@ export class UnitDisplay extends LitElement implements Controller {
         <div class="p-2">
           ${translateText("build_menu.desc." + tooltip.structureKey)}
         </div>
+        ${this.renderBlockedReason(tooltip.unitType)}
         ${
           tooltip.unitType === UnitType.Warship && Platform.hasKeyboard
             ? html`<div

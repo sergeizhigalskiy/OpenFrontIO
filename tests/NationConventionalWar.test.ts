@@ -206,7 +206,7 @@ describe("nation air support in conventional war", () => {
     );
     const enemy = game.player("enemy");
     conquerRect(game, nation, 0, 0, 8, 16);
-    structure(game, nation, UnitType.Airbase, game.ref(2, 8));
+    // No airbase: drones take off from the nation's land.
     structure(game, nation, UnitType.Port, game.ref(7, 8));
     const ship = enemy.buildUnit(UnitType.Warship, game.ref(12, 8), {
       patrolTile: game.ref(12, 8),

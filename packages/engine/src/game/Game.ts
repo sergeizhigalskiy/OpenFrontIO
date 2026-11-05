@@ -356,9 +356,6 @@ export interface Unit extends UnitLike {
   // SAMs & Missile Silos
   launch(): void;
   reloadMissile(): void;
-  /** Airbases: the tick the last drone took off, null if none has. */
-  lastDroneLaunchTick(): Tick | null;
-  recordDroneLaunch(): void;
   /**
    * Structures without health: drone hits taken so far (see DroneExecution).
    * Kept through captures and upgrades.

@@ -424,7 +424,36 @@ export interface BuildableUnit {
   upgradeCosts?: Gold[];
   overlappingRailroads: TileRef[];
   ghostRailPaths: TileRef[][];
+  /**
+   * Air orders only (airstrike, airdrop, drones, the missiles): why one
+   * can't be launched at the tile (or at all, for a query without a tile).
+   * Unset when it can. A key under build_menu.blocked in en.json, decided
+   * by the same rules as canBuild (engine game/AirOps.ts, airLaunch).
+   */
+  blocked?: LaunchBlock;
 }
+
+/**
+ * Why an air order can't be launched (see BuildableUnit.blocked): each is a
+ * key under build_menu.blocked in resources/lang/en.json.
+ */
+export const LAUNCH_BLOCKS = [
+  "gold",
+  "spawn_protection",
+  "enemy_land",
+  "airdrop_land",
+  "no_airbase",
+  "airbase_recharging",
+  "airbase_building",
+  "no_loaded_silo",
+  "silo_level_2",
+  "silo_level_3",
+  "silo_reloading",
+  "no_drone_target",
+  "drone_range",
+] as const;
+
+export type LaunchBlock = (typeof LAUNCH_BLOCKS)[number];
 
 // Total price of buying `amount` of a buildable in one intent. Upgrades use
 // the escalating totals from core; flat-cost units (nukes) scale linearly.

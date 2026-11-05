@@ -1,9 +1,13 @@
 import {
+  BuildableUnit,
   DRONE_SWARM_DEFAULT,
+  LAUNCH_BLOCKS,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
 import { html, render } from "lit";
+import en from "../../resources/lang/en.json";
 import {
+  airBlockedText,
   airOrderExtras,
   chosenDroneSwarm,
   droneSwarmSlider,
@@ -51,5 +55,29 @@ describe("conventional war orders", () => {
     slider.dispatchEvent(new Event("input", { bubbles: true }));
     expect(chosenDroneSwarm(state)).toBe(8);
     expect(changes).toBe(1);
+  });
+
+  test("an air order the engine blocks says why, with a short string for every reason", () => {
+    const unit = (blocked?: BuildableUnit["blocked"]): BuildableUnit => ({
+      type: UnitType.Airstrike,
+      canBuild: false,
+      canUpgrade: false,
+      cost: 750_000n,
+      overlappingRailroads: [],
+      ghostRailPaths: [],
+      ...(blocked === undefined ? {} : { blocked }),
+    });
+    // (Tests load no translations: the text is its key.)
+    expect(airBlockedText(unit("no_airbase"))).toBe(
+      "build_menu.blocked.no_airbase",
+    );
+    expect(airBlockedText(unit())).toBeNull();
+    expect(airBlockedText(undefined)).toBeNull();
+    const strings = en.build_menu.blocked as Record<string, string>;
+    expect(Object.keys(strings).sort()).toEqual([...LAUNCH_BLOCKS].sort());
+    for (const reason of LAUNCH_BLOCKS) {
+      // Short enough for the label over the build ghost (32 characters).
+      expect(strings[reason].length, reason).toBeLessThanOrEqual(32);
+    }
   });
 });

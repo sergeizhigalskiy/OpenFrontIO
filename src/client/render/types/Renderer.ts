@@ -251,6 +251,8 @@ export interface GhostPreviewData {
   rangeRadius: number;
   /** True if placing here would carry a penalty (e.g. nuking an ally → traitor). */
   rangeWarning: boolean;
+  /** Why an air order can't be launched here, shown over the ghost. */
+  blockedText?: string;
 }
 
 /** Nuke trajectory preview data — Bezier control points + color thresholds. */

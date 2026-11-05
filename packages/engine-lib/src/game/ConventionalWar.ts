@@ -12,8 +12,8 @@
  *
  * Weapon tiers: the weapon types are the tiers, as atom bomb, hydrogen bomb
  * and MIRV are. Killing a SAM is never cheaper than with nukes (an atom bomb
- * is 750k): cruise missiles and airstrikes cost the same and can destroy any
- * military structure, SAMs included. SAMs shoot each down with one missile,
+ * is 750k): cruise missiles and airstrikes cost the same and destroy every
+ * enemy structure and ship in their small blast, SAMs included. SAMs shoot each down with one missile,
  * so a level-L SAM (L loaded missiles) takes L + 1 of them, as with atom
  * bombs. Drones are the lowest tier: cheap, but they never hurt SAMs. Above
  * the cruise missile, the ballistic missile takes the hydrogen bomb's rung and
@@ -113,7 +113,10 @@ export const SAM_TARGET_FLIGHT_TYPES: readonly UnitType[] = [
   UnitType.ClusterWarhead,
 ];
 
-/** Structures an airstrike or a cruise missile can destroy. */
+/**
+ * The military structures: what a cluster warhead destroys around its
+ * target, and what cluster missiles aim at first.
+ */
 export const MILITARY_STRUCTURE_TYPES: readonly UnitType[] = [
   UnitType.DefensePost,
   UnitType.SAMLauncher,
@@ -125,6 +128,32 @@ export const MILITARY_STRUCTURE_TYPES: readonly UnitType[] = [
   UnitType.SiegeCamp,
 ];
 
+/**
+ * What an airstrike or a cruise missile destroys in its blast, when it
+ * belongs to a player the launcher can attack (never its own or a
+ * friend's): every structure, levels and all (SAMs as canDestroySam
+ * allows), and every ship, train and convoy. Never weapons or aircraft in
+ * flight, and never minefields (enemies can't see them). Both strike any
+ * tile in their launcher's range, as nukes do: unclaimed land and water too.
+ */
+export const STRIKE_TARGET_TYPES: readonly UnitType[] = [
+  UnitType.City,
+  UnitType.Port,
+  UnitType.Factory,
+  UnitType.DefensePost,
+  UnitType.SAMLauncher,
+  UnitType.MissileSilo,
+  UnitType.CoastalBattery,
+  UnitType.Airbase,
+  UnitType.FlakGun,
+  UnitType.SiegeCamp,
+  UnitType.Warship,
+  UnitType.TransportShip,
+  UnitType.TradeShip,
+  UnitType.Train,
+  UnitType.Convoy,
+];
+
 // ---------------------------------------------------------------------------
 // Airstrike
 // ---------------------------------------------------------------------------
@@ -132,7 +161,10 @@ export const MILITARY_STRUCTURE_TYPES: readonly UnitType[] = [
 /** Gold per airstrike: the atom bomb's tier. */
 export const AIRSTRIKE_COST = 750_000;
 
-/** The strike destroys the military structures within this many tiles. */
+/**
+ * The strike destroys what STRIKE_TARGET_TYPES lists within this many tiles
+ * of the picked tile.
+ */
 export const AIRSTRIKE_STRUCTURE_RADIUS = 2;
 
 /** Percent of the target owner's troops the strike kills... */
@@ -214,9 +246,10 @@ export const CRUISE_MISSILE_COST = 750_000;
 export const CRUISE_MISSILE_RANGE = 400;
 
 /**
- * It destroys the hostile military structures within this many tiles.
- * Cluster warheads use it too, so the two stay in sync, but a warhead
- * destroys every military structure in it, its launcher's and allies' too.
+ * It destroys what STRIKE_TARGET_TYPES lists within this many tiles of the
+ * picked tile. Cluster warheads use it too, so the two stay in sync, but a
+ * warhead destroys every military structure in it, its launcher's and
+ * allies' too.
  */
 export const CRUISE_MISSILE_BLAST_RADIUS = 3;
 
@@ -358,17 +391,19 @@ export function flakGunCost(owned: number): number {
 /** Gold per drone. */
 export const DRONE_COST = 40_000;
 
-/** A drone's target must be within this many tiles (euclidean) of an airbase. */
+/**
+ * Drones need no airbase: a swarm takes off from its owner's land tile
+ * nearest the target, which must be within this many tiles (euclidean) of
+ * that tile, so within this many tiles of the owner's land.
+ */
 export const DRONE_RANGE = 100;
 
 /**
- * Each airbase launches at most one drone per this many ticks. Drones don't
- * use the airstrike and airdrop sortie: a swarm order (1 to DRONE_SWARM_MAX
- * drones) is split across every airbase in range and queued until all are
- * out. Each drone is paid for as it takes off; the queue stops when the gold
- * runs out.
+ * A swarm order (1 to DRONE_SWARM_MAX drones) launches one drone per this
+ * many ticks from its launch tile until all are out. Each drone is paid for
+ * as it takes off; the order stops when the gold runs out.
  */
-export const DRONE_LAUNCH_INTERVAL_TICKS = 10;
+export const DRONE_LAUNCH_INTERVAL_TICKS = 2;
 
 /** A swarm size an order may ask for: an integer in [MIN, MAX], else 1. */
 export function clampDroneSwarm(count: number | null | undefined): number {

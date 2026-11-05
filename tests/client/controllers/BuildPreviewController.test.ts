@@ -1,4 +1,5 @@
 import { UnitType } from "@openfront/engine-api/game/GameTypes";
+import { DRONE_RANGE } from "@openfront/engine-lib/game/ConventionalWar";
 import { MINEFIELD_RADIUS } from "@openfront/engine-lib/game/NavalDefense";
 import { EventBus } from "@openfront/shared/EventBus";
 import { describe, expect, test, vi } from "vitest";
@@ -159,6 +160,27 @@ describe("BuildPreviewController confirm with the pointer off the map", () => {
     expect([data.tileX, data.tileY]).toEqual([3, 4]);
     expect([data.radiusTileX, data.radiusTileY]).toEqual([3, 4]);
     expect(data.snapToPlacement).toBe(false);
+  });
+
+  test("a blocked drone order says why, its range circle on the cursor", () => {
+    const { controller } = makeController(3, 4);
+    const buildable = (controller as any).ghostUnit.buildableUnit;
+    Object.assign(buildable, {
+      type: UnitType.Drone,
+      canBuild: false,
+      cost: 1n,
+      blocked: "drone_range",
+    });
+    const data = (controller as any).buildGhostPreviewData(43, false);
+    // (Tests load no translations: the text is its key.)
+    expect(data.blockedText).toBe("build_menu.blocked.drone_range");
+    // No airbase to center on: the player's land must reach the circle.
+    expect([data.radiusTileX, data.radiusTileY]).toEqual([3, 4]);
+    expect(data.rangeRadius).toBe(DRONE_RANGE);
+    delete buildable.blocked;
+    Object.assign(buildable, { canBuild: 42 });
+    const ok = (controller as any).buildGhostPreviewData(43, false);
+    expect(ok.blockedText).toBeUndefined();
   });
 
   test.each([false, true])(

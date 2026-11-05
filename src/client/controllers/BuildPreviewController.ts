@@ -36,7 +36,7 @@ import {
 import { SIEGE_CAMP_RANGE } from "@openfront/engine-lib/game/Siege";
 import { EventBus } from "@openfront/shared/EventBus";
 import { Controller } from "../Controller";
-import { airOrderExtras } from "../hud/layers/AirOrders";
+import { airBlockedText, airOrderExtras } from "../hud/layers/AirOrders";
 import { canalGhostMarker } from "../hud/layers/CanalMenu";
 import {
   chosenMinefieldDensity,
@@ -181,7 +181,8 @@ function isGhostDataEqual(
     prev.ownerID !== next.ownerID ||
     prev.upgradeTargetTile !== next.upgradeTargetTile ||
     prev.rangeRadius !== next.rangeRadius ||
-    prev.rangeWarning !== next.rangeWarning
+    prev.rangeWarning !== next.rangeWarning ||
+    prev.blockedText !== next.blockedText
   ) {
     return false;
   }
@@ -929,12 +930,13 @@ export class BuildPreviewController implements Controller {
   }
 
   /**
-   * Airdrops and drones preview their reach from the player's airbase nearest
-   * the cursor, not around the cursor. Null for everything else, or with no
-   * airbase.
+   * Airdrops preview their reach from the player's airbase nearest the
+   * cursor, not around the cursor. Null for everything else, or with no
+   * airbase. Drones need no airbase: their circle stays on the cursor, and
+   * some of the player's land must lie inside it.
    */
   private nearestOwnAirbase(type: UnitType, tile: TileRef): TileRef | null {
-    if (type !== UnitType.Airdrop && type !== UnitType.Drone) return null;
+    if (type !== UnitType.Airdrop) return null;
     const myPlayer = this.game.myPlayer();
     if (!myPlayer) return null;
     let best: TileRef | null = null;
@@ -1024,6 +1026,7 @@ export class BuildPreviewController implements Controller {
       upgradeTargetTile,
       rangeRadius,
       rangeWarning: targetingAlly,
+      blockedText: airBlockedText(u) ?? undefined,
     };
 
     if (

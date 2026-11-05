@@ -1,4 +1,5 @@
 import {
+  BuildableUnit,
   DRONE_SWARM_DEFAULT,
   DRONE_SWARM_MAX,
   DRONE_SWARM_MIN,
@@ -12,10 +13,23 @@ import { UIState } from "../../UIState";
 import { translateText } from "../../Utils";
 
 /**
- * Client side of the conventional war orders that carry more than a tile:
- * an airdrop carries the attack-ratio share of the player's troops, a drone
- * order the swarm size picked on its slider.
+ * Client side of the conventional war orders: why one can't go, and what
+ * an order carries besides its tile (an airdrop the attack-ratio share of
+ * the player's troops, a drone order the swarm size picked on its slider).
  */
+
+/**
+ * Why the engine says an air order can't be launched (BuildableUnit.blocked,
+ * decided with canBuild by AirOps.airLaunch), as text, or null when it can.
+ */
+export function airBlockedText(
+  unit: BuildableUnit | null | undefined,
+): string | null {
+  const reason = unit?.blocked;
+  return reason === undefined
+    ? null
+    : translateText(`build_menu.blocked.${reason}`);
+}
 
 /** The swarm size the next drone order launches. */
 export function chosenDroneSwarm(uiState: UIState | undefined): number {

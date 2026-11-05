@@ -1,7 +1,10 @@
 import { UnitType } from "@openfront/engine-api/game/GameTypes";
 import { BALLISTIC_MISSILE_COST } from "@openfront/engine-lib/game/ConventionalWar";
 import { AirMissionExecution } from "@openfront/engine/execution/AirMissionExecution";
-import { DroneExecution } from "@openfront/engine/execution/DroneExecution";
+import {
+  DroneExecution,
+  DroneSwarmExecutionSnapshot,
+} from "@openfront/engine/execution/DroneExecution";
 import { NationNukeBehaviorSnapshot } from "@openfront/engine/execution/nation/NationNukeBehavior";
 import { PlayerSnapshot } from "@openfront/engine/game/PlayerImpl";
 import { UnitSnapshot } from "@openfront/engine/game/UnitImpl";
@@ -152,6 +155,14 @@ describe("conventional war snapshot migrations", () => {
       other: 1,
       ballisticPerceivedCost: BigInt(BALLISTIC_MISSILE_COST),
       ballisticLastLaunch: null,
+    });
+  });
+
+  test("drone swarm v1: airbases paced it, so it launches its next drone at once", () => {
+    expect(DroneSwarmExecutionSnapshot.version).toBe(2);
+    expect(DroneSwarmExecutionSnapshot.migrations[1]({ other: 1 })).toEqual({
+      other: 1,
+      lastLaunchTick: null,
     });
   });
 

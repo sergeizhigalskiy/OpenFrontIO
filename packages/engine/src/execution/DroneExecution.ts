@@ -4,6 +4,7 @@ import {
   clampDroneSwarm,
   DRONE_BLAST_RADIUS,
   DRONE_HITS_TO_DESTROY_STRUCTURE,
+  DRONE_LAUNCH_INTERVAL_TICKS,
   DRONE_MAX_FLIGHT_TICKS,
   DRONE_RETARGET_RADIUS,
   DRONE_SPEED,
@@ -17,12 +18,7 @@ import {
   zRef,
 } from "@openfront/engine-lib/snapshot/SnapshotType";
 import { z } from "zod";
-import {
-  canLaunchDrone,
-  droneAirbases,
-  droneTargetAt,
-  isDroneTarget,
-} from "../game/AirOps";
+import { droneLaunchTile, droneTargetAt, isDroneTarget } from "../game/AirOps";
 import { Execution, Game, Player, Unit } from "../game/Game";
 import { execSnapshotType } from "../snapshot/ExecutionSnapshot";
 import type {
@@ -72,12 +68,13 @@ function liveTarget(
 
 /**
  * A drone swarm order (conventional war only): `count` drones at the target
- * nearest the clicked tile. Every airbase within DRONE_RANGE of the target
- * launches at most one drone per DRONE_LAUNCH_INTERVAL_TICKS, and the order
- * waits until all are out. Each drone is paid for as it takes off; the order
- * stops when the gold runs out. If the target is destroyed or captured before
- * the swarm is out, the rest go for the nearest valid target within
- * DRONE_RETARGET_RADIUS, or the order ends.
+ * nearest the clicked tile. No airbase: they take off one per
+ * DRONE_LAUNCH_INTERVAL_TICKS from the player's land tile nearest the target
+ * (droneLaunchTile), which must stay within DRONE_RANGE of it, or the order
+ * ends. Each drone is paid for as it takes off; the order stops when the
+ * gold runs out. If the target is destroyed or captured before the swarm is
+ * out, the rest go for the nearest valid target within DRONE_RETARGET_RADIUS,
+ * or the order ends.
  */
 export class DroneSwarmExecution implements Execution {
   private active = true;
@@ -86,6 +83,8 @@ export class DroneSwarmExecution implements Execution {
   /** Where the target was last seen, to retarget around. */
   private lastTargetTile: TileRef | null = null;
   private remaining: number;
+  /** The tick the last drone took off, or null before the first. */
+  private lastLaunchTick: number | null = null;
 
   constructor(
     private player: Player,
@@ -120,28 +119,31 @@ export class DroneSwarmExecution implements Execution {
     }
     this.lastTargetTile = this.target.tile();
 
-    const bases = droneAirbases(mg, player, this.target.tile());
-    if (bases.length === 0) {
+    if (
+      this.lastLaunchTick !== null &&
+      mg.ticks() - this.lastLaunchTick < DRONE_LAUNCH_INTERVAL_TICKS
+    ) {
+      return;
+    }
+    const from = droneLaunchTile(mg, player, this.target.tile());
+    if (from === null) {
+      // Out of range of our land (a ship sailed off, or the land was lost).
       this.active = false;
       return;
     }
-    for (const base of bases) {
-      if (this.remaining === 0) break;
-      if (!canLaunchDrone(mg, base)) continue;
-      const cost = mg.unitInfo(UnitType.Drone).cost(mg, player);
-      if (player.gold() < cost) {
-        // Out of gold: the rest of the swarm stays home.
-        this.remaining = 0;
-        break;
-      }
-      // buildUnit charges the drone.
-      const drone = player.buildUnit(UnitType.Drone, base.tile(), {
-        targetUnit: this.target,
-      });
-      base.recordDroneLaunch();
-      mg.addExecution(new DroneExecution(drone));
-      this.remaining--;
+    const cost = mg.unitInfo(UnitType.Drone).cost(mg, player);
+    if (player.gold() < cost) {
+      // Out of gold: the rest of the swarm stays home.
+      this.active = false;
+      return;
     }
+    // buildUnit charges the drone.
+    const drone = player.buildUnit(UnitType.Drone, from, {
+      targetUnit: this.target,
+    });
+    mg.addExecution(new DroneExecution(drone));
+    this.lastLaunchTick = mg.ticks();
+    this.remaining--;
     if (this.remaining === 0) this.active = false;
   }
 
@@ -162,6 +164,7 @@ export class DroneSwarmExecution implements Execution {
       target: w.unitOrNull(this.target),
       lastTargetTile: this.lastTargetTile,
       remaining: this.remaining,
+      lastLaunchTick: this.lastLaunchTick,
     });
   }
 
@@ -173,6 +176,7 @@ export class DroneSwarmExecution implements Execution {
     this.target = r.unitOrNull(s.target);
     this.lastTargetTile = s.lastTargetTile;
     this.remaining = s.remaining;
+    this.lastLaunchTick = s.lastLaunchTick;
   }
 }
 
@@ -185,13 +189,20 @@ const DroneSwarmStateSchema = z.object({
   target: zRef().nullable(),
   lastTargetTile: zInt().nullable(),
   remaining: zInt(),
+  /** Added in v2 (drones launched from land, one per interval). */
+  lastLaunchTick: zInt().nullable(),
 });
 type DroneSwarmState = z.infer<typeof DroneSwarmStateSchema>;
 
 export const DroneSwarmExecutionSnapshot = execSnapshotType({
   name: "DroneSwarm",
-  version: 1,
+  version: 2,
   schema: DroneSwarmStateSchema,
+  // v1 paced drones by each airbase's last launch: an old order launches
+  // its next drone right away.
+  migrations: {
+    1: (d) => ({ ...(d as Record<string, unknown>), lastLaunchTick: null }),
+  },
   cls: () => DroneSwarmExecution,
 });
 

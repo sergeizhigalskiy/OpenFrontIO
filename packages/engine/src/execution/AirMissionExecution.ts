@@ -31,7 +31,7 @@ import {
   zTile,
 } from "@openfront/engine-lib/snapshot/SnapshotType";
 import { z } from "zod";
-import { hostileMilitaryStructures } from "../game/AirOps";
+import { hostileMilitaryStructures, strikeTargets } from "../game/AirOps";
 import { Attack, Execution, Game, isUnit, Player, Unit } from "../game/Game";
 import { UniversalPathFinding } from "../pathfinding/PathFinder";
 import { ParabolaUniversalPathFinder } from "../pathfinding/PathFinder.Parabola";
@@ -95,15 +95,16 @@ function frontNear(
  * One conventional war flight, from takeoff to impact (rules and numbers in
  * engine-lib/game/ConventionalWar.ts):
  *
- * - Airstrike: a plane from a ready airbase within AIRBASE_STRIKE_RANGE. It
- *   destroys every hostile military structure within
- *   AIRSTRIKE_STRUCTURE_RADIUS of the target, kills a capped share of the
- *   target owner's troops, and a capped share of their attacks whose front is
- *   within AIRSTRIKE_FRONT_RADIUS.
+ * - Airstrike: a plane from a ready airbase within AIRBASE_STRIKE_RANGE, at
+ *   any tile, as for nukes. It destroys every enemy structure, ship, train
+ *   and convoy within AIRSTRIKE_STRUCTURE_RADIUS of the target
+ *   (STRIKE_TARGET_TYPES), kills a capped share of the target owner's
+ *   troops, and a capped share of their attacks whose front is within
+ *   AIRSTRIKE_FRONT_RADIUS.
  * - Airdrop: a transport plane from a ready airbase carrying troops. It lands
  *   on the clicked tile and attacks outward from it, like a boat landing.
- * - Cruise missile: from a silo within CRUISE_MISSILE_RANGE; it destroys
- *   every hostile military structure within CRUISE_MISSILE_BLAST_RADIUS.
+ * - Cruise missile: from a silo within CRUISE_MISSILE_RANGE, at any tile; it
+ *   destroys what an airstrike does within CRUISE_MISSILE_BLAST_RADIUS.
  * - Ballistic missile: from a level 2+ silo; it destroys every structure
  *   within BALLISTIC_MISSILE_BLAST_RADIUS, whoever owns it, and kills a share
  *   of the troops of everyone with land there (the launcher and its allies
@@ -318,15 +319,19 @@ export class AirMissionExecution implements Execution {
     flight.setReachedTarget();
     switch (this.type) {
       case UnitType.Airstrike:
-        this.destroyStructures(AIRSTRIKE_STRUCTURE_RADIUS);
+        this.strike(AIRSTRIKE_STRUCTURE_RADIUS);
         this.killTroops();
         break;
       case UnitType.Airdrop:
         this.land(flight.troops());
         break;
       case UnitType.CruiseMissile:
-      case UnitType.ClusterWarhead:
-        if (this.destroyStructures(CRUISE_MISSILE_BLAST_RADIUS) === 0) {
+      case UnitType.ClusterWarhead: {
+        const destroyed =
+          this.type === UnitType.CruiseMissile
+            ? this.strike(CRUISE_MISSILE_BLAST_RADIUS)
+            : this.destroyStructures(CRUISE_MISSILE_BLAST_RADIUS);
+        if (destroyed === 0) {
           this.mg.displayMessage(
             "events_display.missile_hit_nothing",
             MessageType.ATTACK_FAILED,
@@ -336,6 +341,7 @@ export class AirMissionExecution implements Execution {
           );
         }
         break;
+      }
       case UnitType.BallisticMissile:
         this.ballisticImpact();
         break;
@@ -347,35 +353,52 @@ export class AirMissionExecution implements Execution {
   }
 
   /**
-   * Destroys every military structure within `radius` of the impact that
-   * this weapon can destroy, and a cluster warhead's own structure (whatever
-   * its type) if it is still there. Airstrikes and cruise missiles spare the
-   * attacker's and its friends' structures; a cluster warhead doesn't
-   * (friendly fire). Returns how many.
+   * An airstrike's or a cruise missile's blast: destroys every enemy
+   * structure, ship, train and convoy within `radius` of the picked tile
+   * (AirOps.strikeTargets), sparing the attacker's and its friends'.
+   * Returns how many.
+   */
+  private strike(radius: number): number {
+    let destroyed = 0;
+    for (const unit of strikeTargets(
+      this.mg,
+      this.player,
+      this.dst,
+      radius,
+      this.type,
+    )) {
+      // An earlier one going may have taken it along.
+      if (!unit.isActive()) continue;
+      this.destroyStructure(unit);
+      destroyed++;
+    }
+    return destroyed;
+  }
+
+  /**
+   * A cluster warhead: destroys every military structure within `radius`
+   * of the impact, its launcher's and friends' too (friendly fire), and the
+   * warhead's own structure (whatever its type) if it is still there.
+   * Returns how many.
    */
   private destroyStructures(radius: number): number {
-    const friendlyFire = this.type === UnitType.ClusterWarhead;
     const structures = hostileMilitaryStructures(
       this.mg,
       this.player,
       this.dst,
       radius,
       this.type,
-      friendlyFire,
+      true,
     );
     const own = this.targetStructure;
-    if (
-      own !== null &&
-      own.isActive() &&
-      (friendlyFire || this.isEnemy(own.owner())) &&
-      !structures.includes(own)
-    ) {
+    if (own !== null && own.isActive() && !structures.includes(own)) {
       structures.unshift(own);
     }
     for (const structure of structures) this.destroyStructure(structure);
     return structures.length;
   }
 
+  /** Destroys a structure (or a strike's ship, train or convoy), told to both. */
   private destroyStructure(structure: Unit): void {
     const victim = structure.owner();
     const unit = unitTypeKey(structure.type());

@@ -55,7 +55,8 @@ export class UnitImpl implements Unit {
   private _troops: number;
   // Number of missiles in cooldown, if empty all missiles are ready.
   private _missileTimerQueue: number[] = [];
-  // Airbases only: the tick the last drone took off (see DroneExecution).
+  // Retired: airbases launched drones before they took off from land. Always
+  // null now; kept in the snapshot so older records load without a migration.
   private _lastDroneLaunch: number | null = null;
   // Structures without health: drone hits taken (see DroneExecution).
   private _droneHits = 0;
@@ -594,14 +595,6 @@ export class UnitImpl implements Unit {
   reloadMissile(): void {
     this._missileTimerQueue.shift();
     this.mg.addUpdate(this.toUpdate());
-  }
-
-  lastDroneLaunchTick(): number | null {
-    return this._lastDroneLaunch;
-  }
-
-  recordDroneLaunch(): void {
-    this._lastDroneLaunch = this.mg.ticks();
   }
 
   droneHits(): number {

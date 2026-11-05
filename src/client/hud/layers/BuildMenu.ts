@@ -26,7 +26,7 @@ import {
 } from "../../Transport";
 import { UIState } from "../../UIState";
 import { GameView } from "../../view";
-import { airOrderExtras, droneSwarmSlider } from "./AirOrders";
+import { airBlockedText, airOrderExtras, droneSwarmSlider } from "./AirOrders";
 import { canalBlockedText } from "./CanalMenu";
 import {
   chosenMinefieldDensity,
@@ -553,11 +553,11 @@ export class BuildMenu extends LitElement implements Controller {
                   return html``;
                 }
                 const enabled = this.canBuildOrUpgrade(item);
-                // A canal says why it can't be dug here instead.
+                // A canal or an air order says why it can't go here instead.
                 const blocked =
                   item.unitType === UnitType.Canal && this.game
                     ? canalBlockedText(this.game, this.clickedTile)
-                    : null;
+                    : airBlockedText(buildableUnit);
                 return html`
                   <button
                     class="build-button"

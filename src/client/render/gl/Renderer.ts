@@ -1147,12 +1147,13 @@ export class GPURenderer {
     // The multiplier badge (x5) rides on the cost label but must show even
     // when there is no cost line — e.g. infinite gold (cost 0) or the
     // cursor-cost-label setting turned off.
+    // An air order that can't go here says why in the same spot.
     const topText =
       data?.multiplier && data.multiplier > 1
         ? translateText("build_menu.upgrade_amount", {
             amount: data.multiplier.toString(),
           })
-        : undefined;
+        : data?.blockedText;
     const showCost = data !== null && data.showCost && data.cost > 0;
     this.worldTextPass.setGhostCostLabel(
       data && (showCost || topText !== undefined)
