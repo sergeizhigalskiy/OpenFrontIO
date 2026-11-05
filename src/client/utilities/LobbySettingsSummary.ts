@@ -8,6 +8,7 @@ import {
   BOSS_RAID_NATION_BOSS,
   GameConfig,
 } from "@openfront/engine-api/Schemas";
+import { HORDE_NIGHT_DEFAULT_SURVIVAL_MINUTES } from "@openfront/engine-lib/game/HordeNight";
 import { html, TemplateResult } from "lit";
 import { renderDuration, translateText } from "../../client/Utils";
 
@@ -158,6 +159,19 @@ export function notableLobbySettings(
   if (c.risingTide)
     items.push({
       label: translateText("game_settings.rising_tide"),
+      value: enabled,
+    });
+  if (c.hordeNight?.enabled)
+    items.push({
+      label: translateText("horde_night.title"),
+      value: renderDuration(
+        (c.hordeNight.survivalMinutes ?? HORDE_NIGHT_DEFAULT_SURVIVAL_MINUTES) *
+          60,
+      ),
+    });
+  if (c.plague)
+    items.push({
+      label: translateText("game_settings.plague"),
       value: enabled,
     });
   if (c.waterNukes)

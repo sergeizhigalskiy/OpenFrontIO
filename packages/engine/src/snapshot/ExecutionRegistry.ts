@@ -26,6 +26,8 @@ import { EmbargoExecutionSnapshot } from "../execution/EmbargoExecution";
 import { EmojiExecutionSnapshot } from "../execution/EmojiExecution";
 import { FactoryExecutionSnapshot } from "../execution/FactoryExecution";
 import { FlakGunExecutionSnapshot } from "../execution/FlakGunExecution";
+import { HordeBandExecutionSnapshot } from "../execution/HordeBandExecution";
+import { HordeNightExecutionSnapshot } from "../execution/HordeNightExecution";
 import { MarkDisconnectedExecutionSnapshot } from "../execution/MarkDisconnectedExecution";
 import { MinefieldExecutionSnapshot } from "../execution/MinefieldExecution";
 import { MirvExecutionSnapshot } from "../execution/MIRVExecution";
@@ -35,6 +37,7 @@ import { NationExecutionSnapshot } from "../execution/NationExecution";
 import { NoOpExecutionSnapshot } from "../execution/NoOpExecution";
 import { NukeExecutionSnapshot } from "../execution/NukeExecution";
 import { PauseExecutionSnapshot } from "../execution/PauseExecution";
+import { PlagueExecutionSnapshot } from "../execution/PlagueExecution";
 import { PlayerExecutionSnapshot } from "../execution/PlayerExecution";
 import { PortExecutionSnapshot } from "../execution/PortExecution";
 import { QuickChatExecutionSnapshot } from "../execution/QuickChatExecution";
@@ -92,6 +95,8 @@ export const EXECUTION_SNAPSHOT_TYPES = [
   EmojiExecutionSnapshot,
   FactoryExecutionSnapshot,
   FlakGunExecutionSnapshot,
+  HordeBandExecutionSnapshot,
+  HordeNightExecutionSnapshot,
   MarkDisconnectedExecutionSnapshot,
   MinefieldExecutionSnapshot,
   MirvExecutionSnapshot,
@@ -101,6 +106,7 @@ export const EXECUTION_SNAPSHOT_TYPES = [
   NoOpExecutionSnapshot,
   NukeExecutionSnapshot,
   PauseExecutionSnapshot,
+  PlagueExecutionSnapshot,
   PlayerExecutionSnapshot,
   PortExecutionSnapshot,
   QuickChatExecutionSnapshot,

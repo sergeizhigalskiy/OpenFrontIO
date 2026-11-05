@@ -32,6 +32,8 @@ import { simpleHash } from "@openfront/engine-lib/Util";
 import { EngineConfig } from "./configuration/EngineConfig";
 import { DoomsdayClockExecution } from "./execution/DoomsdayClockExecution";
 import { Executor } from "./execution/ExecutionManager";
+import { HordeNightExecution } from "./execution/HordeNightExecution";
+import { PlagueExecution } from "./execution/PlagueExecution";
 import { RecomputeRailClusterExecution } from "./execution/RecomputeRailClusterExecution";
 import { RisingTideExecution } from "./execution/RisingTideExecution";
 import { RuinsExecution } from "./execution/RuinsExecution";
@@ -219,6 +221,15 @@ export class GameRunner {
     }
     if (this.game.config().risingTide()) {
       this.game.addExecution(new RisingTideExecution());
+    }
+    // Lobby modes, off by default (engine-lib/game/HordeNight.ts, Plague.ts).
+    if (this.game.config().hordeNightConfig().enabled) {
+      this.game.addExecution(
+        new HordeNightExecution(this.execManager.gameID()),
+      );
+    }
+    if (this.game.config().plague()) {
+      this.game.addExecution(new PlagueExecution(this.execManager.gameID()));
     }
     if (!this.game.config().isUnitDisabled(UnitType.Factory)) {
       this.game.addExecution(

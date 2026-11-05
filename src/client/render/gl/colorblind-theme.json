@@ -11,7 +11,9 @@
     "Humans": "#0072b2",
     "Nations": "#d55e00",
     "Boss": "#d55e00",
-    "Raiders": "#0072b2"
+    "Raiders": "#0072b2",
+    "Horde": "#3b0a0a",
+    "Infected": "#c9d34a"
   },
   "humanColors": [
     "#b60056",

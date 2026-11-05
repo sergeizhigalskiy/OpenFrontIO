@@ -61,6 +61,7 @@ import { SendWinnerEvent } from "../../Transport";
 import { shareGame } from "../../utilities/ShareGame";
 import { GameView } from "../../view";
 import { bossRaidWinTitle } from "./BossRaidTitles";
+import { survivalModeEnding } from "./SurvivalModeEnding";
 
 type LegendCeremonyModule = typeof import("../../components/LegendCeremony");
 
@@ -1054,6 +1055,18 @@ export class WinModal extends LitElement implements Controller {
       this.gameEnd ??= { winner, allPlayersStats, tick: this.game.ticks() };
     };
     winUpdates.forEach((wu) => {
+      // Horde Night and the plague name their own endings.
+      const ending = survivalModeEnding(this.game, wu.winner);
+      if (ending !== null) {
+        vote(wu.winner, wu.allPlayersStats);
+        this._title = ending.title;
+        this.isWin = ending.isWin;
+        if (ending.isWin) void gamePortal.happytime();
+        this.playEndOfGameSound();
+        history.replaceState(null, "", `${window.location.pathname}?replay`);
+        void this.show();
+        return;
+      }
       if (wu.winner === undefined) {
         // Match cancelled (e.g. a ranked 2v2 that didn't fill or fully
         // spawn): the game ends with no winner. Still vote the result to the

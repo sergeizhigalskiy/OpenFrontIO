@@ -976,6 +976,7 @@
     "flak_shot_down_drones": "Your flak shot down {count} drones from {name}",
     "flak_shot_down_plane": "Your flak shot down a {unit} from {name}",
     "focus": "Focus",
+    "horde_wave_landed": "Wave {wave} has landed: {bands} horde bands with {troops} troops",
     "hydrogen_bomb_detonated": "{name} - hydrogen bomb detonated",
     "hydrogen_bomb_inbound": "{name} - hydrogen bomb inbound",
     "ignore": "Ignore",
@@ -986,6 +987,8 @@
     "missile_intercepted": "SAM intercepted {unit}",
     "naval_invasion_inbound": "Naval invasion incoming from {name} ({troops})",
     "no_boats_available": "No boats available, max {max}",
+    "plague_contact_infection": "Your troops on the infected border are turning. You lose {percent}% of them every second",
+    "plague_outbreak": "Outbreak! The Infected rise with {troops} troops",
     "plane_shot_down_by_flak": "{name}'s flak shot down your {unit}",
     "received_gold_from_captured_ship": "Received {gold} gold from ship captured from {name}",
     "received_gold_from_conquest": "Conquered {name}, received {gold} gold",
@@ -1108,6 +1111,7 @@
     "disable_units": "Disable Units",
     "doomsday_clock": "Doomsday Clock",
     "gold_multiplier": "Gold multiplier",
+    "horde_night": "Horde Night (minutes to survive)",
     "infinite_gold": "Infinite gold",
     "infinite_troops": "Infinite troops",
     "instant_build": "Instant build",
@@ -1116,6 +1120,7 @@
     "nations": "Nations: ",
     "options": "Options",
     "overtime": "Overtime after (minutes)",
+    "plague": "Zombie plague",
     "random_spawn": "Random spawn",
     "rising_tide": "Rising tide",
     "ruins": "Ruins",
@@ -1369,6 +1374,14 @@
     "ui_your_team": "Your team:",
     "video_tutorial": "Video Tutorial",
     "video_tutorial_title": "OpenFront.io Tutorial"
+  },
+  "horde_night": {
+    "defenders_won": "Horde Night survived! The defenders held out",
+    "first_wave": "First wave in {time}",
+    "horde_won": "Horde Night lost. The horde overran every defender",
+    "next_wave": "Next wave in {time}",
+    "title": "Horde Night",
+    "wave": "Wave {wave}"
   },
   "host_modal": {
     "anonymous_players": "Anonymous players",
@@ -1962,6 +1975,15 @@
     "tick_layers_table_header": "avg / max",
     "tps": "TPS:",
     "tps_avg_60s": "Avg:"
+  },
+  "plague": {
+    "consumed": "The plague consumed the world",
+    "cured_other": "The plague is gone. {name} wins with the most land",
+    "cured_you": "The plague is gone. You win with the most land!",
+    "cured_your_team": "The plague is gone. Your team wins!",
+    "infected_share": "{pct}% of the land infected",
+    "lost_at": "All is lost at {pct}%",
+    "title": "The Plague"
   },
   "player_panel": {
     "active": "Active",
@@ -2685,8 +2707,11 @@
     "blue": "Blue",
     "boss": "Boss",
     "bot": "Tribes",
+    "defenders": "Defenders",
     "green": "Green",
+    "horde": "Horde",
     "humans": "Humans",
+    "infected": "Infected",
     "nations": "Nations",
     "orange": "Orange",
     "purple": "Purple",

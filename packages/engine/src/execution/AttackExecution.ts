@@ -12,6 +12,10 @@ import {
 import { renderTroops } from "@openfront/engine-lib/Format";
 import { siegeCampTiles } from "@openfront/engine-lib/game/AttackForecast";
 import {
+  isInfected,
+  plagueCaptureTroops,
+} from "@openfront/engine-lib/game/Plague";
+import {
   defensePostCoverage,
   POST_COVERAGE_NONE,
   POST_COVERAGE_REDUCED,
@@ -339,6 +343,11 @@ export class AttackExecution implements Execution {
     // Fixed for the tick, like the border size: camps only finish building
     // or change hands between ticks.
     const siegeCamps = targetPlayer !== null ? this.siegeCampsForTick() : 0;
+    // Plague: each tile The Infected takes from a player raises zombies.
+    const infects =
+      targetPlayer !== null &&
+      this.mg.config().plague() &&
+      isInfected(this._owner);
     // Each tile consumes a fraction of the tick; conquer until it is spent.
     let tickBudget = 1;
 
@@ -390,6 +399,14 @@ export class AttackExecution implements Execution {
       troopCount -= attackerTroopLoss;
       this.attack.setTroops(troopCount);
       if (targetPlayer) {
+        if (infects) {
+          this._owner.addTroops(
+            plagueCaptureTroops(
+              targetPlayer.troops(),
+              targetPlayer.numTilesOwned(),
+            ),
+          );
+        }
         targetPlayer.removeTroops(defenderTroopLoss);
       }
       this._owner.conquer(tileToConquer);

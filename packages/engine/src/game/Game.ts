@@ -658,7 +658,8 @@ export interface Game extends GameLike {
   playerByClientID(id: ClientID): Player | null;
   playerBySmallID(id: number): Player | TerraNullius;
   hasPlayer(id: PlayerID): boolean;
-  addPlayer(playerInfo: PlayerInfo): Player;
+  /** `team` overrides the usual team assignment (Horde Night's sides). */
+  addPlayer(playerInfo: PlayerInfo, team?: Team | null): Player;
   terraNullius(): TerraNullius;
   owner(ref: TileRef): Player | TerraNullius;
 

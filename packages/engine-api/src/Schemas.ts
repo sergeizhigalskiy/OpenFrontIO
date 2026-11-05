@@ -231,6 +231,14 @@ export const OvertimeConfigSchema = z.object({
   startMinutes: zb.uint({ min: 1, max: 120 }).optional(),
 });
 
+// Horde Night (co-op survival): every human and nation is on one side and
+// hostile horde bands land in waves; the defenders win by keeping a human
+// alive for survivalMinutes (see engine-lib/game/HordeNight.ts).
+export const HordeNightConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  survivalMinutes: zb.uint({ min: 1, max: 120 }).optional(),
+});
+
 // A lobby pool: several lobbies that arriving players are spread across, so
 // one advertised entry point can absorb more players than a single lobby
 // holds. Assignment is a hash of the joiner's identity (server/PoolRouting.ts),
@@ -375,6 +383,11 @@ export const GameConfigSchema = z.object({
   // Rising tide: flood waves turn the lowest coastal land into water every few
   // minutes (see engine-lib/game/RisingTide.ts). Off when absent.
   risingTide: z.boolean().optional(),
+  // Horde Night co-op survival (see HordeNightConfigSchema). Off when absent.
+  hordeNight: HordeNightConfigSchema.optional(),
+  // Zombie plague: a hostile Infected faction breaks out and spreads by
+  // infecting troops (see engine-lib/game/Plague.ts). Off when absent.
+  plague: z.boolean().optional(),
 });
 
 // What a host sends in update_game_config. maxPlayers is the private-lobby

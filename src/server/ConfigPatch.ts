@@ -35,6 +35,8 @@ const COPIED_KEYS = [
   "cityStates",
   "volcanoes",
   "risingTide",
+  "hordeNight",
+  "plague",
   "anonymizeNames",
   "nameReveals",
   "nameRevealPublicIds",
