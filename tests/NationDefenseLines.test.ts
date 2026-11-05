@@ -13,6 +13,7 @@ import { SIEGE_CAMP_RANGE } from "@openfront/engine-lib/game/Siege";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import { AttackExecution } from "@openfront/engine/execution/AttackExecution";
 import { ConstructionExecution } from "@openfront/engine/execution/ConstructionExecution";
+import { isCataclysmHazard } from "@openfront/engine/execution/nation/NationCataclysm";
 import {
   considerSiegeCamp,
   NATION_SIEGE_CAMP_CHANCE,
@@ -23,6 +24,7 @@ import {
   NationStructureBehavior,
 } from "@openfront/engine/execution/nation/NationStructureBehavior";
 import { UpgradeStructureExecution } from "@openfront/engine/execution/UpgradeStructureExecution";
+import { VolcanoExecution } from "@openfront/engine/execution/VolcanoExecution";
 import { Execution, Game, Player } from "@openfront/engine/game/Game";
 import { vi } from "vitest";
 import { createGame, L } from "./core/pathfinding/_fixtures";
@@ -152,6 +154,30 @@ describe("nation siege camps", () => {
     expect(considerSiegeCamp(game, nation, luckyRandom())).toBe(false);
     nation.addGold(1n);
     expect(considerSiegeCamp(game, nation, luckyRandom())).toBe(true);
+  });
+
+  test("never camps inside a rumbling volcano's warning ring", () => {
+    const g = frontGame(Difficulty.Impossible);
+    // The ring (radius 25) covers the whole front near the post.
+    const site = g.game.ref(100, 22);
+    g.game.addExecution(new VolcanoExecution("siege", [{ x: 100, y: 22 }]));
+    for (let i = 0; i < 10_000 && !isCataclysmHazard(g.game, site); i++) {
+      g.game.executeNextTick();
+    }
+    expect(isCataclysmHazard(g.game, site)).toBe(true);
+
+    g.enemy.buildUnit(UnitType.DefensePost, g.game.ref(100, 8), {});
+    g.enemy.setTroops(50_000);
+    g.game.addExecution(
+      new AttackExecution(5_000, g.nation, g.enemy.id(), null, false),
+    );
+    for (let i = 0; i < 3; i++) g.game.executeNextTick();
+    expect(g.nation.outgoingAttacks()).toHaveLength(1);
+    expect(isCataclysmHazard(g.game, site)).toBe(true);
+
+    const spy = vi.spyOn(g.game, "addExecution");
+    expect(considerSiegeCamp(g.game, g.nation, luckyRandom())).toBe(false);
+    expect(siegeOrders(spy)).toEqual([]);
   });
 
   test("a failed roll builds nothing this time", () => {
