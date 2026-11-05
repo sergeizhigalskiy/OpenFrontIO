@@ -83,6 +83,22 @@ const DEFAULTS: Partial<GameConfig> = {
   bots: 40,
 };
 
+/** Units added by this fork that the lobby can switch off. */
+const NEW_UNITS: UnitType[] = [
+  UnitType.CoastalBattery,
+  UnitType.Minefield,
+  UnitType.SiegeCamp,
+  UnitType.Canal,
+  UnitType.Airbase,
+  UnitType.FlakGun,
+  UnitType.Airstrike,
+  UnitType.Airdrop,
+  UnitType.CruiseMissile,
+  UnitType.Drone,
+  UnitType.BallisticMissile,
+  UnitType.ClusterMissile,
+];
+
 /** What a run saw on the update stream. */
 interface Seen {
   types: Set<GameUpdateType>;
@@ -150,6 +166,18 @@ const MODES: Mode[] = [
       expect(game.allPlayers().some((p) => p.capitalTile() !== undefined)).toBe(
         true,
       ),
+  },
+  {
+    // The lobby's Disable units list offers every buildable unit: nations
+    // must cope with any of them switched off.
+    name: "conventional war, every new unit disabled",
+    config: { conventionalWar: true, disabledUnits: NEW_UNITS },
+    ticks: BASE_TICKS,
+    check: (game) => {
+      for (const p of game.allPlayers()) {
+        for (const type of NEW_UNITS) expect(p.units(type)).toHaveLength(0);
+      }
+    },
   },
 ];
 
@@ -219,12 +247,13 @@ async function run(mode: Mode): Promise<void> {
     ),
   );
   const total = SPAWN_TICKS + mode.ticks;
+  const canalsOn = !game.config().isUnitDisabled(UnitType.Canal);
   let canalStarted = false;
   let canalDug = false;
   for (let t = 0; t < total; t++) {
     if (t === SPAWN_TICKS) game.endSpawnPhase();
     // Once players hold some coast: a canal, so digs run in every mode.
-    if (t > SPAWN_TICKS + 200 && !canalStarted && t % 50 === 0) {
+    if (canalsOn && t > SPAWN_TICKS + 200 && !canalStarted && t % 50 === 0) {
       canalStarted = digACanal(game);
     }
     canalDug ||= game.executions().some((e) => e instanceof CanalExecution);
@@ -237,7 +266,7 @@ async function run(mode: Mode): Promise<void> {
     game.ruins().size + game.allPlayers().filter((p) => p.isCityState()).length,
   ).toBeGreaterThan(0);
   expect(resourceSitesOf(game).length).toBeGreaterThan(0);
-  expect(canalDug).toBe(true);
+  expect(canalDug).toBe(canalsOn);
   expect(game.config().seasonsEnabled() && game.config().weatherEnabled()).toBe(
     true,
   );

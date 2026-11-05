@@ -122,6 +122,29 @@ const unitOptions: { type: UnitType; translationKey: string }[] = [
   { type: UnitType.HydrogenBomb, translationKey: "unit_type.hydrogen_bomb" },
   { type: UnitType.MIRV, translationKey: "unit_type.mirv" },
   { type: UnitType.Factory, translationKey: "unit_type.factory" },
+  // Naval defense, siege and canals: in every game.
+  {
+    type: UnitType.CoastalBattery,
+    translationKey: "unit_type.coastal_battery",
+  },
+  { type: UnitType.Minefield, translationKey: "unit_type.minefield" },
+  { type: UnitType.SiegeCamp, translationKey: "unit_type.siege_camp" },
+  { type: UnitType.Canal, translationKey: "unit_type.canal" },
+  // Conventional war: only built when that lobby option is on.
+  { type: UnitType.Airbase, translationKey: "unit_type.airbase" },
+  { type: UnitType.FlakGun, translationKey: "unit_type.flak_gun" },
+  { type: UnitType.Airstrike, translationKey: "unit_type.airstrike" },
+  { type: UnitType.Airdrop, translationKey: "unit_type.airdrop" },
+  { type: UnitType.CruiseMissile, translationKey: "unit_type.cruise_missile" },
+  { type: UnitType.Drone, translationKey: "unit_type.drone" },
+  {
+    type: UnitType.BallisticMissile,
+    translationKey: "unit_type.ballistic_missile",
+  },
+  {
+    type: UnitType.ClusterMissile,
+    translationKey: "unit_type.cluster_missile",
+  },
 ];
 
 const MAP_ICON = svg`<path
