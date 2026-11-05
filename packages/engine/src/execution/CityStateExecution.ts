@@ -5,6 +5,7 @@ import {
   CITY_STATE_RADIUS,
 } from "@openfront/engine-lib/game/WorldFeatures";
 import { zTile } from "@openfront/engine-lib/snapshot/SnapshotType";
+import { terrainFeatureAllowsStructures } from "@openfront/engine-lib/game/TerrainFeatures";
 import { z } from "zod";
 import { Execution, Game, Player } from "../game/Game";
 import {
@@ -150,6 +151,8 @@ function defensePostTile(game: Game, player: Player, center: TileRef): TileRef {
   let best = center;
   let bestScore = Infinity;
   for (const tile of player.tiles()) {
+    // Nothing is built on a river or ford (terrain features).
+    if (!terrainFeatureAllowsStructures(game.terrainFeature(tile))) continue;
     const score = Math.abs(game.euclideanDistSquared(tile, center) - want);
     if (score < bestScore || (score === bestScore && tile < best)) {
       best = tile;

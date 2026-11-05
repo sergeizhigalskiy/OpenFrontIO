@@ -18,6 +18,7 @@ import {
 } from "@openfront/engine-lib/game/WorldFeatures";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import { simpleHash } from "@openfront/engine-lib/Util";
+import { terrainFeatureAllowsStructures } from "@openfront/engine-lib/game/TerrainFeatures";
 import { Game } from "../game/Game";
 import { cityStateDisc, CityStateExecution } from "./CityStateExecution";
 
@@ -139,11 +140,13 @@ export class CityStateSpawner {
     return tile;
   }
 
+  // A center holds the city, so not a river or ford (terrain features).
   private isFreeLand(tile: TileRef): boolean {
     return (
       this.game.isLand(tile) &&
       !this.game.isImpassable(tile) &&
-      !this.game.hasOwner(tile)
+      !this.game.hasOwner(tile) &&
+      terrainFeatureAllowsStructures(this.game.terrainFeature(tile))
     );
   }
 

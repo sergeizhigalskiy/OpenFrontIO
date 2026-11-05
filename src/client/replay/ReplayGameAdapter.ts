@@ -30,6 +30,7 @@ import {
   type WeatherKind,
   type WeatherUpdate,
 } from "@openfront/engine-api/game/GameUpdates";
+import { TerrainFeature } from "@openfront/engine-api/game/TerrainFeature";
 import type { Config } from "@openfront/engine-lib/configuration/Config";
 import {
   fogHidesTroops,
@@ -297,6 +298,8 @@ export class ReplayGameView {
   focus: ReplayPlayerView | null = null;
   /** Whether emojis are shown (the "emojis" user setting). */
   showEmojis: () => boolean = () => true;
+  /** The map's forests, rivers and fords (the hover card shows them). */
+  featureAt: (ref: TileRef) => TerrainFeature = () => TerrainFeature.None;
   /** Events since the HUD last asked, by GameUpdateType. */
   private readonly pending = new Map<number, unknown[]>();
   /** The live weather cells, from the latest frame that carried them. */
@@ -512,6 +515,9 @@ export class ReplayGameView {
   isLand(ref: TileRef): boolean {
     // GameMapImpl.IS_LAND_BIT.
     return (this.terrain[ref] & (1 << 7)) !== 0;
+  }
+  terrainFeature(ref: TileRef): TerrainFeature {
+    return this.featureAt(ref);
   }
   /** The player owning a tile, or a TerraNullius stand-in. */
   owner(ref: TileRef): ReplayPlayerView | { isPlayer(): boolean } {

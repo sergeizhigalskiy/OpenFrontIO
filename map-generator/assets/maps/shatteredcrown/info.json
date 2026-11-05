@@ -1,0 +1,59 @@
+{
+  "$schema": "../../../info.schema.json",
+  "id": "ShatteredCrown",
+  "name": "Shattered Crown",
+  "translation_key": "map.shatteredcrown",
+  "categories": ["fictional", "new"],
+  "nations": [
+    {
+      "coordinates": [900, 300],
+      "flag": "",
+      "name": "Crownfall"
+    },
+    {
+      "coordinates": [1253, 415],
+      "flag": "",
+      "name": "Shardholm"
+    },
+    {
+      "coordinates": [1471, 715],
+      "flag": "",
+      "name": "Gemhaven"
+    },
+    {
+      "coordinates": [1471, 1085],
+      "flag": "",
+      "name": "Saltspire"
+    },
+    {
+      "coordinates": [1253, 1385],
+      "flag": "",
+      "name": "Coral Throne"
+    },
+    {
+      "coordinates": [900, 1500],
+      "flag": "",
+      "name": "Driftmark"
+    },
+    {
+      "coordinates": [547, 1385],
+      "flag": "",
+      "name": "Pearlgate"
+    },
+    {
+      "coordinates": [329, 1085],
+      "flag": "",
+      "name": "Wavecrest"
+    },
+    {
+      "coordinates": [329, 715],
+      "flag": "",
+      "name": "Splinter Isle"
+    },
+    {
+      "coordinates": [547, 415],
+      "flag": "",
+      "name": "Reefward"
+    }
+  ]
+}

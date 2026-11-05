@@ -34,6 +34,12 @@ import {
   SIEGE_CAMP_POST_DEFENSE_BONUS,
   SIEGE_CAMP_POST_SPEED_BONUS,
 } from "@openfront/engine-lib/game/Siege";
+import {
+  FOREST_DEFENDED_LOSS_MULTIPLIER,
+  RIVER_TIME_MULTIPLIER,
+  TerrainFeature,
+  withTerrainFeatureCost,
+} from "@openfront/engine-lib/game/TerrainFeatures";
 import { MUD_TILE_COST_MULTIPLIER } from "@openfront/engine-lib/game/Weather";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import { sigmoid, within } from "@openfront/engine-lib/Util";
@@ -230,6 +236,8 @@ describe("attackLogic moved to engine-lib", () => {
 
 interface Check {
   input: AttackLogicInput;
+  tile: number;
+  /** What AttackExecution charges: attackLogic, then the terrain feature. */
   engine: AttackLogicResult;
   forecast: AttackForecast;
 }
@@ -305,7 +313,12 @@ function recordAttack(
       borderSize - ATTACK_FRONT_JITTER_MEAN,
     );
     const input = original.apply(this, args);
-    checks.push({ input, engine: game.config().attackLogic(input), forecast });
+    const engine = withTerrainFeatureCost(
+      game.config().attackLogic(input),
+      game.terrainFeature(tile),
+      target !== null,
+    );
+    checks.push({ input, tile, engine, forecast });
     return input;
   });
   try {
@@ -391,6 +404,39 @@ describe("attack forecast matches the engine", () => {
     const cost = new Set(checks.map((c) => c.input.weatherTileCostMultiplier));
     expect([...loss].sort()).toEqual([1, WINTER_ATTACKER_LOSS_MULTIPLIER]);
     expect([...cost].sort()).toEqual([1, MUD_TILE_COST_MULTIPLIER]);
+  });
+
+    test("over forest, river and ford, stacked with winter", async () => {
+    const { game, attacker, defender } = await plainsGame(true);
+    vi.spyOn(game, "ticksSinceStart").mockReturnValue(SEASON_CYCLE_TICKS + 5);
+    // Columns of forest, river and ford on the defender's side of x = 50.
+    const feature = (tile: number): TerrainFeature => {
+      const x = game.x(tile);
+      if (x === 50 || x === 51) return TerrainFeature.Forest;
+      if (x === 52) return game.y(tile) % 10 === 0 ? TerrainFeature.Ford : TerrainFeature.River;
+      return TerrainFeature.None;
+    };
+    // The map reads it for the engine and, through the game, for the forecast.
+    vi.spyOn(game.map(), "terrainFeature").mockImplementation(feature);
+    const checks = recordAttack(game, attacker, defender, 60_000, 30);
+    expectForecastMatches(checks);
+    const by = (f: TerrainFeature) => checks.filter((c) => feature(c.tile) === f);
+    expect(by(TerrainFeature.Forest).length).toBeGreaterThan(0);
+    expect(by(TerrainFeature.River).length).toBeGreaterThan(0);
+    // The forest's 1.3x loss on top of winter's 1.5x on snow land.
+    const snowForest = by(TerrainFeature.Forest).find(
+      (c) => c.input.weatherLossMultiplier !== 1,
+    )!;
+    const bare = game.config().attackLogic(snowForest.input);
+    expect(snowForest.forecast.lossPerTile).toBeCloseTo(
+      bare.attackerTroopLoss * FOREST_DEFENDED_LOSS_MULTIPLIER,
+      9,
+    );
+    const river = by(TerrainFeature.River)[0];
+    expect(10 / river.forecast.tilesPerSecond!).toBeCloseTo(
+      game.config().attackLogic(river.input).tickFraction * RIVER_TIME_MULTIPLIER,
+      9,
+    );
   });
 
     test("into unclaimed land", async () => {

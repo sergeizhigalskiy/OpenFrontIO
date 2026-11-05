@@ -30,6 +30,7 @@ export enum GameMapType {
   BranchingPaths = "Branching Paths", // map-generator/assets/maps/branchingpaths/info.json
   Britannia = "Britannia", // map-generator/assets/maps/britannia/info.json
   BritanniaClassic = "Britannia Classic", // map-generator/assets/maps/britanniaclassic/info.json
+  Caldera = "Caldera", // map-generator/assets/maps/caldera/info.json
   CanaryIslands = "Canary Islands", // map-generator/assets/maps/canaryislands/info.json
   CapeCod = "Cape Cod", // map-generator/assets/maps/capecod/info.json
   CapeOfGoodHope = "Cape Of Good Hope", // map-generator/assets/maps/capeofgoodhope/info.json
@@ -47,6 +48,7 @@ export enum GameMapType {
   DeglaciatedAntarctica = "Deglaciated Antarctica", // map-generator/assets/maps/deglaciatedantarctica/info.json
   Didier = "Didier", // map-generator/assets/maps/didier/info.json
   DidierFrance = "Didier France", // map-generator/assets/maps/didierfrance/info.json
+  DrowningDelta = "Drowning Delta", // map-generator/assets/maps/drowningdelta/info.json
   Dyslexdria = "Dyslexdria", // map-generator/assets/maps/dyslexdria/info.json
   EastAsia = "East Asia", // map-generator/assets/maps/eastasia/info.json
   Europe = "Europe", // map-generator/assets/maps/europe/info.json
@@ -68,6 +70,7 @@ export enum GameMapType {
   Hecatestrait = "Hecate Strait", // map-generator/assets/maps/hecatestrait/info.json
   HongKong = "Hong Kong", // map-generator/assets/maps/hongkong/info.json
   HornOfAfrica = "Horn Of Africa", // map-generator/assets/maps/hornofafrica/info.json
+  Hourglass = "Hourglass", // map-generator/assets/maps/hourglass/info.json
   Iceland = "Iceland", // map-generator/assets/maps/iceland/info.json
   IndianSubcontinent = "Indian Subcontinent", // map-generator/assets/maps/indiansubcontinent/info.json
   IrishSea = "Irish Sea", // map-generator/assets/maps/irishsea/info.json
@@ -109,6 +112,8 @@ export enum GameMapType {
   Russia = "Russia", // map-generator/assets/maps/russia/info.json
   SanFrancisco = "San Francisco", // map-generator/assets/maps/sanfrancisco/info.json
   Scandinavia = "Scandinavia", // map-generator/assets/maps/scandinavia/info.json
+  SevenPasses = "Seven Passes", // map-generator/assets/maps/sevenpasses/info.json
+  ShatteredCrown = "Shattered Crown", // map-generator/assets/maps/shatteredcrown/info.json
   Sierpinski = "Sierpinski", // map-generator/assets/maps/sierpinski/info.json
   Sol = "Sol", // map-generator/assets/maps/sol/info.json
   SouthAmerica = "South America", // map-generator/assets/maps/southamerica/info.json
@@ -534,6 +539,14 @@ export const maps: readonly MapInfo[] = [
     location: { lat: 56.5, lon: -4 },
   },
   {
+    id: "Caldera",
+    type: GameMapType.Caldera,
+    translationKey: "map.caldera",
+    categories: ["fictional", "new"],
+    defaultNationCount: 6,
+    specialTeamCount: 3,
+  },
+  {
     id: "CanaryIslands",
     type: GameMapType.CanaryIslands,
     translationKey: "map.canaryislands",
@@ -805,6 +818,13 @@ export const maps: readonly MapInfo[] = [
     defaultNationCount: 42,
     author: "FloPinguin",
     descriptionKey: "map_description.didierfrance",
+  },
+  {
+    id: "DrowningDelta",
+    type: GameMapType.DrowningDelta,
+    translationKey: "map.drowningdelta",
+    categories: ["fictional", "new"],
+    defaultNationCount: 12,
   },
   {
     id: "Dyslexdria",
@@ -1428,6 +1448,14 @@ export const maps: readonly MapInfo[] = [
     location: { lat: 8, lon: 46 },
   },
   {
+    id: "Hourglass",
+    type: GameMapType.Hourglass,
+    translationKey: "map.hourglass",
+    categories: ["fictional", "new"],
+    defaultNationCount: 16,
+    specialTeamCount: 2,
+  },
+  {
     id: "Iceland",
     type: GameMapType.Iceland,
     translationKey: "map.iceland",
@@ -1974,6 +2002,21 @@ export const maps: readonly MapInfo[] = [
     themes: ["europe"],
     author: "crunchybbb",
     location: { lat: 63, lon: 15 },
+  },
+  {
+    id: "SevenPasses",
+    type: GameMapType.SevenPasses,
+    translationKey: "map.sevenpasses",
+    categories: ["fictional", "new"],
+    defaultNationCount: 16,
+    specialTeamCount: 2,
+  },
+  {
+    id: "ShatteredCrown",
+    type: GameMapType.ShatteredCrown,
+    translationKey: "map.shatteredcrown",
+    categories: ["fictional", "new"],
+    defaultNationCount: 10,
   },
   {
     id: "Sierpinski",

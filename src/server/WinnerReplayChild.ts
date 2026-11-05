@@ -20,6 +20,8 @@ class ServerGameMapLoader implements GameMapLoader {
       mapBin: bin("map.bin"),
       map4xBin: bin("map4x.bin"),
       map16xBin: bin("map16x.bin"),
+      featuresBin: bin("features.bin"),
+      features4xBin: bin("features4x.bin"),
       manifest: async () =>
         JSON.parse(
           (await readMapFile(map, "manifest.json")).toString("utf8"),

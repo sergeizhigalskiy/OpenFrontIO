@@ -133,6 +133,8 @@ describe("PlayerInfoOverlay attack forecast", () => {
       ruins: () => [],
       weatherAt: () => null,
       fogHidesTroops: () => false,
+      // No forest, river or ford under the cursor (terrain features).
+      terrainFeature: () => 0,
       config: () => ({
         isUnitDisabled: () => true,
         maxTroops: () => 1000,

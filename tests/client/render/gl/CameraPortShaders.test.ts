@@ -21,6 +21,7 @@ import { RailroadPass } from "../../../../src/client/render/gl/passes/RailroadPa
 import { ReloadBarPass } from "../../../../src/client/render/gl/passes/ReloadBarPass";
 import { RuinsPass } from "../../../../src/client/render/gl/passes/RuinsPass";
 import { StructurePass } from "../../../../src/client/render/gl/passes/StructurePass";
+import { TerrainFeaturePass } from "../../../../src/client/render/gl/passes/TerrainFeaturePass";
 import { TideWarningPass } from "../../../../src/client/render/gl/passes/TideWarningPass";
 import { UnitPass } from "../../../../src/client/render/gl/passes/UnitPass";
 import { VolcanoPass } from "../../../../src/client/render/gl/passes/VolcanoPass";
@@ -107,6 +108,13 @@ const PASSES: PassCase[] = [
         new Uint8Array(MAP_W * MAP_H),
         settings,
       ),
+    camera: true,
+  },
+  // terrain-maps: forests, rivers and fords
+  {
+    name: "TerrainFeaturePass",
+    build: (gl) =>
+      new TerrainFeaturePass(gl, tex, new Uint8Array(MAP_W * MAP_H), MAP_W, MAP_H),
     camera: true,
   },
   // defense-lines: stamped in tile space, read by the territory overlay

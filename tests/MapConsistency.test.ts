@@ -105,7 +105,7 @@ function normalizeCustomTribes(raw: unknown): CustomTribe[] | undefined {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe("Map consistency", () => {
-  test("Every GameMapType has map-generator assets (image.png + info.json + layer PNGs only)", () => {
+  test("Every GameMapType has map-generator assets (image.png + info.json + features.png + layer PNGs only)", () => {
     const errors: string[] = [];
     for (const key of allMapKeys) {
       const folder = toFolderName(key);
@@ -131,10 +131,11 @@ describe("Map consistency", () => {
         );
       }
 
-      // Build the set of expected PNGs: image.png + layer PNGs.
+      // Build the set of expected PNGs: image.png, the optional terrain
+      // feature layer (features.png) + layer PNGs.
       const info = readInfoJson(key);
       const layers = (info?.layers as Array<{ id: string }> | undefined) ?? [];
-      const allowedPngs = new Set(["image.png"]);
+      const allowedPngs = new Set(["image.png", "features.png"]);
       for (const layer of layers) {
         allowedPngs.add(`${layer.id}.png`);
       }
@@ -602,7 +603,7 @@ describe("Map consistency", () => {
       const genDir = path.join(MAP_GEN_MAPS, folder);
 
       const layers = (info.layers as Array<{ id: string }> | undefined) ?? [];
-      const allowedPngs = new Set(["image.png"]);
+      const allowedPngs = new Set(["image.png", "features.png"]);
       for (const layer of layers) {
         allowedPngs.add(`${layer.id}.png`);
       }
@@ -611,13 +612,42 @@ describe("Map consistency", () => {
       for (const file of files) {
         if (file.endsWith(".png") && !allowedPngs.has(file)) {
           errors.push(
-            `${key}: unexpected PNG "${file}" in map-generator/assets/maps/${folder}/ (not image.png or a defined layer)`,
+            `${key}: unexpected PNG "${file}" in map-generator/assets/maps/${folder}/ (not image.png, features.png or a defined layer)`,
           );
         }
       }
     }
     if (errors.length > 0) {
       throw new Error("Unreferenced PNGs:\n" + errors.join("\n"));
+    }
+  });
+
+  test("A features.png ships as a feature layer (run `npm run gen-maps`)", () => {
+    const errors: string[] = [];
+    for (const key of allMapKeys) {
+      const folder = toFolderName(key);
+      const source = fs.existsSync(
+        path.join(MAP_GEN_MAPS, folder, "features.png"),
+      );
+      const manifestPath = path.join(RESOURCES_MAPS, folder, "manifest.json");
+      if (!fs.existsSync(manifestPath)) continue;
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+      const bins = ["features.bin", "features4x.bin"].map((f) =>
+        fs.existsSync(path.join(RESOURCES_MAPS, folder, f)),
+      );
+      if (source !== (manifest.features !== undefined)) {
+        errors.push(
+          `${key}: features.png ${source ? "exists" : "is missing"} but manifest.json ${manifest.features === undefined ? "has no" : "lists a"} feature layer`,
+        );
+      }
+      if (bins.some((b) => b !== source)) {
+        errors.push(
+          `${key}: features.bin/features4x.bin don't match features.png being ${source ? "present" : "absent"}`,
+        );
+      }
+    }
+    if (errors.length > 0) {
+      throw new Error("Feature layer violations:\n" + errors.join("\n"));
     }
   });
 

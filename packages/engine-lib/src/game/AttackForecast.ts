@@ -18,6 +18,7 @@ import {
   POST_COVERAGE_NONE,
   POST_COVERAGE_REDUCED,
 } from "./Siege";
+import { withTerrainFeatureCost } from "./TerrainFeatures";
 
 /** Mean of the 0-4 tiles of jitter AttackExecution adds to its front each tick. */
 export const ATTACK_FRONT_JITTER_MEAN = 2;
@@ -179,30 +180,36 @@ export function attackForecast<P extends ForecastPlayer<P>>(
     }
   }
   const borderSize = Math.max(1, frontSize ?? 1) + ATTACK_FRONT_JITTER_MEAN;
-  const result = game.config().attackLogic({
-    terrain: game.terrainType(tile),
-    attackTroops: Math.max(1, attackTroops),
-    attacker: { type: attacker.type(), numTiles: attacker.numTilesOwned() },
-    defender:
-      defender === null
-        ? null
-        : {
-            type: defender.type(),
-            numTiles: defender.numTilesOwned(),
-            troops: defender.troops(),
-            isTraitor: defender.isTraitor(),
-            isDisconnectedTeammate:
-              defender.isDisconnected() && attacker.isOnSameTeam(defender),
-          },
-    defenderHasDefensePost: coverage !== POST_COVERAGE_NONE,
-    siegeCampReducesDefensePost: coverage === POST_COVERAGE_REDUCED,
-    falloutRatio: game.hasFallout(tile)
-      ? game.numTilesWithFallout() / game.numLandTiles()
-      : null,
-    borderSize,
-    // Winter and mud, as AttackExecution applies them.
-    ...attackWeatherInput(game, tile, defender !== null),
-  });
+  // attackLogic, then the forest, river and ford multipliers on top, as
+  // AttackExecution applies them (winter and mud stack inside attackLogic).
+  const result = withTerrainFeatureCost(
+    game.config().attackLogic({
+      terrain: game.terrainType(tile),
+      attackTroops: Math.max(1, attackTroops),
+      attacker: { type: attacker.type(), numTiles: attacker.numTilesOwned() },
+      defender:
+        defender === null
+          ? null
+          : {
+              type: defender.type(),
+              numTiles: defender.numTilesOwned(),
+              troops: defender.troops(),
+              isTraitor: defender.isTraitor(),
+              isDisconnectedTeammate:
+                defender.isDisconnected() && attacker.isOnSameTeam(defender),
+            },
+      defenderHasDefensePost: coverage !== POST_COVERAGE_NONE,
+      siegeCampReducesDefensePost: coverage === POST_COVERAGE_REDUCED,
+      falloutRatio: game.hasFallout(tile)
+        ? game.numTilesWithFallout() / game.numLandTiles()
+        : null,
+      borderSize,
+      // Winter and mud, as AttackExecution applies them.
+      ...attackWeatherInput(game, tile, defender !== null),
+    }),
+    game.terrainFeature(tile),
+    defender !== null,
+  );
   const ticksPerSecond = 1000 / game.config().msPerTick();
   return {
     lossPerTile: result.attackerTroopLoss,

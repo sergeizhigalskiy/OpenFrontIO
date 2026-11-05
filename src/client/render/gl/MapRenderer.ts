@@ -51,6 +51,8 @@ export class MapRenderer {
   private layerVisibility = new Map<string, boolean>();
   private layerAlpha = new Map<string, number>();
   private layerDestroyedMasks = new Map<string, Uint8Array>();
+  // Terrain features (one byte per tile), kept for context restore.
+  private terrainFeatures: Uint8Array | null = null;
 
   /**
    * Called after a lost WebGL context is restored and the renderer has been
@@ -135,6 +137,9 @@ export class MapRenderer {
       this.renderer = null;
       console.error("[Renderer] context restore failed", err);
       return;
+    }
+    if (this.terrainFeatures !== null) {
+      this.renderer?.setTerrainFeatures(this.terrainFeatures);
     }
     // Re-apply stored layers to the new renderer.
     if (this.storedLayers.length > 0 && this.storedLayerImages.size > 0) {
@@ -368,6 +373,14 @@ export class MapRenderer {
   /** Set the small-player glow set (1 byte per owner smallID), or null = off. */
   updateSmallPlayerGlow(set: Uint8Array | null): void {
     this.renderer?.updateSmallPlayerGlow(set);
+  }
+
+  // ---- Terrain features ----
+
+  /** Draw forests, rivers and fords: one TerrainFeature byte per tile. */
+  setTerrainFeatures(features: Uint8Array): void {
+    this.terrainFeatures = features;
+    this.renderer?.setTerrainFeatures(features);
   }
 
   // ---- Map layers ----

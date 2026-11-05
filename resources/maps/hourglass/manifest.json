@@ -1,0 +1,123 @@
+{
+  "categories": ["fictional", "new"],
+  "features": {
+    "version": 1
+  },
+  "id": "Hourglass",
+  "map": {
+    "height": 1300,
+    "num_land_tiles": 1508944,
+    "width": 2200
+  },
+  "map16x": {
+    "height": 325,
+    "num_land_tiles": 93434,
+    "width": 550
+  },
+  "map4x": {
+    "height": 650,
+    "num_land_tiles": 376161,
+    "width": 1100
+  },
+  "name": "Hourglass",
+  "nations": [
+    {
+      "coordinates": [482, 596],
+      "flag": "",
+      "name": "Varnholt"
+    },
+    {
+      "coordinates": [482, 704],
+      "flag": "",
+      "name": "Ashgrove"
+    },
+    {
+      "coordinates": [501, 490],
+      "flag": "",
+      "name": "Kestrel Reach"
+    },
+    {
+      "coordinates": [501, 810],
+      "flag": "",
+      "name": "Duskmoor"
+    },
+    {
+      "coordinates": [543, 378],
+      "flag": "",
+      "name": "Ironvale"
+    },
+    {
+      "coordinates": [543, 922],
+      "flag": "",
+      "name": "Saltmere"
+    },
+    {
+      "coordinates": [605, 277],
+      "flag": "",
+      "name": "Brindle"
+    },
+    {
+      "coordinates": [605, 1023],
+      "flag": "",
+      "name": "Harrowgate"
+    },
+    {
+      "coordinates": [1718, 596],
+      "flag": "",
+      "name": "Solvane"
+    },
+    {
+      "coordinates": [1718, 704],
+      "flag": "",
+      "name": "Ombria"
+    },
+    {
+      "coordinates": [1699, 490],
+      "flag": "",
+      "name": "Quarry Hollow"
+    },
+    {
+      "coordinates": [1699, 810],
+      "flag": "",
+      "name": "Tidecrest"
+    },
+    {
+      "coordinates": [1657, 378],
+      "flag": "",
+      "name": "Emberfall"
+    },
+    {
+      "coordinates": [1657, 922],
+      "flag": "",
+      "name": "Lowmarsh"
+    },
+    {
+      "coordinates": [1595, 277],
+      "flag": "",
+      "name": "Ravenspire"
+    },
+    {
+      "coordinates": [1595, 1023],
+      "flag": "",
+      "name": "Glimmerdeep"
+    }
+  ],
+  "special_team_count": 2,
+  "teamGameSpawnAreas": {
+    "2": [
+      {
+        "height": 1300,
+        "width": 880,
+        "x": 0,
+        "y": 0
+      },
+      {
+        "height": 1300,
+        "width": 880,
+        "x": 1320,
+        "y": 0
+      }
+    ]
+  },
+  "translation_key": "map.hourglass"
+}

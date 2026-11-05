@@ -42,6 +42,7 @@ vi.mock("../../../../src/client/hud/PlayerIcons", () => ({
 
 import { PlayerType, UnitType } from "@openfront/engine-api/game/GameTypes";
 import { WeatherKind } from "@openfront/engine-api/game/GameUpdates";
+import { TerrainFeature } from "@openfront/engine-api/game/TerrainFeature";
 import { EventBus } from "@openfront/shared/EventBus";
 import {
   afterEach,
@@ -120,6 +121,7 @@ describe("PlayerInfoOverlay", () => {
     fogHidesTroops: () => false,
     // No unclaimed ruins near the cursor (world features).
     ruins: () => [],
+    terrainFeature: () => TerrainFeature.None,
   });
 
   beforeEach(() => {
@@ -316,6 +318,29 @@ describe("PlayerInfoOverlay", () => {
     overlay.game = game(5) as never;
     overlay.maybeShow(10, 10);
     expect(flatten(overlay.render())).toContain("player_panel.capital_lost");
+  });
+
+  it("shows the terrain feature under the cursor", () => {
+    overlay.game = {
+      ...makeGame(null),
+      terrainFeature: () => TerrainFeature.Forest,
+    } as never;
+    overlay.maybeShow(10, 10);
+    let out = flatten(overlay.render());
+    expect(out).toContain("Bob");
+    expect(out).toContain("terrain_feature.forest_owned");
+
+    // Unowned land with a feature gets a card of its own.
+    overlay.game = {
+      ...makeGame(null),
+      owner: () => ({ isPlayer: () => false }),
+      isLand: () => true,
+      terrainFeature: () => TerrainFeature.River,
+    } as never;
+    overlay.maybeShow(10, 10);
+    out = flatten(overlay.render());
+    expect(out).toContain("terrain_feature.river");
+    expect(out).not.toContain("Bob");
   });
 
   it("stays hidden in the onboarding tutorial", () => {

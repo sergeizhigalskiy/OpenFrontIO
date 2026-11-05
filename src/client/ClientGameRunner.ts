@@ -29,6 +29,7 @@ import {
 import { ClientEnv } from "../client/ClientEnv";
 import { reloadForUpdate, translateText } from "../client/Utils";
 import { MapLayerController } from "./controllers/MapLayerController";
+import { pushTerrainFeatures } from "./controllers/TerrainFeatures";
 import { isDesktopShell } from "./DesktopShell";
 import { GameMetrics } from "./GameMetrics";
 import { createRenderer, GameRenderer } from "./hud/GameRenderer";
@@ -571,6 +572,7 @@ function createWebGLView(
   }
 
   (window as unknown as { __webglView?: unknown }).__webglView = view;
+  pushTerrainFeatures(view, terrainMap);
 
   return { view, glCanvas, cachedWebGLFrameCallback };
 }

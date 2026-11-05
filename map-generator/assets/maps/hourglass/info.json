@@ -1,0 +1,106 @@
+{
+  "$schema": "../../../info.schema.json",
+  "id": "Hourglass",
+  "name": "Hourglass",
+  "translation_key": "map.hourglass",
+  "categories": ["fictional", "new"],
+  "special_team_count": 2,
+  "nations": [
+    {
+      "coordinates": [482, 596],
+      "flag": "",
+      "name": "Varnholt"
+    },
+    {
+      "coordinates": [482, 704],
+      "flag": "",
+      "name": "Ashgrove"
+    },
+    {
+      "coordinates": [501, 490],
+      "flag": "",
+      "name": "Kestrel Reach"
+    },
+    {
+      "coordinates": [501, 810],
+      "flag": "",
+      "name": "Duskmoor"
+    },
+    {
+      "coordinates": [543, 378],
+      "flag": "",
+      "name": "Ironvale"
+    },
+    {
+      "coordinates": [543, 922],
+      "flag": "",
+      "name": "Saltmere"
+    },
+    {
+      "coordinates": [605, 277],
+      "flag": "",
+      "name": "Brindle"
+    },
+    {
+      "coordinates": [605, 1023],
+      "flag": "",
+      "name": "Harrowgate"
+    },
+    {
+      "coordinates": [1718, 596],
+      "flag": "",
+      "name": "Solvane"
+    },
+    {
+      "coordinates": [1718, 704],
+      "flag": "",
+      "name": "Ombria"
+    },
+    {
+      "coordinates": [1699, 490],
+      "flag": "",
+      "name": "Quarry Hollow"
+    },
+    {
+      "coordinates": [1699, 810],
+      "flag": "",
+      "name": "Tidecrest"
+    },
+    {
+      "coordinates": [1657, 378],
+      "flag": "",
+      "name": "Emberfall"
+    },
+    {
+      "coordinates": [1657, 922],
+      "flag": "",
+      "name": "Lowmarsh"
+    },
+    {
+      "coordinates": [1595, 277],
+      "flag": "",
+      "name": "Ravenspire"
+    },
+    {
+      "coordinates": [1595, 1023],
+      "flag": "",
+      "name": "Glimmerdeep"
+    }
+  ],
+  "teamGameSpawnAreas": {
+    "2": [
+      {
+        "x": 0,
+        "y": 0,
+        "width": 880,
+        "height": 1300
+      },
+      {
+        "x": 1320,
+        "y": 0,
+        "width": 880,
+        "height": 1300
+      }
+    ]
+  }
+}

@@ -12,6 +12,7 @@ import {
   RuinReward,
   ruinTroopReward,
 } from "@openfront/engine-lib/game/WorldFeatures";
+import { terrainFeatureAllowsStructures } from "@openfront/engine-lib/game/TerrainFeatures";
 import { DefensePostExecution } from "../execution/DefensePostExecution";
 import { Game, Player } from "./Game";
 
@@ -82,7 +83,9 @@ export function canGrantDefensePost(
   if (
     game.owner(tile) !== player ||
     !game.isLand(tile) ||
-    game.isImpassable(tile)
+    game.isImpassable(tile) ||
+    // Nothing is built on a river or ford (terrain features).
+    !terrainFeatureAllowsStructures(game.terrainFeature(tile))
   ) {
     return false;
   }

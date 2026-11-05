@@ -23,6 +23,7 @@ import {
   POST_COVERAGE_NONE,
   POST_COVERAGE_REDUCED,
 } from "@openfront/engine-lib/game/Siege";
+import { withTerrainFeatureCost } from "@openfront/engine-lib/game/TerrainFeatures";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import {
   zInt,
@@ -388,15 +389,22 @@ export class AttackExecution implements Execution {
         continue;
       }
       this.addNeighbors(tileToConquer);
-      const { attackerTroopLoss, defenderTroopLoss, tickFraction } = this.mg
-        .config()
-        .attackLogic(
-          this.attackLogicInput(
-            troopCount,
-            tileToConquer,
-            borderSize,
-            siegeCamps,
-          ),
+      // Forest, river and ford multipliers (engine-lib/game/TerrainFeatures),
+      // on top of attackLogic's (winter and mud included).
+      const { attackerTroopLoss, defenderTroopLoss, tickFraction } =
+        withTerrainFeatureCost(
+          this.mg
+            .config()
+            .attackLogic(
+              this.attackLogicInput(
+                troopCount,
+                tileToConquer,
+                borderSize,
+                siegeCamps,
+              ),
+            ),
+          this.map.terrainFeature(tileToConquer),
+          targetPlayer !== null,
         );
       tickBudget -= tickFraction;
       troopCount -= attackerTroopLoss;
