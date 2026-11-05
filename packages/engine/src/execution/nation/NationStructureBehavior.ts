@@ -24,6 +24,7 @@ import type {
 } from "../../snapshot/SnapshotContext";
 import { ConstructionExecution } from "../ConstructionExecution";
 import { UpgradeStructureExecution } from "../UpgradeStructureExecution";
+import { isCataclysmHazard } from "./NationCataclysm";
 import { isMirvWorthSavingFor } from "./NationMIRVBehavior";
 import { NationStructurePlacement } from "./NationStructurePlacement";
 import { hasHighStartingGold, isSaveUpWithinReach } from "./NationUtils";
@@ -549,6 +550,7 @@ export class NationStructureBehavior {
         if (nearestSquared < minSquared) break;
       }
       if (nearestSquared < minSquared || nearestSquared > maxSquared) continue;
+      if (isCataclysmHazard(game, t)) continue;
       if (!player.canBuild(UnitType.DefensePost, t)) continue;
       return t;
     }

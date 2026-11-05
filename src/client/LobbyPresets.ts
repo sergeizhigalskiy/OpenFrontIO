@@ -44,6 +44,8 @@ export const LobbyPresetConfigSchema = z.object({
   customAllianceMinutes: z.number().int().min(0).max(15).optional(),
   waterNukes: z.boolean().optional(),
   conventionalWar: z.boolean().optional(),
+  volcanoes: z.boolean().optional(),
+  risingTide: z.boolean().optional(),
   doomsdayClock: z.boolean().optional(),
   doomsdayClockSpeed: z.enum(DOOMSDAY_CLOCK_SPEEDS).optional(),
   overtime: z.boolean().optional(),

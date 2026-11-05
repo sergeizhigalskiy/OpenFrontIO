@@ -37,6 +37,7 @@ import { TransportShipExecution } from "../TransportShipExecution";
 import { AiAttackBehavior, BoatRoute } from "../utils/AiAttackBehavior";
 import { planBotAttacks, walledInBots } from "./BotAnnexation";
 import { NationAllianceBehavior } from "./NationAllianceBehavior";
+import { highGroundFocusTile } from "./NationCataclysm";
 import {
   EMOJI_ASSIST_ACCEPT,
   EMOJI_ASSIST_RELATION_TOO_LOW,
@@ -1141,6 +1142,11 @@ export class NationAttackBehavior extends AiAttackBehavior {
     const cap = this.troopSendCap();
     if (cap > 0) return cap;
     return Math.ceil(this.player.troops() * 0.05);
+  }
+
+  // Rising tide: expand toward higher ground (NationCataclysm).
+  protected override expansionFocusTile(): TileRef | null {
+    return highGroundFocusTile(this.game, this.player);
   }
 
   // `opponent` is a player we take on on purpose (retaliation, runaway leader):

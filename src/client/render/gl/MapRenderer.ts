@@ -32,6 +32,7 @@ import type {
 } from "../types";
 import type { CapitalMarker } from "./passes/CapitalPass";
 import type { SpawnCenter } from "./passes/SpawnOverlayPass";
+import type { VolcanoMarker } from "./passes/VolcanoPass";
 import type { AttackTroopLabel } from "./passes/WorldTextPass";
 import { GPURenderer } from "./Renderer";
 import type { RenderSettings } from "./RenderSettings";
@@ -309,6 +310,21 @@ export class MapRenderer {
   /** Conventional war: the capital stars to draw. */
   updateCapitals(capitals: CapitalMarker[]): void {
     this.renderer?.updateCapitals(capitals);
+  }
+
+  /** Volcanoes: the sites to draw. */
+  updateVolcanoes(markers: VolcanoMarker[]): void {
+    this.renderer?.updateVolcanoes(markers);
+  }
+
+  /** Volcanoes: starts the eruption glow at a site. */
+  volcanoErupted(x: number, y: number): void {
+    this.renderer?.volcanoErupted(x, y);
+  }
+
+  /** Rising tide: the tiles the coming wave floods (empty hides them). */
+  updateTideWarning(tiles: ArrayLike<number>): void {
+    this.renderer?.updateTideWarning(tiles);
   }
 
   /** Set the small-player glow set (1 byte per owner smallID), or null = off. */

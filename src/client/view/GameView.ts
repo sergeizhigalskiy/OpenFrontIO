@@ -49,6 +49,7 @@ import { STRUCTURE_TYPES, TRAIL_TYPES } from "../render/types";
 import { UserSettings } from "../UserSettings";
 import { resolveTeamClanTag } from "../Utils";
 import { WorkerClient } from "../WorkerClient";
+import { CataclysmView, eruptionFx, volcanoTelegraphs } from "./CataclysmView";
 import type { CosmeticVisibility } from "./CosmeticVisibility";
 import {
   applyPackedAttackTroops,
@@ -151,6 +152,7 @@ export class GameView implements GameLike {
   private _cosmeticVisibility: CosmeticVisibility = readCosmeticVisibility();
 
   private _map: GameMap;
+  private _cataclysm = new CataclysmView();
 
   constructor(
     public worker: WorkerClient,
@@ -287,6 +289,7 @@ export class GameView implements GameLike {
     if (gu.updates[GameUpdateType.Win].length > 0) {
       this._gameOver = true;
     }
+    this._cataclysm.apply(gu.updates[GameUpdateType.Cataclysm]);
 
     const myDisplayName = formatPlayerDisplayName(
       this._myUsername,
@@ -579,6 +582,10 @@ export class GameView implements GameLike {
       this.motion.gridPlans(),
       gu.tick,
     );
+    // A rumbling volcano draws as a telegraph too (volcanoes mode).
+    f.nukeTelegraphs.push(
+      ...volcanoTelegraphs(this._cataclysm, this._map.width()),
+    );
     f.attackRings = this._myPlayer
       ? extractAttackRings(
           this._unitStates,
@@ -647,6 +654,8 @@ export class GameView implements GameLike {
         });
       }
     }
+    // Eruptions play the nuke blast (volcanoes mode).
+    ev.deadUnits.push(...eruptionFx(this._cataclysm));
     const myID = this._myPlayer?.id();
     for (const c of gu.updates[GameUpdateType.ConquestEvent] ?? []) {
       if (c.conquerorId !== myID) continue;
@@ -671,6 +680,11 @@ export class GameView implements GameLike {
         troops: b.troops,
       });
     }
+  }
+
+  /** Volcano and rising tide state (empty while both modes are off). */
+  cataclysm(): CataclysmView {
+    return this._cataclysm;
   }
 
   /** Public accessor: the renderer reads this and uploads to the GPU. */

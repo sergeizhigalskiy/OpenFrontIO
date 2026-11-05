@@ -976,6 +976,8 @@
     "trade_ship_captured": "Your trade ship was captured by {name}",
     "unit_destroyed": "Your {unit} was destroyed",
     "unit_voluntarily_deleted": "Unit voluntarily deleted",
+    "volcano_erupted": "A volcano erupted and buried {tiles} of your tiles",
+    "volcano_rumbling": "A volcano by your land is rumbling. It erupts in {seconds} seconds!",
     "wants_to_renew_alliance": "{name} wants to renew your alliance"
   },
   "featured_stream": {
@@ -1085,9 +1087,11 @@
     "options": "Options",
     "overtime": "Overtime after (minutes)",
     "random_spawn": "Random spawn",
+    "rising_tide": "Rising tide",
     "start": "Start Game",
     "starting": "Starting…",
     "starting_gold": "Starting Gold (Millions)",
+    "volcanoes": "Volcanoes",
     "water_nukes": "Water nukes",
     "win_threshold": "Win threshold (%)"
   },
@@ -2347,6 +2351,13 @@
   },
   "rewards_modal": {
     "title": "Rewards"
+  },
+  "rising_tide": {
+    "flooding": "Flood in {time}!",
+    "land_left": "{pct}% of the land is left",
+    "next_wave": "Next flood in {time}",
+    "stopped": "The tide has stopped",
+    "title": "Rising tide"
   },
   "saved_games": {
     "code_placeholder": "Paste a shared game link or code",

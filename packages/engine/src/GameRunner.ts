@@ -26,13 +26,16 @@ import { MapFiles } from "@openfront/engine-api/game/MapFiles";
 import { ClientID, GameStartInfo, Turn } from "@openfront/engine-api/Schemas";
 import { packUnitUpdates } from "@openfront/engine-lib/game/PackedUnitUpdates";
 import { loadTerrainMap } from "@openfront/engine-lib/game/TerrainMapLoader";
+import { VolcanoSitePosition } from "@openfront/engine-lib/game/Volcanoes";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import { simpleHash } from "@openfront/engine-lib/Util";
 import { EngineConfig } from "./configuration/EngineConfig";
 import { DoomsdayClockExecution } from "./execution/DoomsdayClockExecution";
 import { Executor } from "./execution/ExecutionManager";
 import { RecomputeRailClusterExecution } from "./execution/RecomputeRailClusterExecution";
+import { RisingTideExecution } from "./execution/RisingTideExecution";
 import { SpawnTimerExecution } from "./execution/SpawnTimerExecution";
+import { VolcanoExecution } from "./execution/VolcanoExecution";
 import { WinCheckExecution } from "./execution/WinCheckExecution";
 import { Game, Player } from "./game/Game";
 import { createGame } from "./game/GameImpl";
@@ -95,7 +98,7 @@ export async function createGameRunner(
     ),
     callBack,
   );
-  gr.init();
+  gr.init(gameMap.volcanoes);
   return gr;
 }
 
@@ -180,7 +183,8 @@ export class GameRunner {
     });
   }
 
-  init() {
+  /** @param volcanoSites The map's hand-placed volcano sites, if any. */
+  init(volcanoSites?: readonly VolcanoSitePosition[]) {
     if (this.game.config().gameConfig().gameType !== GameType.Singleplayer) {
       this.game.addExecution(new SpawnTimerExecution());
     }
@@ -198,6 +202,14 @@ export class GameRunner {
     this.game.addExecution(new WinCheckExecution());
     if (this.game.config().doomsdayClockConfig().enabled) {
       this.game.addExecution(new DoomsdayClockExecution());
+    }
+    if (this.game.config().volcanoes()) {
+      this.game.addExecution(
+        new VolcanoExecution(this.execManager.gameID(), volcanoSites ?? null),
+      );
+    }
+    if (this.game.config().risingTide()) {
+      this.game.addExecution(new RisingTideExecution());
     }
     if (!this.game.config().isUnitDisabled(UnitType.Factory)) {
       this.game.addExecution(

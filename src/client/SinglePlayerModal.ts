@@ -148,6 +148,8 @@ const DEFAULT_OPTIONS = {
   customAllianceMinutes: undefined as number | undefined,
   waterNukes: false,
   conventionalWar: false,
+  volcanoes: false,
+  risingTide: false,
   doomsdayClock: false,
   doomsdayClockSpeed: "normal" as DoomsdayClockSpeed,
   overtime: false,
@@ -238,6 +240,8 @@ export class SinglePlayerModal extends BaseModal {
     DEFAULT_OPTIONS.customAllianceMinutes;
   @state() private waterNukes: boolean = DEFAULT_OPTIONS.waterNukes;
   @state() private conventionalWar: boolean = DEFAULT_OPTIONS.conventionalWar;
+  @state() private volcanoes: boolean = DEFAULT_OPTIONS.volcanoes;
+  @state() private risingTide: boolean = DEFAULT_OPTIONS.risingTide;
   @state() private doomsdayClock: boolean = DEFAULT_OPTIONS.doomsdayClock;
   @state() private doomsdayClockSpeed: DoomsdayClockSpeed =
     DEFAULT_OPTIONS.doomsdayClockSpeed;
@@ -612,6 +616,14 @@ export class SinglePlayerModal extends BaseModal {
                     checked: this.conventionalWar,
                   },
                   {
+                    labelKey: "game_settings.volcanoes",
+                    checked: this.volcanoes,
+                  },
+                  {
+                    labelKey: "game_settings.rising_tide",
+                    checked: this.risingTide,
+                  },
+                  {
                     labelKey: "game_settings.doomsday_clock",
                     checked: this.doomsdayClock,
                     doomsdayClockSpeed: this.doomsdayClockSpeed,
@@ -684,6 +696,8 @@ export class SinglePlayerModal extends BaseModal {
       this.customAllianceMinutes !== DEFAULT_OPTIONS.customAllianceMinutes ||
       this.waterNukes !== DEFAULT_OPTIONS.waterNukes ||
       this.conventionalWar !== DEFAULT_OPTIONS.conventionalWar ||
+      this.volcanoes !== DEFAULT_OPTIONS.volcanoes ||
+      this.risingTide !== DEFAULT_OPTIONS.risingTide ||
       this.doomsdayClock !== DEFAULT_OPTIONS.doomsdayClock ||
       // Pace only matters when the mode is on (startGame drops it when off).
       (this.doomsdayClock &&
@@ -816,6 +830,8 @@ export class SinglePlayerModal extends BaseModal {
     this.customAllianceMinutes = DEFAULT_OPTIONS.customAllianceMinutes;
     this.waterNukes = DEFAULT_OPTIONS.waterNukes;
     this.conventionalWar = DEFAULT_OPTIONS.conventionalWar;
+    this.volcanoes = DEFAULT_OPTIONS.volcanoes;
+    this.risingTide = DEFAULT_OPTIONS.risingTide;
     this.doomsdayClock = DEFAULT_OPTIONS.doomsdayClock;
     this.doomsdayClockSpeed = DEFAULT_OPTIONS.doomsdayClockSpeed;
     this.overtime = DEFAULT_OPTIONS.overtime;
@@ -863,6 +879,8 @@ export class SinglePlayerModal extends BaseModal {
       customAllianceMinutes: this.customAllianceMinutes,
       waterNukes: this.waterNukes,
       conventionalWar: this.conventionalWar,
+      volcanoes: this.volcanoes,
+      risingTide: this.risingTide,
       doomsdayClock: this.doomsdayClock,
       doomsdayClockSpeed: this.doomsdayClockSpeed,
       overtime: this.overtime,
@@ -893,6 +911,8 @@ export class SinglePlayerModal extends BaseModal {
     this.customAllianceMinutes = config.customAllianceMinutes;
     this.waterNukes = config.waterNukes ?? false;
     this.conventionalWar = config.conventionalWar ?? false;
+    this.volcanoes = config.volcanoes ?? false;
+    this.risingTide = config.risingTide ?? false;
     this.doomsdayClock = config.doomsdayClock ?? false;
     this.doomsdayClockSpeed = config.doomsdayClockSpeed ?? "normal";
     this.overtime = config.overtime ?? false;
@@ -1035,6 +1055,12 @@ export class SinglePlayerModal extends BaseModal {
         break;
       case "game_settings.conventional_war":
         this.conventionalWar = checked;
+        break;
+      case "game_settings.volcanoes":
+        this.volcanoes = checked;
+        break;
+      case "game_settings.rising_tide":
+        this.risingTide = checked;
         break;
       case "game_settings.doomsday_clock":
         this.doomsdayClock = checked;
@@ -1368,6 +1394,8 @@ export class SinglePlayerModal extends BaseModal {
               : {}),
             ...(this.waterNukes ? { waterNukes: true } : {}),
             ...(this.conventionalWar ? { conventionalWar: true } : {}),
+            ...(this.volcanoes ? { volcanoes: true } : {}),
+            ...(this.risingTide ? { risingTide: true } : {}),
             ...(this.doomsdayClock
               ? {
                   doomsdayClock: {

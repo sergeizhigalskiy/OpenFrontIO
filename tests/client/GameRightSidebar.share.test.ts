@@ -64,6 +64,7 @@ function fakeGame(opts: CreateGameOpts = {}): GameView {
       gameConfig: () => ({ gameType, maxTimerValue: undefined }),
       doomsdayClockConfig: () => ({ enabled: false }),
       overtimeConfig: () => ({ enabled: false, startMinutes: 0 }),
+      risingTide: () => false,
       isReplay: () => isReplay,
       listed: true,
       numSpawnPhaseTurns: () => 400,

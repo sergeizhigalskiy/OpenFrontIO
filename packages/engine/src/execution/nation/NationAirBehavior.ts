@@ -6,6 +6,7 @@ import {
 } from "@openfront/engine-lib/game/ConventionalWar";
 import { Attack, Game, Player, Unit } from "../../game/Game";
 import { ConstructionExecution } from "../ConstructionExecution";
+import { isCataclysmHazard } from "./NationCataclysm";
 
 /**
  * A nation's conservative use of conventional war air power. Stateless and
@@ -48,7 +49,7 @@ function maybeBuildAirbase(game: Game, player: Player): boolean {
   if (player.units(UnitType.Airbase).length > 0) return false;
   if (player.gold() < BigInt(NATION_AIRBASE_MIN_GOLD)) return false;
   const tile = player.capitalTile() ?? player.spawnTile();
-  if (tile === undefined) return false;
+  if (tile === undefined || isCataclysmHazard(game, tile)) return false;
   if (player.canBuild(UnitType.Airbase, tile) === false) return false;
   game.addExecution(new ConstructionExecution(player, UnitType.Airbase, tile));
   return true;

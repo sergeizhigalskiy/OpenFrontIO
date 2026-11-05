@@ -7,6 +7,7 @@ import { createNextLobby } from "../../Api";
 import { ClientEnv } from "../../ClientEnv";
 import "../../components/DoomsdayClockPanel";
 import "../../components/OvertimePanel";
+import "../../components/RisingTidePanel";
 import { Controller } from "../../Controller";
 import { isDesktopShell } from "../../DesktopShell";
 import { gamePortal } from "../../GamePortal";
@@ -467,6 +468,11 @@ export class GameRightSidebar extends LitElement implements Controller {
         .hasWinner=${this.hasWinner}
         .refreshKey=${this.timer}
       ></overtime-panel>
+      <rising-tide-panel
+        .game=${this.game}
+        .hasWinner=${this.hasWinner}
+        .refreshKey=${this.timer}
+      ></rising-tide-panel>
     `;
   }
 

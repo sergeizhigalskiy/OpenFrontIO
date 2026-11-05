@@ -207,6 +207,9 @@ export abstract class AiAttackBehavior {
         troops,
         this.player,
         target.isPlayer() ? target.id() : this.game.terraNullius().id(),
+        null,
+        true,
+        target.isPlayer() ? null : this.expansionFocusTile(),
       ),
     );
     return true;
@@ -326,6 +329,12 @@ export abstract class AiAttackBehavior {
   // Most troops an attack on free land may send
   protected expansionTroopCap(): number {
     return Infinity;
+  }
+
+  // Where a land attack on free land pushes first (a spearhead), or null to
+  // advance evenly: nations aim for high ground in rising tide.
+  protected expansionFocusTile(): TileRef | null {
+    return null;
   }
 
   protected boatRoute(target: Player): BoatRoute | null {

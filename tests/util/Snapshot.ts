@@ -158,6 +158,18 @@ const DERIVED_FIELDS = new Set<string>([
   "inBfs",
   // SharedWaterCache
   "playerWater",
+  // WaterManager: magnitude BFS scratch for water conversions. Visits are
+  // stamped, so a fresh buffer gives the same results as a used one.
+  "_waterDistArr",
+  "_waterStampArr",
+  "_waterStamp",
+  "_miniDistArr",
+  "_miniStampArr",
+  "_miniStamp",
+  // AbstractGraph: each edge's local path, cleared on every graph build. The
+  // minimap it is found on only changes with a rebuild (rising tide) or in
+  // the stale-graph window after a water nuke (snapshot/README, Known gaps).
+  "_pathCache",
   // Config / EngineConfig
   "unitInfoCache",
   "engineUnitInfoCache",

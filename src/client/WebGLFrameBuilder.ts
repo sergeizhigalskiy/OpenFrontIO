@@ -23,6 +23,7 @@ import {
 // Value import from the leaf module (not the ./render/gl barrel) so non-Vite
 // consumers don't pull in GPURenderer and its shaders — see note above.
 import type { CapitalMarker } from "./render/gl/passes/CapitalPass";
+import type { VolcanoMarker } from "./render/gl/passes/VolcanoPass";
 import {
   EFFECT_PALETTE_BLOCKS,
   MAX_TRAIL_COLORS,
@@ -156,6 +157,9 @@ export class WebGLFrameBuilder {
   private readonly lastSpawnTile = new Map<number, number>();
   /** The capitals last sent to the renderer (see syncCapitals). */
   private lastCapitalsKey = "";
+  /** Volcano and tide state versions last sent (see syncCataclysm). */
+  private lastVolcanoVersion = -1;
+  private lastTideVersion = -1;
   /** Skin atlas allocated once on first syncPlayers — player set is locked at game start. */
   private skinsInitialized = false;
   // The renderer needs to know which player is "me" so affiliation tint,
@@ -181,6 +185,8 @@ export class WebGLFrameBuilder {
     this.effectPalette.fill(0);
     this.lastSpawnTile.clear();
     this.lastCapitalsKey = "";
+    this.lastVolcanoVersion = -1;
+    this.lastTideVersion = -1;
     this.localPlayerSmallID = 0;
     this.skinsInitialized = false;
   }
@@ -243,6 +249,7 @@ export class WebGLFrameBuilder {
     this.syncLocalPlayer(gameView);
     this.syncSpawnOverlay(gameView);
     this.syncCapitals(gameView);
+    this.syncCataclysm(gameView);
     this.syncSmallPlayerGlow(gameView);
     this.syncTerrainDeltas(gameView);
     this.syncNukeImpacts(gameView);
@@ -451,6 +458,34 @@ export class WebGLFrameBuilder {
     if (key === this.lastCapitalsKey) return;
     this.lastCapitalsKey = key;
     this.view.updateCapitals(capitals);
+  }
+
+  /**
+   * Volcanoes and rising tide: the volcano sites (rumbling or not), the
+   * eruption glow, and the tiles the coming tide wave floods. Re-sent only
+   * when that state changes.
+   */
+  private syncCataclysm(gameView: GameView): void {
+    const config = gameView.config();
+    const cataclysm = gameView.cataclysm();
+    if (config.volcanoes()) {
+      for (const site of cataclysm.eruptedSites) {
+        this.view.volcanoErupted(gameView.x(site), gameView.y(site));
+      }
+      if (cataclysm.volcanoVersion !== this.lastVolcanoVersion) {
+        this.lastVolcanoVersion = cataclysm.volcanoVersion;
+        const markers: VolcanoMarker[] = cataclysm.volcanoSites.map((t) => ({
+          x: gameView.x(t),
+          y: gameView.y(t),
+          rumbling: t === cataclysm.rumblingSite,
+        }));
+        this.view.updateVolcanoes(markers);
+      }
+    }
+    if (config.risingTide() && cataclysm.tideVersion !== this.lastTideVersion) {
+      this.lastTideVersion = cataclysm.tideVersion;
+      this.view.updateTideWarning(cataclysm.tide?.warningTiles ?? []);
+    }
   }
 
   /**

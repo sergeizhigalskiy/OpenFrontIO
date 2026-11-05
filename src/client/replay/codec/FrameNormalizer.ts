@@ -82,6 +82,9 @@ const UPDATE_TYPE_ROUTING: Record<
   SpawnPhaseEnd: "events",
   GamePaused: "misc",
   DonateEvent: "misc",
+  // Volcano rings and tide warnings are live-only; the land they change is
+  // in the tile state.
+  Cataclysm: "dropped",
 };
 
 /**

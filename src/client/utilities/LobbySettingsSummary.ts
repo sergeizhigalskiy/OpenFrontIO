@@ -128,6 +128,16 @@ export function notableLobbySettings(
       label: translateText("game_settings.conventional_war"),
       value: enabled,
     });
+  if (c.volcanoes)
+    items.push({
+      label: translateText("game_settings.volcanoes"),
+      value: enabled,
+    });
+  if (c.risingTide)
+    items.push({
+      label: translateText("game_settings.rising_tide"),
+      value: enabled,
+    });
   if (c.waterNukes)
     items.push({
       label: translateText("game_settings.water_nukes"),

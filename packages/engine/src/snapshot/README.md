@@ -166,5 +166,7 @@ and that the original and restored games stay byte-identical tick by tick.
   rebuilds the graph from the current water, so a ship that asks for a new
   route inside that window can take a different one. The same applies to a
   ship still counting down its rebuild stagger (`WaterPathFinder.fromState`).
+  Rising tide floods rebuild the graph in the same tick
+  (`WaterManager.queueTile(tile, true)`), so a wave leaves no stale window.
 - Client-side state (GameView, renderer) is not stored. The client rebuilds
   from the restored game's first full update.

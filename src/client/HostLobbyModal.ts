@@ -124,6 +124,8 @@ export class HostLobbyModal extends BaseModal {
   @state() private allowedPublicIds: string = "";
   @state() private waterNukes: boolean = false;
   @state() private conventionalWar: boolean = false;
+  @state() private volcanoes: boolean = false;
+  @state() private risingTide: boolean = false;
   @state() private lobbyId = "";
   @state() private lobbyUrlSuffix = "";
   @state() private clients: ClientInfo[] = [];
@@ -775,6 +777,14 @@ export class HostLobbyModal extends BaseModal {
                     checked: this.conventionalWar,
                   },
                   {
+                    labelKey: "game_settings.volcanoes",
+                    checked: this.volcanoes,
+                  },
+                  {
+                    labelKey: "game_settings.rising_tide",
+                    checked: this.risingTide,
+                  },
+                  {
                     labelKey: "game_settings.doomsday_clock",
                     checked: this.doomsdayClock,
                     doomsdayClockSpeed: this.doomsdayClockSpeed,
@@ -1135,6 +1145,8 @@ export class HostLobbyModal extends BaseModal {
     this.allowedPublicIds = "";
     this.waterNukes = false;
     this.conventionalWar = false;
+    this.volcanoes = false;
+    this.risingTide = false;
     this.hostCheatsEnabled = false;
     this.hostCheatInfiniteGold = false;
     this.hostCheatInfiniteTroops = false;
@@ -1240,6 +1252,14 @@ export class HostLobbyModal extends BaseModal {
         break;
       case "game_settings.conventional_war":
         this.conventionalWar = checked;
+        void this.putGameConfig();
+        break;
+      case "game_settings.volcanoes":
+        this.volcanoes = checked;
+        void this.putGameConfig();
+        break;
+      case "game_settings.rising_tide":
+        this.risingTide = checked;
         void this.putGameConfig();
         break;
       case "game_settings.doomsday_clock":
@@ -1775,6 +1795,8 @@ export class HostLobbyModal extends BaseModal {
       customAllianceMinutes: this.customAllianceMinutes,
       waterNukes: this.waterNukes,
       conventionalWar: this.conventionalWar,
+      volcanoes: this.volcanoes,
+      risingTide: this.risingTide,
       doomsdayClock: this.doomsdayClock,
       doomsdayClockSpeed: this.doomsdayClockSpeed,
       overtime: this.overtime,
@@ -1823,6 +1845,8 @@ export class HostLobbyModal extends BaseModal {
     this.customAllianceMinutes = config.customAllianceMinutes;
     this.waterNukes = config.waterNukes ?? false;
     this.conventionalWar = config.conventionalWar ?? false;
+    this.volcanoes = config.volcanoes ?? false;
+    this.risingTide = config.risingTide ?? false;
     this.doomsdayClock = config.doomsdayClock ?? false;
     this.doomsdayClockSpeed = config.doomsdayClockSpeed ?? "normal";
     this.overtime = config.overtime ?? false;
@@ -2012,6 +2036,8 @@ export class HostLobbyModal extends BaseModal {
               : [],
             waterNukes: this.waterNukes ? true : null,
             conventionalWar: this.conventionalWar,
+            volcanoes: this.volcanoes,
+            risingTide: this.risingTide,
             hostCheats: this.hostCheatsEnabled
               ? {
                   infiniteGold: this.hostCheatInfiniteGold || undefined,

@@ -300,7 +300,8 @@ export class GameImpl implements Game {
     if (value && this.hasOwner(tile)) {
       throw Error(`cannot set fallout, tile ${tile} has owner`);
     }
-    if (this._map.hasFallout(tile)) {
+    // No change: also lets setFallout(tile, false) clear fallout (volcanoes).
+    if (this._map.hasFallout(tile) === value) {
       return;
     }
     this._territoryVersion++;
@@ -324,16 +325,16 @@ export class GameImpl implements Game {
     this.recordTileUpdate(tile);
   }
 
-  queueWaterConversion(tile: TileRef): void {
+  queueWaterConversion(tile: TileRef, flood = false): void {
     if (!this.isLand(tile)) return;
     if (this.hasOwner(tile)) {
       throw Error(`cannot queue water conversion, tile ${tile} has owner`);
     }
-    if (!this._config.waterNukes()) {
+    if (!flood && !this._config.waterNukes()) {
       this.setFallout(tile, true);
       return;
     }
-    this._waterManager.queueTile(tile);
+    this._waterManager.queueTile(tile, flood);
   }
 
   queueNukeImpact(tile: TileRef): void {
@@ -594,6 +595,7 @@ export class GameImpl implements Game {
         startTick: this.startTick,
       });
     }
+    for (const exec of this.execs) exec.viewResync?.();
   }
 
   ticks(): number {

@@ -87,6 +87,13 @@ export const SpawnAreaSchema = z.strictObject({
   height: z.int().positive(),
 });
 
+export const VolcanoSiteSchema = z
+  .strictObject({
+    x: z.int().nonnegative(),
+    y: z.int().nonnegative(),
+  })
+  .describe("Volcano tile position. Origin is top-left; y extends down.");
+
 export const CustomTribeSchema = z.union([
   z.string().min(1),
   z.strictObject({
@@ -174,6 +181,14 @@ const mapInfoShape = {
       message: "layer ids must be unique",
     })
     .optional(),
+  volcanoes: z
+    .array(VolcanoSiteSchema)
+    .min(1)
+    .max(4) // engine-lib VOLCANO_MAX_SITES
+    .optional()
+    .describe(
+      "Volcano sites for the Volcanoes modifier, used instead of auto-placement.",
+    ),
 };
 
 // Map picker metadata; the generator keeps it out of manifest.json.
@@ -244,6 +259,15 @@ export const MapManifestSchema = z
         }
       });
     }
+    (manifest.volcanoes ?? []).forEach((site, i) => {
+      if (!inBounds([site.x, site.y])) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["volcanoes", i],
+          message: `outside the ${width}x${height} map`,
+        });
+      }
+    });
     for (const [teams, areas] of Object.entries(
       manifest.teamGameSpawnAreas ?? {},
     )) {
@@ -264,4 +288,5 @@ export type MapMetadata = z.infer<typeof MapMetadataSchema>;
 export type Nation = z.infer<typeof NationSchema>;
 export type AdditionalNation = Nation;
 export type MapLayer = z.infer<typeof MapLayerSchema>;
+export type VolcanoSite = z.infer<typeof VolcanoSiteSchema>;
 export type LayerPlacement = MapLayer["placement"];
