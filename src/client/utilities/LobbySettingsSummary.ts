@@ -190,6 +190,12 @@ export function notableLobbySettings(
       label: translateText("game_settings.water_nukes"),
       value: enabled,
     });
+  // On by default, so only turning them off is worth surfacing.
+  if (c.resourceSites === false)
+    items.push({
+      label: translateText("game_settings.resource_sites"),
+      value: disabled,
+    });
   if (c.doomsdayClock?.enabled)
     items.push({
       label: translateText("game_settings.doomsday_clock"),

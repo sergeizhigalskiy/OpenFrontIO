@@ -45,6 +45,8 @@ test("world map nations: trade ships and trains round-trip", async () => {
   const nations = loadWorldNations();
   const game = await setup(
     "world",
+    // Impossible nations dig canals here, so trade ships re-plan after the
+    // water graph rebuilds; their motion plans must still match.
     { difficulty: Difficulty.Impossible },
     [],
     undefined,

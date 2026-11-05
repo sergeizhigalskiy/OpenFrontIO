@@ -252,6 +252,9 @@ export class TransportShipExecution implements Execution {
     }
 
     const result = this.pathFinder.next(this.boat.tile(), this.dst);
+    // A rebuild that landed inside next() already re-routed this step: plan
+    // it now, not a tick late (the view would trail the boat by one step).
+    if (this.pathFinder.takeRebuilt()) this.motionPlanDst = null;
     switch (result.status) {
       case PathStatus.COMPLETE:
         if (this.mg.owner(this.dst) === this.attacker) {
@@ -317,12 +320,14 @@ export class TransportShipExecution implements Execution {
 
     if (this.dst !== null && this.dst !== this.motionPlanDst) {
       this.motionPlanId++;
-      const fullPath = this.pathFinder.findPath(this.boat.tile(), this.dst) ?? [
+      // The route next() is following, from the tile it just moved to, as
+      // the trade ship records it. A fresh one-shot query from here can break
+      // a tie between equal routes differently (after a water graph rebuild,
+      // say), and the view would then follow a path the boat doesn't take.
+      const fullPath = this.pathFinder.pathForTraversal(
         this.boat.tile(),
-      ];
-      if (fullPath.length === 0 || fullPath[0] !== this.boat.tile()) {
-        fullPath.unshift(this.boat.tile());
-      }
+        this.dst,
+      );
 
       this.mg.recordMotionPlan({
         kind: "grid",

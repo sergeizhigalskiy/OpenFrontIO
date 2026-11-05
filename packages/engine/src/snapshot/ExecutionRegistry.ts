@@ -7,6 +7,7 @@ import { AllianceRequestExecutionSnapshot } from "../execution/alliance/Alliance
 import { BreakAllianceExecutionSnapshot } from "../execution/alliance/BreakAllianceExecution";
 import { AttackExecutionSnapshot } from "../execution/AttackExecution";
 import { BoatRetreatExecutionSnapshot } from "../execution/BoatRetreatExecution";
+import { CanalExecutionSnapshot } from "../execution/CanalExecution";
 import { CityExecutionSnapshot } from "../execution/CityExecution";
 import { CityStateExecutionSnapshot } from "../execution/CityStateExecution";
 import { CoastalBatteryExecutionSnapshot } from "../execution/CoastalBatteryExecution";
@@ -42,6 +43,7 @@ import { PlayerExecutionSnapshot } from "../execution/PlayerExecution";
 import { PortExecutionSnapshot } from "../execution/PortExecution";
 import { QuickChatExecutionSnapshot } from "../execution/QuickChatExecution";
 import { RecomputeRailClusterExecutionSnapshot } from "../execution/RecomputeRailClusterExecution";
+import { ResourceSiteExecutionSnapshot } from "../execution/ResourceSiteExecution";
 import { RetreatExecutionSnapshot } from "../execution/RetreatExecution";
 import { RisingTideExecutionSnapshot } from "../execution/RisingTideExecution";
 import { RuinsExecutionSnapshot } from "../execution/RuinsExecution";
@@ -131,4 +133,6 @@ export const EXECUTION_SNAPSHOT_TYPES = [
   WarshipExecutionSnapshot,
   WeatherExecutionSnapshot,
   WinCheckExecutionSnapshot,
+  CanalExecutionSnapshot,
+  ResourceSiteExecutionSnapshot,
 ] as unknown as readonly ExecutionSnapshotType<unknown>[];

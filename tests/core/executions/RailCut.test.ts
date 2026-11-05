@@ -123,6 +123,20 @@ describe("rail cuts", () => {
     expect(cuts[0][4]).toEqual({ name: enemy.displayName() });
   });
 
+  it("a canal dug under the line doesn't cut it", async () => {
+    const { game, bc } = await railFixture();
+    game.addExecution(new RecomputeRailClusterExecution(game.railNetwork()));
+    // What CanalExecution does to each path tile: let it go, then dig it.
+    const tile = game.ref(30, Y);
+    game.player("owner").relinquish(tile);
+    game.queueWaterConversion(tile, true);
+    const events = cutEvents(game, RAIL_CUT_CHECK_INTERVAL * 3);
+    expect(game.isWater(tile)).toBe(true);
+    // Land falling to nobody is no capture: the line stays live.
+    expect(bc.isCut()).toBe(false);
+    expect(events).toEqual([]);
+  });
+
   it("heals and reconnects the line once the owner retakes the tile", async () => {
     const { game, owner, enemy, a, b, c, bc } = await railFixture();
     game.addExecution(new RecomputeRailClusterExecution(game.railNetwork()));

@@ -17,6 +17,7 @@ import {
   bossGoldIncomePercent,
   isBossRaidBoss,
 } from "@openfront/engine-lib/game/BossRaid";
+import { CANAL_COST_PER_TILE } from "@openfront/engine-lib/game/Canal";
 import {
   AIRDROP_COST,
   BALLISTIC_MISSILE_COST,
@@ -373,6 +374,10 @@ export class EngineConfig extends Config {
       case UnitType.Train:
       case UnitType.Convoy:
         return () => 0n;
+      case UnitType.Canal:
+        // Per step of length: a canal is charged this times its length
+        // (see engine/game/Canal.ts canalPrice).
+        return this.costWrapper(() => CANAL_COST_PER_TILE, UnitType.Canal);
       default:
         assertNever(type);
     }
@@ -568,6 +573,13 @@ export class EngineConfig extends Config {
     const rate = BigInt(Math.floor(Number(baseRate) * multiplier));
     if (bonusPercent <= 0) return rate;
     return (rate * BigInt(100 + Math.floor(bonusPercent))) / 100n;
+  }
+
+  /** What a resource site paying `goldPerTick` gives `player` per tick. */
+  resourceSiteGold(player: PlayerLike, goldPerTick: Gold): Gold {
+    return BigInt(
+      Math.floor(Number(goldPerTick) * this.goldMultiplierFor(player)),
+    );
   }
 
   nukeSpeed(unitType: UnitType): number {

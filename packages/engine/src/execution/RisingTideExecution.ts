@@ -152,7 +152,7 @@ export class RisingTideExecution implements Execution {
         troopsLostWithLand(player.troops(), tilesBefore.get(player)!, lost),
       );
     }
-    for (const tile of flooded) mg.queueWaterConversion(tile, true);
+    for (const tile of flooded) mg.queueWaterConversion(tile, true, true);
     return flooded.size;
   }
 

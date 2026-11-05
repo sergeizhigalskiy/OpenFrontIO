@@ -220,6 +220,7 @@
       "airstrike": "Bomber: destroys military structures and kills troops",
       "atom_bomb": "Small explosion",
       "ballistic_missile": "Destroys every structure in a wide area",
+      "canal": "Dig a two-tile water channel across a land neck of 12 tiles or less. Ready in 60 s.",
       "city": "Increases max population",
       "cluster_missile": "Splits into 8 warheads aimed at enemy structures",
       "coastal_battery": "Shore gun that shells enemy ships in range",
@@ -242,6 +243,14 @@
     "not_enough_money": "Not enough money",
     "upgrade_amount": "x{amount}",
     "warship_shift_hint": "Hold Shift and drag to select multiple warships at once"
+  },
+  "canal": {
+    "already_connected": "These waters are already joined nearby",
+    "already_digging": "You are already digging this canal",
+    "has_structure": "Your buildings are in the way",
+    "no_neck": "No land neck of 12 tiles or less with water on both sides",
+    "not_land": "Pick a land tile",
+    "not_owned": "You must own every tile of the path"
   },
   "change_username_modal": {
     "title": "Change Username",
@@ -955,6 +964,8 @@
     "betrayal_debuff_ends": "{time} seconds left until betrayal debuff ends",
     "betrayal_description": "You broke your alliance with {name}, making you a TRAITOR ({malusPercent}% defense debuff for {durationText})",
     "betrayed_you": "{name} broke their alliance with you",
+    "canal_cancelled": "Canal construction cancelled: you lost land on its path",
+    "canal_complete": "Your canal is finished",
     "capital_captured": "You captured the capital of {name} and seized {gold} gold",
     "capital_lost": "{name} captured your capital: you lost {troops} troops and {gold} gold",
     "capital_lost_no_penalty": "{name} captured your capital again",
@@ -1129,6 +1140,7 @@
     "overtime": "Overtime after (minutes)",
     "plague": "Zombie plague",
     "random_spawn": "Random spawn",
+    "resource_sites": "Resource sites",
     "rising_tide": "Rising tide",
     "ruins": "Ruins",
     "seasons": "Seasons",
@@ -1525,6 +1537,8 @@
     "goldIncomePerMin": "Gold Income/min",
     "launchers": "Launchers",
     "maxtroops": "Max Troops",
+    "mineGoldPerMin": "Mine Gold/min",
+    "mines": "Mines",
     "owned": "Owned",
     "piracyGoldPerMin": "Piracy Gold/min",
     "player": "Player",
@@ -2405,6 +2419,12 @@
     "body": "A person who you recently reported has been banned, thanks for keeping openfront a safer and more enjoyable place",
     "heading": "Thank you"
   },
+  "resource_sites": {
+    "gold_mine": "Gold mine",
+    "held_by": "Held by {name}",
+    "income": "+{gold} gold/s to its holder",
+    "unclaimed": "Unclaimed: take its land to hold it"
+  },
   "reward_track": {
     "after_level": "After level {level}",
     "caps_amount": "{amount} Caps",
@@ -2868,6 +2888,7 @@
     "atom_bomb": "Atom Bomb",
     "ballistic_missile": "Ballistic Missile",
     "boat": "Boat",
+    "canal": "Canal",
     "city": "City",
     "cluster_missile": "Cluster Missile",
     "cluster_warhead": "Cluster Warhead",

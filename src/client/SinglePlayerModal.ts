@@ -173,6 +173,7 @@ const DEFAULT_OPTIONS = {
   risingTide: false,
   seasons: true,
   weather: true,
+  resourceSites: true,
   doomsdayClock: false,
   doomsdayClockSpeed: "normal" as DoomsdayClockSpeed,
   overtime: false,
@@ -275,6 +276,7 @@ export class SinglePlayerModal extends BaseModal {
   @state() private risingTide: boolean = DEFAULT_OPTIONS.risingTide;
   @state() private seasons: boolean = DEFAULT_OPTIONS.seasons;
   @state() private weather: boolean = DEFAULT_OPTIONS.weather;
+  @state() private resourceSites: boolean = DEFAULT_OPTIONS.resourceSites;
   @state() private doomsdayClock: boolean = DEFAULT_OPTIONS.doomsdayClock;
   @state() private doomsdayClockSpeed: DoomsdayClockSpeed =
     DEFAULT_OPTIONS.doomsdayClockSpeed;
@@ -703,6 +705,10 @@ export class SinglePlayerModal extends BaseModal {
                     checked: this.weather,
                   },
                   {
+                    labelKey: "game_settings.resource_sites",
+                    checked: this.resourceSites,
+                  },
+                  {
                     labelKey: "game_settings.doomsday_clock",
                     checked: this.doomsdayClock,
                     doomsdayClockSpeed: this.doomsdayClockSpeed,
@@ -784,6 +790,7 @@ export class SinglePlayerModal extends BaseModal {
       this.risingTide !== DEFAULT_OPTIONS.risingTide ||
       this.seasons !== DEFAULT_OPTIONS.seasons ||
       this.weather !== DEFAULT_OPTIONS.weather ||
+      this.resourceSites !== DEFAULT_OPTIONS.resourceSites ||
       this.doomsdayClock !== DEFAULT_OPTIONS.doomsdayClock ||
       // Pace only matters when the mode is on (startGame drops it when off).
       (this.doomsdayClock &&
@@ -928,6 +935,7 @@ export class SinglePlayerModal extends BaseModal {
     this.risingTide = DEFAULT_OPTIONS.risingTide;
     this.seasons = DEFAULT_OPTIONS.seasons;
     this.weather = DEFAULT_OPTIONS.weather;
+    this.resourceSites = DEFAULT_OPTIONS.resourceSites;
     this.doomsdayClock = DEFAULT_OPTIONS.doomsdayClock;
     this.doomsdayClockSpeed = DEFAULT_OPTIONS.doomsdayClockSpeed;
     this.overtime = DEFAULT_OPTIONS.overtime;
@@ -984,6 +992,7 @@ export class SinglePlayerModal extends BaseModal {
       risingTide: this.risingTide,
       seasons: this.seasons,
       weather: this.weather,
+      resourceSites: this.resourceSites,
       doomsdayClock: this.doomsdayClock,
       doomsdayClockSpeed: this.doomsdayClockSpeed,
       overtime: this.overtime,
@@ -1023,6 +1032,7 @@ export class SinglePlayerModal extends BaseModal {
     this.risingTide = config.risingTide ?? false;
     this.seasons = config.seasons ?? true;
     this.weather = config.weather ?? true;
+    this.resourceSites = config.resourceSites ?? true;
     this.doomsdayClock = config.doomsdayClock ?? false;
     this.doomsdayClockSpeed = config.doomsdayClockSpeed ?? "normal";
     this.overtime = config.overtime ?? false;
@@ -1271,6 +1281,9 @@ export class SinglePlayerModal extends BaseModal {
         break;
       case "game_settings.weather":
         this.weather = checked;
+        break;
+      case "game_settings.resource_sites":
+        this.resourceSites = checked;
         break;
       case "game_settings.doomsday_clock":
         this.doomsdayClock = checked;
@@ -1651,6 +1664,7 @@ export class SinglePlayerModal extends BaseModal {
             // On when absent, so only an opt-out is sent.
             ...(this.seasons ? {} : { seasons: false }),
             ...(this.weather ? {} : { weather: false }),
+            resourceSites: this.resourceSites,
             ...(this.doomsdayClock
               ? {
                   doomsdayClock: {

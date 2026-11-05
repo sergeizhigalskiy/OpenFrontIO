@@ -25,6 +25,7 @@ import {
 import { simpleHash } from "@openfront/engine-lib/Util";
 import { z } from "zod";
 import { Execution, Game, Player } from "../game/Game";
+import { cityStateZones, overlapsZone } from "../game/StartPlacements";
 import { execSnapshotType } from "../snapshot/ExecutionSnapshot";
 import type {
   ExecRecord,
@@ -36,6 +37,11 @@ import type {
 const volcanoes = new WeakMap<Game, VolcanoExecution>();
 
 /** True while a site rumbles and `tile` is inside its warning ring. */
+/** The game's volcano sites; empty without volcanoes or before tick 0. */
+export function volcanoSitesOf(game: Game): readonly TileRef[] {
+  return volcanoes.get(game)?.siteTiles() ?? [];
+}
+
 export function inVolcanoWarning(game: Game, tile: TileRef): boolean {
   return volcanoes.get(game)?.inWarningRing(tile) ?? false;
 }
@@ -81,7 +87,11 @@ export class VolcanoExecution implements Execution {
 
   init(mg: Game, ticks: number): void {
     this.mg = mg;
-    this.sites = selectVolcanoSites(mg.map(), this.manualSites);
+    // City-states came first: no warning ring reaches one (StartPlacements).
+    const cityStates = cityStateZones(mg);
+    this.sites = selectVolcanoSites(mg.map(), this.manualSites, (tile) =>
+      overlapsZone(mg, cityStates, tile, VOLCANO_WARNING_RADIUS),
+    );
     volcanoes.set(mg, this);
     this.emit(null);
   }
@@ -102,6 +112,10 @@ export class VolcanoExecution implements Execution {
     if (ticks >= this.nextRumbleTick && this.sites.length > 0) {
       this.rumble(mg, ticks);
     }
+  }
+
+  siteTiles(): readonly TileRef[] {
+    return this.sites;
   }
 
   inWarningRing(tile: TileRef): boolean {

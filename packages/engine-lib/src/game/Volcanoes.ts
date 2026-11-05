@@ -70,18 +70,20 @@ export function volcanoSiteCount(numLandTiles: number): number {
  * VOLCANO_PEAK_RADIUS) at least VOLCANO_MIN_SITE_SPACING from every site taken
  * so far, until volcanoSiteCount sites are placed. A map with no mountains
  * uses its highest land instead. Pure integer work over the terrain, so every
- * client picks the same sites.
+ * client picks the same sites. `blocked` skips a site (the engine keeps
+ * volcano rings off city-states, see engine/game/StartPlacements.ts).
  */
 export function selectVolcanoSites(
   map: GameMap,
   manual?: readonly VolcanoSitePosition[] | null,
+  blocked: (tile: TileRef) => boolean = () => false,
 ): TileRef[] {
   if (manual !== undefined && manual !== null && manual.length > 0) {
     const sites: TileRef[] = [];
     for (const { x, y } of manual) {
       if (!map.isValidCoord(x, y)) continue;
       const tile = map.ref(x, y);
-      if (sites.includes(tile)) continue;
+      if (sites.includes(tile) || blocked(tile)) continue;
       sites.push(tile);
       if (sites.length === VOLCANO_MAX_SITES) break;
     }
@@ -131,7 +133,9 @@ export function selectVolcanoSites(
         break;
       }
     }
-    if (farEnough && isLocalHighPoint(map, tile)) sites.push(tile);
+    if (farEnough && !blocked(tile) && isLocalHighPoint(map, tile)) {
+      sites.push(tile);
+    }
   }
   return sites;
 }

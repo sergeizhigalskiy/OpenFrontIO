@@ -33,7 +33,9 @@ import type {
 } from "../types";
 import type { MapViewSource } from "./camera/MapViewSource";
 import type { BlockadeMarker } from "./passes/BlockadePass";
+import type { CanalMarker } from "./passes/CanalPass";
 import type { CapitalMarker } from "./passes/CapitalPass";
+import type { ResourceSiteMarker } from "./passes/ResourceSitePass";
 import type { RuinMarker } from "./passes/RuinsPass";
 import type { SpawnCenter } from "./passes/SpawnOverlayPass";
 import type { VolcanoMarker } from "./passes/VolcanoPass";
@@ -368,6 +370,21 @@ export class MapRenderer {
   /** The blockaded ports to ring (see BlockadePass). */
   updateBlockades(ports: BlockadeMarker[]): void {
     this.renderer?.updateBlockades(ports);
+  }
+
+  /** The resource sites to draw. */
+  updateResourceSites(sites: ResourceSiteMarker[]): void {
+    this.renderer?.updateResourceSites(sites);
+  }
+
+  /** The canals being dug. */
+  updateCanals(canals: CanalMarker[]): void {
+    this.renderer?.updateCanals(canals);
+  }
+
+  /** The canal build preview's path under the cursor, or null. */
+  updateCanalGhost(ghost: CanalMarker | null): void {
+    this.renderer?.updateCanalGhost(ghost);
   }
 
   /** Set the small-player glow set (1 byte per owner smallID), or null = off. */

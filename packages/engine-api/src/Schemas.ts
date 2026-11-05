@@ -394,6 +394,10 @@ export const GameConfigSchema = z.object({
   // Weather systems: mud fronts, sea storms and fog drifting over the map
   // (see engine-lib/game/Weather.ts). On when absent.
   weather: z.boolean().optional(),
+  // Resource sites: gold mines placed at game start that pay whoever holds
+  // their tile (see engine-lib/game/ResourceSites.ts). Off when absent, so
+  // older records replay unchanged; the lobbies and GameManager turn it on.
+  resourceSites: z.boolean().optional(),
 });
 
 // What a host sends in update_game_config. maxPlayers is the private-lobby

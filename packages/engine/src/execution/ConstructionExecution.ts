@@ -21,6 +21,7 @@ import type {
 } from "../snapshot/SnapshotContext";
 import { AirbaseExecution } from "./AirbaseExecution";
 import { AirMissionExecution } from "./AirMissionExecution";
+import { CanalExecution } from "./CanalExecution";
 import { CityExecution } from "./CityExecution";
 import { CoastalBatteryExecution } from "./CoastalBatteryExecution";
 import { DefensePostExecution } from "./DefensePostExecution";
@@ -226,6 +227,10 @@ export class ConstructionExecution implements Execution {
         break;
       case UnitType.Factory:
         this.mg.addExecution(new FactoryExecution(this.structure!));
+        break;
+      case UnitType.Canal:
+        // CanalExecution finds the path, validates and charges for it.
+        this.mg.addExecution(new CanalExecution(player, this.tile));
         break;
       default:
         console.warn(

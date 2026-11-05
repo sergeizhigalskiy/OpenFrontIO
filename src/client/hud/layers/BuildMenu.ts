@@ -27,6 +27,7 @@ import {
 import { UIState } from "../../UIState";
 import { GameView } from "../../view";
 import { airOrderExtras, droneSwarmSlider } from "./AirOrders";
+import { canalBlockedText } from "./CanalMenu";
 import {
   chosenMinefieldDensity,
   displayedCost,
@@ -56,6 +57,8 @@ const clusterMissileIcon = assetUrl("images/ClusterMissileIconWhite.svg");
 const droneIcon = assetUrl("images/DroneIconWhite.svg");
 // An existing icon: the build hammer, for a field workshop.
 const siegeCampIcon = assetUrl("images/BuildIconWhite.svg");
+// Canals open routes for ships.
+const canalIcon = assetUrl("images/BoatIconWhite.svg");
 
 export interface BuildItemDisplay {
   unitType: PlayerBuildableUnitType;
@@ -214,6 +217,13 @@ const buildTable: BuildItemDisplay[][] = [
       description: "build_menu.desc.factory",
       key: "unit_type.factory",
       countable: true,
+    },
+    {
+      unitType: UnitType.Canal,
+      icon: canalIcon,
+      description: "build_menu.desc.canal",
+      key: "unit_type.canal",
+      countable: false,
     },
   ],
 ];
@@ -543,6 +553,11 @@ export class BuildMenu extends LitElement implements Controller {
                   return html``;
                 }
                 const enabled = this.canBuildOrUpgrade(item);
+                // A canal says why it can't be dug here instead.
+                const blocked =
+                  item.unitType === UnitType.Canal && this.game
+                    ? canalBlockedText(this.game, this.clickedTile)
+                    : null;
                 return html`
                   <button
                     class="build-button"
@@ -551,7 +566,8 @@ export class BuildMenu extends LitElement implements Controller {
                     ?disabled=${!enabled}
                     title=${
                       !enabled
-                        ? translateText("build_menu.not_enough_money")
+                        ? (blocked ??
+                          translateText("build_menu.not_enough_money"))
                         : ""
                     }
                   >
@@ -566,7 +582,8 @@ export class BuildMenu extends LitElement implements Controller {
                     </span>
                     <span class="build-description"
                       >${
-                        item.description && translateText(item.description)
+                        blocked ??
+                        (item.description && translateText(item.description))
                       }</span
                     >
                     <span class="build-cost" translate="no">

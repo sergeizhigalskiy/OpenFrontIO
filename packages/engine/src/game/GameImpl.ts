@@ -376,16 +376,20 @@ export class GameImpl implements Game {
     this.recordTileUpdate(tile);
   }
 
-  queueWaterConversion(tile: TileRef, flood = false): void {
+  queueWaterConversion(
+    tile: TileRef,
+    evenWithoutWaterNukes = false,
+    rebuildGraphNow = false,
+  ): void {
     if (!this.isLand(tile)) return;
     if (this.hasOwner(tile)) {
       throw Error(`cannot queue water conversion, tile ${tile} has owner`);
     }
-    if (!flood && !this._config.waterNukes()) {
+    if (!evenWithoutWaterNukes && !this._config.waterNukes()) {
       this.setFallout(tile, true);
       return;
     }
-    this._waterManager.queueTile(tile, flood);
+    this._waterManager.queueTile(tile, rebuildGraphNow);
   }
 
   queueNukeImpact(tile: TileRef): void {

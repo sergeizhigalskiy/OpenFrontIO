@@ -257,6 +257,10 @@ export enum UnitType {
   // defense posts near it give attacks by its owner and their friends a
   // smaller bonus (see engine-lib/game/Siege.ts). In every game mode.
   SiegeCamp = "Siege Camp",
+  // A canal under construction across a land neck (see CanalExecution and
+  // engine-lib/game/Canal.ts). Its tile and targetTile are the two ends of
+  // the path; the path turns into water when it is done.
+  Canal = "Canal",
 }
 
 export enum TrainType {
@@ -304,6 +308,8 @@ export const BuildMenus = unitTypeGroup([
   // rules (captured with the tile, removed off owned land) don't apply.
   UnitType.Minefield,
   ...BuildableAttacks.types,
+  // Not a structure either: it digs water out of its builder's own land.
+  UnitType.Canal,
 ] as const);
 
 export const PlayerBuildable = unitTypeGroup([

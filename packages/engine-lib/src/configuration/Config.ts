@@ -9,6 +9,7 @@ import {
 import { PlayerLike } from "@openfront/engine-api/game/ReadViews";
 import { GameConfig } from "@openfront/engine-api/Schemas";
 import { pow } from "../DetMath";
+import { CANAL_CONSTRUCTION_TICKS } from "../game/Canal";
 import {
   attackLogic,
   AttackLogicInput,
@@ -299,6 +300,11 @@ export class Config implements AttackRules {
     return this.seasonsEnabled() && isWinterAt(ticksSinceStart);
   }
 
+  /** Gold mines on the map (see game/ResourceSites.ts). Off when absent. */
+  resourceSites(): boolean {
+    return this._gameConfig.resourceSites ?? false;
+  }
+
   isUnitDisabled(unitType: UnitType): boolean {
     // The mode decides first: air units exist only in conventional war, and
     // conventional war has no nukes. disabledUnits can still turn more off.
@@ -438,6 +444,13 @@ export class Config implements AttackRules {
       case UnitType.Train:
       case UnitType.Convoy:
         info = {};
+        break;
+      case UnitType.Canal:
+        info = {
+          constructionDuration: this.instantBuild()
+            ? 0
+            : CANAL_CONSTRUCTION_TICKS,
+        };
         break;
       default:
         assertNever(type);

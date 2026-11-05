@@ -35,6 +35,7 @@ import { Executor } from "./execution/ExecutionManager";
 import { HordeNightExecution } from "./execution/HordeNightExecution";
 import { PlagueExecution } from "./execution/PlagueExecution";
 import { RecomputeRailClusterExecution } from "./execution/RecomputeRailClusterExecution";
+import { ResourceSiteExecution } from "./execution/ResourceSiteExecution";
 import { RisingTideExecution } from "./execution/RisingTideExecution";
 import { RuinsExecution } from "./execution/RuinsExecution";
 import { SpawnTimerExecution } from "./execution/SpawnTimerExecution";
@@ -242,6 +243,11 @@ export class GameRunner {
     if (!this.game.config().isUnitDisabled(UnitType.Factory)) {
       this.game.addExecution(
         new RecomputeRailClusterExecution(this.game.railNetwork()),
+      );
+    }
+    if (this.game.config().resourceSites()) {
+      this.game.addExecution(
+        new ResourceSiteExecution(this.execManager.gameID()),
       );
     }
   }

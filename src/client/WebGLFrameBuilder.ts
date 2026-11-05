@@ -20,6 +20,7 @@ import {
 } from "@openfront/shared/CosmeticSchemas";
 import { colord } from "colord";
 import { getCachedCosmetics } from "./Cosmetics";
+import { EconomyOverlaySync } from "./EconomyOverlaySync";
 import { buildTerrainRowSpans } from "./render/frame/derive/TerrainRowSpans";
 import { infectedPulseColor } from "./render/frame/InfectedPulse";
 import { uploadFrameData } from "./render/frame/Upload";
@@ -182,6 +183,8 @@ export class WebGLFrameBuilder {
   /** The blockaded ports last sent to the renderer (see syncBlockades). */
   private lastBlockadesKey = "";
   private lastBlockadeScanTick = -Infinity;
+  /** Resource sites and canal digs (see EconomyOverlaySync). */
+  private readonly economy = new EconomyOverlaySync();
   /** Skin atlas allocated once on first syncPlayers — player set is locked at game start. */
   private skinsInitialized = false;
   // The renderer needs to know which player is "me" so affiliation tint,
@@ -213,6 +216,7 @@ export class WebGLFrameBuilder {
     this.lastFogHiddenKey = "";
     this.lastBlockadesKey = "";
     this.lastBlockadeScanTick = -Infinity;
+    this.economy.clear();
     this.localPlayerSmallID = 0;
     this.skinsInitialized = false;
   }
@@ -280,6 +284,7 @@ export class WebGLFrameBuilder {
     this.syncCataclysm(gameView);
     this.syncWeather(gameView);
     this.syncBlockades(gameView);
+    this.economy.sync(gameView, this.view);
     this.syncSmallPlayerGlow(gameView);
     this.syncTerrainDeltas(gameView);
     this.syncNukeImpacts(gameView);

@@ -126,6 +126,7 @@ describe("TradeShipExecution", () => {
       next: vi.fn(() => ({ status: PathStatus.NEXT, node: 32 })),
       findPath: vi.fn((from: number) => [from]),
       pathForTraversal: vi.fn(() => [32]),
+      takeRebuilt: vi.fn(() => false),
     } as any;
     tradeShipExecution["tradeShip"] = tradeShip;
   });
@@ -183,6 +184,7 @@ describe("TradeShipExecution", () => {
       next: vi.fn(() => ({ status: PathStatus.COMPLETE, node: 32 })),
       findPath: vi.fn((from: number) => [from]),
       pathForTraversal: vi.fn(() => [32]),
+      takeRebuilt: vi.fn(() => false),
     } as any;
     tradeShipExecution.tick(1);
     expect(tradeShip.delete).toHaveBeenCalledWith(false);
@@ -205,6 +207,7 @@ describe("TradeShipExecution", () => {
       next: vi.fn(() => ({ status: PathStatus.COMPLETE, node: 32 })),
       findPath: vi.fn((from: number) => [from]),
       pathForTraversal: vi.fn(() => [32]),
+      takeRebuilt: vi.fn(() => false),
     } as any;
     tradeShipExecution.tick(1);
     expect(pirate.addGold).toHaveBeenCalled();

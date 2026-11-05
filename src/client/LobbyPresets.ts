@@ -53,6 +53,7 @@ export const LobbyPresetConfigSchema = z.object({
   plague: z.boolean().optional(),
   seasons: z.boolean().optional(),
   weather: z.boolean().optional(),
+  resourceSites: z.boolean().optional(),
   doomsdayClock: z.boolean().optional(),
   doomsdayClockSpeed: z.enum(DOOMSDAY_CLOCK_SPEEDS).optional(),
   overtime: z.boolean().optional(),

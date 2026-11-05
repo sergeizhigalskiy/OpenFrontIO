@@ -15,10 +15,12 @@ import { Config } from "@openfront/engine-lib/configuration/Config";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { CAMERA_INCLUDE } from "../../../../src/client/render/gl/camera/CameraBlock";
 import { BlockadePass } from "../../../../src/client/render/gl/passes/BlockadePass";
+import { CanalPass } from "../../../../src/client/render/gl/passes/CanalPass";
 import { CapitalPass } from "../../../../src/client/render/gl/passes/CapitalPass";
 import { DefenseCoveragePass } from "../../../../src/client/render/gl/passes/DefenseCoveragePass";
 import { RailroadPass } from "../../../../src/client/render/gl/passes/RailroadPass";
 import { ReloadBarPass } from "../../../../src/client/render/gl/passes/ReloadBarPass";
+import { ResourceSitePass } from "../../../../src/client/render/gl/passes/ResourceSitePass";
 import { RuinsPass } from "../../../../src/client/render/gl/passes/RuinsPass";
 import { StructurePass } from "../../../../src/client/render/gl/passes/StructurePass";
 import { TerrainFeaturePass } from "../../../../src/client/render/gl/passes/TerrainFeaturePass";
@@ -117,6 +119,13 @@ const PASSES: PassCase[] = [
       new TerrainFeaturePass(gl, tex, new Uint8Array(MAP_W * MAP_H), MAP_W, MAP_H),
     camera: true,
   },
+  // resources-canals: mine icons and canal digs
+  {
+    name: "ResourceSitePass",
+    build: (gl) => new ResourceSitePass(gl),
+    camera: true,
+  },
+  { name: "CanalPass", build: (gl) => new CanalPass(gl), camera: true },
   // defense-lines: stamped in tile space, read by the territory overlay
   {
     name: "DefenseCoveragePass",

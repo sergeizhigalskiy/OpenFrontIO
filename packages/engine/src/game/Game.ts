@@ -179,6 +179,13 @@ export interface UnitParamsMap {
   [UnitType.SAMLauncher]: Record<string, never>;
 
   [UnitType.City]: Record<string, never>;
+
+  // A canal dig from its tile to `targetTile` (the path's two ends);
+  // `length` is the path's length in steps, which prices it.
+  [UnitType.Canal]: {
+    targetTile: TileRef;
+    length: number;
+  };
 }
 
 // Type helper to get params type for a specific unit type
@@ -842,11 +849,17 @@ export interface Game extends GameLike {
   waterGraphVersion(): number;
 
   /**
-   * Queue a land tile for conversion to water (batched every few ticks). Tile must be unowned.
-   * `flood` (rising tide): always water, even without water nukes, and the
-   * water graph is rebuilt in the same tick (see WaterManager.queueTile).
+   * Queue a land tile for conversion to water (batched every few ticks). Tile
+   * must be unowned. Without water nukes the tile gets fallout instead, unless
+   * `evenWithoutWaterNukes` (canals and the rising tide make water in every
+   * game). `rebuildGraphNow` (rising tide) rebuilds the water graph in the
+   * same tick instead of on the throttle (see WaterManager.queueTile).
    */
-  queueWaterConversion(tile: TileRef, flood?: boolean): void;
+  queueWaterConversion(
+    tile: TileRef,
+    evenWithoutWaterNukes?: boolean,
+    rebuildGraphNow?: boolean,
+  ): void;
 
   /** Queue a tile that was inside a nuke blast radius (for nukeable layer destruction). */
   queueNukeImpact(tile: TileRef): void;

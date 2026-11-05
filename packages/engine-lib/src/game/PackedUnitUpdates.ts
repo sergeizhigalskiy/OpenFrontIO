@@ -59,6 +59,8 @@ export const PACKED_UNIT_TYPES: readonly UnitType[] = [
   UnitType.ClusterMissile, // 27
   UnitType.ClusterWarhead, // 28
   UnitType.SiegeCamp, // 29
+  // Canal took 29 on its own branch; renumbered after SiegeCamp.
+  UnitType.Canal, // 30
 ] as const;
 
 const UNIT_TYPE_TO_INT = new Map<UnitType, number>(

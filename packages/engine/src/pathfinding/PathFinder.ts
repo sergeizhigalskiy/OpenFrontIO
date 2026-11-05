@@ -268,6 +268,20 @@ export class WaterPathFinder implements SteppingPathFinder<TileRef> {
     return v;
   }
 
+  /**
+   * True if a rebuild happened since the last read of `rebuilt` or of this,
+   * resetting it like `rebuilt` but without checking the graph again. A
+   * ship reads it right after `next()`: the stagger countdown can end inside
+   * that call, so the step it returns already follows the new route, and the
+   * ship records its new motion plan in the same tick. Not touching the
+   * countdown keeps every ship's movement as it was.
+   */
+  takeRebuilt(): boolean {
+    const v = this._rebuilt;
+    this._rebuilt = false;
+    return v;
+  }
+
   private ensureFresh(): void {
     const v = this.game.waterGraphVersion();
     if (v === this._waterGraphVersion) return;

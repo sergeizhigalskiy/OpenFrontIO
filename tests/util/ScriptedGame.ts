@@ -94,6 +94,7 @@ export function scriptedGameStart(
       instantBuild: false,
       randomSpawn: false,
       doomsdayClock: { enabled: true, speed: "veryfast" },
+      resourceSites: true,
       ...overrides,
     },
     players: SCRIPTED_HUMANS.map((clientID, i) => ({
@@ -361,6 +362,27 @@ function buildStructureIntent(
   return null;
 }
 
+/** A coastal battery on one of `p`'s ocean shores, when it can build one. */
+function coastalBatteryIntent(
+  game: Game,
+  p: Player,
+  rand: PseudoRandom,
+): Intent | null {
+  const unit = UnitType.CoastalBattery;
+  if (game.config().isUnitDisabled(unit) || !canAfford(game, p, unit)) {
+    return null;
+  }
+  const shores = [...p.borderTiles()].filter((t) => game.isOceanShore(t));
+  for (let i = 0; i < 8; i++) {
+    const tile = pick(rand, shores);
+    if (tile === null) return null;
+    if (p.canBuild(unit, tile) !== false) {
+      return { type: "build_unit", unit, tile };
+    }
+  }
+  return null;
+}
+
 /** A coastal battery on an ocean shore, or a minefield off it at a random density. */
 function buildNavalDefenseIntent(
   game: Game,
@@ -518,6 +540,20 @@ function conventionalWarIntent(
   };
 }
 
+/** A canal through a neck of the player's own coast, when one is diggable. */
+function canalIntent(game: Game, p: Player, rand: PseudoRandom): Intent | null {
+  if (p.units(UnitType.Canal).length > 0) return null;
+  const shores = [...p.borderTiles()].filter((t) => game.isShore(t));
+  for (let i = 0; i < 8; i++) {
+    const tile = pick(rand, shores);
+    if (tile === null) return null;
+    if (p.canBuild(UnitType.Canal, tile) !== false) {
+      return { type: "build_unit", unit: UnitType.Canal, tile };
+    }
+  }
+  return null;
+}
+
 function moveWarshipIntent(
   game: Game,
   p: Player,
@@ -540,6 +576,30 @@ function moveWarshipIntent(
 
 function playIntent(game: Game, p: Player, rand: PseudoRandom): Intent | null {
   if (!p.isAlive()) return null;
+  // Now and then a canal, from its own draws so the rest of the script
+  // keeps its sequence.
+  if (game.ticks() % 50 === 0) {
+    const intent = canalIntent(
+      game,
+      p,
+      new PseudoRandom(game.ticks() + p.smallID()),
+    );
+    if (intent !== null) return intent;
+  }
+  // And a coastal battery once a human can afford one: rare in the random
+  // mix below, and the snapshot tests want every execution type in every
+  // variant. Its own draws too, so the rest keeps its sequence.
+  if (
+    game.ticks() % 50 === 25 &&
+    p.units(UnitType.CoastalBattery).length === 0
+  ) {
+    const intent = coastalBatteryIntent(
+      game,
+      p,
+      new PseudoRandom(game.ticks() + p.smallID()),
+    );
+    if (intent !== null) return intent;
+  }
   // Most ticks a human does nothing; keep the game moving.
   if (!rand.chance(3)) return null;
   // Nations build no ports this early, so the scripted humans' ports are the ones that trade

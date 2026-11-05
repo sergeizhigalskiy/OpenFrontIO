@@ -19,6 +19,14 @@ import type {
   SnapshotReader,
   SnapshotWriter,
 } from "../snapshot/SnapshotContext";
+import {
+  cityStateZones,
+  mineZones,
+  overlapsZone,
+  volcanoZones,
+} from "../game/StartPlacements";
+import { resourceSitesOf } from "./ResourceSiteExecution";
+import { volcanoSitesOf } from "./VolcanoExecution";
 
 /** Seed offset from the game id, apart from the other game-seeded PRNGs. */
 const RUINS_SEED_OFFSET = 4;
@@ -96,6 +104,12 @@ export function placeRuins(
     spawns.push(game.ref(cell.x, cell.y));
   }
 
+  // City-states, volcanoes and mines came first (StartPlacements).
+  const taken = [
+    ...cityStateZones(game),
+    ...volcanoZones(volcanoSitesOf(game)),
+    ...mineZones(resourceSitesOf(game)),
+  ];
   const spawnDist2 = RUIN_MIN_SPAWN_DISTANCE * RUIN_MIN_SPAWN_DISTANCE;
   const spacing2 = RUIN_MIN_SPACING * RUIN_MIN_SPACING;
   const ruins: { tile: TileRef; reward: RuinReward }[] = [];
@@ -110,7 +124,8 @@ export function placeRuins(
       game.isImpassable(tile) ||
       game.hasOwner(tile) ||
       spawns.some((s) => game.euclideanDistSquared(s, tile) < spawnDist2) ||
-      ruins.some((r) => game.euclideanDistSquared(r.tile, tile) < spacing2)
+      ruins.some((r) => game.euclideanDistSquared(r.tile, tile) < spacing2) ||
+      overlapsZone(game, taken, tile)
     ) {
       continue;
     }

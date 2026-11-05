@@ -3,6 +3,7 @@ import { renderNumber, renderTroops } from "@openfront/engine-lib/Format";
 import type { ColumnId, StatsTableKind } from "../../../StatsConstants";
 import { formatPercentage, translateText } from "../../../Utils";
 import type { GameView, PlayerView } from "../../../view";
+import { heldResourceSites } from "../../../view/ResourceSitesView";
 import {
   allianceIcon,
   cityIcon,
@@ -242,6 +243,27 @@ export const COLUMN_DEFS: readonly ColumnDef[] = [
       superscript: { text: "/m" },
     },
     value: (player) => goldRateTracker.trainTradeGoldPerMin(player.smallID()),
+    cell: (row) => renderNumber(row.value),
+  }),
+  // Resource sites: exact from the sites held right now, no rolling window.
+  defineColumn({
+    id: "mines",
+    labelKey: "leaderboard.mines",
+    headerVisual: { kind: "text", text: "⛏" },
+    align: "center",
+    value: (player, game) => heldResourceSites(game, player.smallID()).count,
+    cell: (row) => renderNumber(row.value),
+  }),
+  defineColumn({
+    id: "mineGoldPerMin",
+    labelKey: "leaderboard.mineGoldPerMin",
+    headerVisual: {
+      kind: "icon",
+      src: goldCoinIcon,
+      superscript: { text: "⛏" },
+    },
+    value: (player, game) =>
+      heldResourceSites(game, player.smallID()).goldPerMinute,
     cell: (row) => renderNumber(row.value),
   }),
   defineColumn({

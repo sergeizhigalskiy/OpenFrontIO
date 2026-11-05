@@ -149,6 +149,9 @@ export class TradeShipExecution implements Execution {
 
     const dst = this._dstPort.tile();
     const result = this.pathFinder.next(curTile, dst);
+    // A rebuild that landed inside next() already re-routed this step: plan
+    // it now, not a tick late (the view would trail the ship by one step).
+    if (this.pathFinder.takeRebuilt()) this.motionPlanDst = null;
 
     switch (result.status) {
       case PathStatus.NEXT:

@@ -50,6 +50,11 @@ export class CityStateExecution implements Execution {
     this.mg = mg;
   }
 
+  /** The city's tile, the middle of the disc it takes (StartPlacements). */
+  centerTile(): TileRef {
+    return this.center;
+  }
+
   tick(): void {
     this.active = false;
     const mg = this.mg;

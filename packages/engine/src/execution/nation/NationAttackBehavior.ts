@@ -70,6 +70,7 @@ import {
   EMOJI_ASSIST_TARGET_ME,
   NationEmojiBehavior,
 } from "./NationEmojiBehavior";
+import { mineWeightedTroops } from "./NationResourceSiteTargeting";
 import { fightSurvivalThreat } from "./NationSurvivalBehavior";
 import { findJuiciestTarget, findRunawayLeader } from "./NationUtils";
 import type { NationWarshipBehavior } from "./NationWarshipBehavior";
@@ -272,8 +273,10 @@ export class NationAttackBehavior extends AiAttackBehavior {
     for (const n of playerNeighbors) {
       if (n.isPlayer()) borderingPlayerSet.add(n);
     }
+    // Weakest first, a target holding resource sites counting as a bit weaker.
     const borderingPlayers = [...borderingPlayerSet].sort(
-      (a, b) => a.troops() - b.troops(),
+      (a, b) =>
+        mineWeightedTroops(this.game, a) - mineWeightedTroops(this.game, b),
     );
     const borderingFriends = borderingPlayers.filter(
       (o) => this.player?.isFriendly(o) === true,
