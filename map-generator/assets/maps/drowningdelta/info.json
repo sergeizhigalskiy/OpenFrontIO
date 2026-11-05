@@ -1,0 +1,69 @@
+{
+  "$schema": "../../../info.schema.json",
+  "id": "DrowningDelta",
+  "name": "Drowning Delta",
+  "translation_key": "map.drowningdelta",
+  "categories": ["fictional", "new"],
+  "nations": [
+    {
+      "coordinates": [1129, 167],
+      "flag": "",
+      "name": "Reedmarsh"
+    },
+    {
+      "coordinates": [1354, 296],
+      "flag": "",
+      "name": "Silt Haven"
+    },
+    {
+      "coordinates": [1483, 521],
+      "flag": "",
+      "name": "Mudwater"
+    },
+    {
+      "coordinates": [1483, 779],
+      "flag": "",
+      "name": "Heronfield"
+    },
+    {
+      "coordinates": [1354, 1004],
+      "flag": "",
+      "name": "Eelwick"
+    },
+    {
+      "coordinates": [1129, 1133],
+      "flag": "",
+      "name": "Lotusreach"
+    },
+    {
+      "coordinates": [871, 1133],
+      "flag": "",
+      "name": "Tidewall"
+    },
+    {
+      "coordinates": [646, 1004],
+      "flag": "",
+      "name": "Brackenmouth"
+    },
+    {
+      "coordinates": [517, 779],
+      "flag": "",
+      "name": "Willowisle"
+    },
+    {
+      "coordinates": [517, 521],
+      "flag": "",
+      "name": "Floodgate"
+    },
+    {
+      "coordinates": [646, 296],
+      "flag": "",
+      "name": "Cattail Moor"
+    },
+    {
+      "coordinates": [871, 167],
+      "flag": "",
+      "name": "Deltagard"
+    }
+  ]
+}

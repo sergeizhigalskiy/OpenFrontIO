@@ -1,0 +1,57 @@
+{
+  "categories": ["fictional", "new"],
+  "features": {
+    "version": 1
+  },
+  "id": "Caldera",
+  "map": {
+    "height": 1800,
+    "num_land_tiles": 1522168,
+    "width": 1800
+  },
+  "map16x": {
+    "height": 450,
+    "num_land_tiles": 93612,
+    "width": 450
+  },
+  "map4x": {
+    "height": 900,
+    "num_land_tiles": 378592,
+    "width": 900
+  },
+  "name": "Caldera",
+  "nations": [
+    {
+      "coordinates": [900, 300],
+      "flag": "",
+      "name": "Pyreholm"
+    },
+    {
+      "coordinates": [1420, 600],
+      "flag": "",
+      "name": "Ashfall"
+    },
+    {
+      "coordinates": [1420, 1200],
+      "flag": "",
+      "name": "Cinderwick"
+    },
+    {
+      "coordinates": [900, 1500],
+      "flag": "",
+      "name": "Basalt Gate"
+    },
+    {
+      "coordinates": [380, 1200],
+      "flag": "",
+      "name": "Obsidian Reach"
+    },
+    {
+      "coordinates": [380, 600],
+      "flag": "",
+      "name": "Embermoor"
+    }
+  ],
+  "special_team_count": 3,
+  "translation_key": "map.caldera"
+}

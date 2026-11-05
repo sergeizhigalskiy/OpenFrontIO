@@ -7,6 +7,7 @@ import {
 } from "@openfront/engine-api/game/GameTypes";
 import { AllianceView } from "@openfront/engine-api/game/GameUpdates";
 import { UnitLike } from "@openfront/engine-api/game/ReadViews";
+import { TerrainFeature } from "@openfront/engine-api/game/TerrainFeature";
 import { renderNumber, renderTroops } from "@openfront/engine-lib/Format";
 import { assetUrl } from "@openfront/shared/AssetUrls";
 import { EventBus } from "@openfront/shared/EventBus";
@@ -45,6 +46,7 @@ import { ImmunityBarVisibleEvent } from "./ImmunityTimer";
 import { CloseRadialMenuEvent } from "./RadialMenu";
 import "./RelationSmiley";
 import { SpawnBarVisibleEvent } from "./SpawnTimer";
+import { renderTerrainFeatureLine } from "./TerrainFeatureHover";
 const soldierIconAquarius = assetUrl("images/SoldierIconAquarius.svg");
 const allianceIcon = assetUrl("images/AllianceIcon.svg");
 const traitorIcon = assetUrl("images/TraitorIcon.svg");
@@ -127,6 +129,10 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
 
   @state()
   private unit: UnitView | null = null;
+
+  /** Forest, river or ford under the cursor (TerrainFeatureHover). */
+  @state()
+  private terrainFeature: TerrainFeature = TerrainFeature.None;
 
   @state()
   private _isInfoVisible: boolean = false;
@@ -232,6 +238,7 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
     this.setVisible(false);
     this.unit = null;
     this.player = null;
+    this.terrainFeature = TerrainFeature.None;
   }
 
   public maybeShow(x: number, y: number) {
@@ -276,10 +283,12 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
     }
 
     const owner = this.game.owner(tile);
+    const feature = this.game.terrainFeature(tile);
 
     if (owner && owner.isPlayer()) {
       this.player = owner as PlayerView;
       this.tile = tile;
+      this.terrainFeature = feature;
       void this.player.profile().then((p) => {
         this.playerProfile = p;
       });
@@ -295,6 +304,10 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
         this.unit = units[0];
         this.setVisible(true);
       }
+    } else if (feature !== TerrainFeature.None) {
+      // Unowned forest, river or ford: the card shows just what it costs.
+      this.terrainFeature = feature;
+      this.setVisible(true);
     }
   }
 
@@ -990,6 +1003,7 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
         >
           ${this.player ? this.renderPlayerInfo(this.player) : ""}
           ${this.unit ? this.renderUnitInfo(this.unit) : ""}
+          ${renderTerrainFeatureLine(this.terrainFeature, this.player !== null)}
         </div>
       </div>
     `;

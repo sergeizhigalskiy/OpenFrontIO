@@ -1,0 +1,123 @@
+{
+  "categories": ["fictional", "new"],
+  "features": {
+    "version": 1
+  },
+  "id": "SevenPasses",
+  "map": {
+    "height": 1400,
+    "num_land_tiles": 1770396,
+    "width": 2200
+  },
+  "map16x": {
+    "height": 350,
+    "num_land_tiles": 109494,
+    "width": 550
+  },
+  "map4x": {
+    "height": 700,
+    "num_land_tiles": 441067,
+    "width": 1100
+  },
+  "name": "Seven Passes",
+  "nations": [
+    {
+      "coordinates": [483, 635],
+      "flag": "",
+      "name": "Amberfield"
+    },
+    {
+      "coordinates": [483, 765],
+      "flag": "",
+      "name": "Larkspur"
+    },
+    {
+      "coordinates": [514, 498],
+      "flag": "",
+      "name": "Meadowmere"
+    },
+    {
+      "coordinates": [514, 902],
+      "flag": "",
+      "name": "Goldenreach"
+    },
+    {
+      "coordinates": [574, 371],
+      "flag": "",
+      "name": "Windmoor"
+    },
+    {
+      "coordinates": [574, 1029],
+      "flag": "",
+      "name": "Sorrel Downs"
+    },
+    {
+      "coordinates": [662, 262],
+      "flag": "",
+      "name": "Hayden Vale"
+    },
+    {
+      "coordinates": [662, 1138],
+      "flag": "",
+      "name": "Brightwater"
+    },
+    {
+      "coordinates": [1717, 635],
+      "flag": "",
+      "name": "Highcrag"
+    },
+    {
+      "coordinates": [1717, 765],
+      "flag": "",
+      "name": "Stonehelm"
+    },
+    {
+      "coordinates": [1686, 498],
+      "flag": "",
+      "name": "Cairnwold"
+    },
+    {
+      "coordinates": [1686, 902],
+      "flag": "",
+      "name": "Fellshire"
+    },
+    {
+      "coordinates": [1626, 371],
+      "flag": "",
+      "name": "Granite Keep"
+    },
+    {
+      "coordinates": [1626, 1029],
+      "flag": "",
+      "name": "Thornridge"
+    },
+    {
+      "coordinates": [1538, 262],
+      "flag": "",
+      "name": "Aeriemount"
+    },
+    {
+      "coordinates": [1538, 1138],
+      "flag": "",
+      "name": "Shalehold"
+    }
+  ],
+  "special_team_count": 2,
+  "teamGameSpawnAreas": {
+    "2": [
+      {
+        "height": 1400,
+        "width": 960,
+        "x": 0,
+        "y": 0
+      },
+      {
+        "height": 1400,
+        "width": 960,
+        "x": 1240,
+        "y": 0
+      }
+    ]
+  },
+  "translation_key": "map.sevenpasses"
+}

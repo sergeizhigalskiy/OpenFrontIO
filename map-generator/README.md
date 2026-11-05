@@ -47,6 +47,7 @@ Maps are discovered automatically from the `assets/maps/` folders — `info.json
 - `../resources/maps/<map_name>/map4x.bin` - 1/4 scale (half dimensions) binary map data used for mini-maps.
 - `../resources/maps/<map_name>/map16x.bin` - 1/16 scale (quarter dimensions) binary map data used for mini-maps.
 - `../resources/maps/<map_name>/thumbnail.webp` - WebP image thumbnail of the map.
+- `../resources/maps/<map_name>/features.bin` and `features4x.bin` - Terrain feature layer (forests, rivers, fords) at full and map4x size. Only written for maps with a `features.png` (see [Terrain features](#terrain-features-featurespng)); the manifest then lists `"features": { "version": 1 }`.
 - `../packages/engine-api/src/game/Maps.gen.ts` - Generated TypeScript (the `GameMapType` enum and the `maps` list of `MapInfo` objects) built from every map's info.json. Regenerated on every run, even with `--maps`.
 - `../resources/lang/en.json` - The `map` section is rewritten with each map's display name. Regenerated on every run, even with `--maps`.
 
@@ -98,6 +99,26 @@ In-Game, the color of a tile is determined dynamically based on its **Terrain Ty
 
 - Ocean default color definition: `../src/client/render/gl/render-settings.json` (user changeable via settings)
 - Terrain color calculations: `../src/client/render/gl/utils/ColorUtils.ts#L50`
+
+## Terrain features (features.png)
+
+A map can have an optional second image, `assets/maps/<map_name>/features.png`, that marks forests, rivers and fords. It has the same dimensions as `image.png` (the generator crops it to a multiple of 4 along with the map). Maps without one load and play exactly as before.
+
+Each pixel is matched against these fixed colours. The RGB must match exactly and the alpha must be at least 128, so draw with antialiasing off. Every other pixel, including transparent ones, is no feature:
+
+| Colour    | RGB             | Feature    | In game                                                                                                  |
+| --------- | --------------- | ---------- | -------------------------------------------------------------------------------------------------------- |
+| `#008000` | `(0, 128, 0)`   | **Forest** | Favors defenders: attacking a player's forest costs ×1.3 troops and ×1.3 time; unowned forest ×1.3 time. |
+| `#0000FF` | `(0, 0, 255)`   | **River**  | A land tile crossed by a river: capturing it costs ×2.5 time and ×1.5 troops. No structures.             |
+| `#FFFF00` | `(255, 255, 0)` | **Ford**   | A river crossing captured at normal cost. No structures.                                                 |
+
+The multipliers stack with the terrain cost (plains, highland, mountain) and with defense posts; they live in `../packages/engine-lib/src/game/TerrainFeatures.ts`.
+
+- Features only apply to land. Pixels over water or impassable terrain (and over islands the generator removes) are dropped, so rivers you want ships to ignore must be drawn on land in `image.png`: a river is land, so boats and rails are unaffected.
+- The generator writes `features.bin` and `features4x.bin`: 2 bits per tile in row-major order, four tiles per byte, lowest bits first (`0` none, `1` forest, `2` river, `3` ford). For `features4x.bin` each 2x2 block keeps any ford, else any river (so 1-pixel rivers stay unbroken), else forest when at least two of its pixels are forest.
+- The thumbnail shows forests, rivers and fords in their own colours.
+
+Hourglass, Seven Passes, Caldera, Drowning Delta and Shattered Crown are drawn from shapes by `scripts/design_maps.py` (Python with numpy and Pillow), which writes their `image.png`, `features.png` and `info.json`. To tweak one, edit its shapes or seed there, run `python scripts/design_maps.py --maps=<map_name>` (add `--preview <dir>` for preview images), then run the generator for that map.
 
 ## Create info.json
 
@@ -187,12 +208,12 @@ Layers are image overlays rendered between terrain and territory, useful for dec
 
 The generator does not ship the PNG. It writes two lossy WebP files (quality 90) to `../resources/maps/<map_name>/`: `<id>.webp` at full map size and `<id>.4x.webp` at `map4x` size (half width and height, box-filtered), which Compact games load instead of downscaling the full image on the device. Lossy WebP is roughly 9x smaller than PNG on photographic layers and indistinguishable at the game's nearest-neighbour rendering, but it is lossy: don't rely on exact colour values surviving the encode. Which tiles a layer covers is decided by the terrain type and the `placement` field, not by the image, so that is unaffected. The encoder is the wasm libwebp embedded in the generator so that output is byte-identical on every machine; `npm run gen-maps` passes `-tags nodynamic` to force it, and `go run .` warns if it picked up a system libwebp instead.
 
-| Field       | Required | Description                                                                                                                                           |
-| ----------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`        | ✅       | Unique identifier for the layer. Also the PNG filename (without extension). Must be alphanumeric (hyphens allowed). Must not be `"image"` (reserved). |
-| `placement` | ✅       | `"land"` or `"water"` — whether the layer sits on land (and impassable terrain) or water tiles.                                                       |
-| `nukeable`  |          | If `true`, the layer is permanently destroyed in nuke impact radii. Defaults to `false`.                                                              |
-| `alpha`     |          | Initial opacity (`0`–`1`) for the player's layer-alpha slider. Defaults to `1`.                                                                       |
+| Field       | Required | Description                                                                                                                                                           |
+| ----------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`        | ✅       | Unique identifier for the layer. Also the PNG filename (without extension). Must be alphanumeric (hyphens allowed). Must not be `"image"` or `"features"` (reserved). |
+| `placement` | ✅       | `"land"` or `"water"` — whether the layer sits on land (and impassable terrain) or water tiles.                                                                       |
+| `nukeable`  |          | If `true`, the layer is permanently destroyed in nuke impact radii. Defaults to `false`.                                                                              |
+| `alpha`     |          | Initial opacity (`0`–`1`) for the player's layer-alpha slider. Defaults to `1`.                                                                                       |
 
 Layer display names are stored in the `map_layers` section of `../resources/lang/en.json` (keyed by layer id). Players can disable layers in the graphics settings.
 

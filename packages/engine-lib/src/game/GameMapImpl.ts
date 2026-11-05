@@ -1,7 +1,9 @@
 import { GameMap, TileRef } from "@openfront/engine-api/game/GameMap";
 import { Cell, TerrainType } from "@openfront/engine-api/game/GameTypes";
+import { TerrainFeature } from "@openfront/engine-api/game/TerrainFeature";
 import { z } from "zod";
 import { snapshotType, zBytes, zInt, zTiles } from "../snapshot/SnapshotType";
+import { terrainFeatureAt, terrainFeaturesByteLength } from "./TerrainFeatures";
 import { TileSet } from "./TileSet";
 
 export class GameMapImpl implements GameMap {
@@ -13,6 +15,9 @@ export class GameMapImpl implements GameMap {
 
   private readonly terrain: Uint8Array; // Immutable terrain data
   private readonly state: Uint16Array; // Mutable game state
+  // Packed 2-bit TerrainFeature per tile (see TerrainFeatures.ts), or null
+  // when the map has no feature layer. Static map data like the terrain.
+  private readonly features: Uint8Array | null;
   private readonly width_: number;
   private readonly height_: number;
 
@@ -45,15 +50,25 @@ export class GameMapImpl implements GameMap {
     height: number,
     terrainData: Uint8Array,
     private numLandTiles_: number,
+    features: Uint8Array | null = null,
   ) {
     if (terrainData.length !== width * height) {
       throw new Error(
         `Terrain data length ${terrainData.length} doesn't match dimensions ${width}x${height}`,
       );
     }
+    if (
+      features !== null &&
+      features.length !== terrainFeaturesByteLength(width * height)
+    ) {
+      throw new Error(
+        `Feature layer length ${features.length} doesn't match dimensions ${width}x${height}`,
+      );
+    }
     this.width_ = width;
     this.height_ = height;
     this.terrain = terrainData;
+    this.features = features;
     this.state = new Uint16Array(width * height);
     this.yToRef = new Int32Array(height);
     for (let y = 0; y < height; y++) {
@@ -295,6 +310,11 @@ export class GameMapImpl implements GameMap {
 
   cost(ref: TileRef): number {
     return this.magnitude(ref) < 10 ? 2 : 1;
+  }
+
+  terrainFeature(ref: TileRef): TerrainFeature {
+    const f = this.features;
+    return f === null ? TerrainFeature.None : terrainFeatureAt(f, ref);
   }
 
   // if updating these magnitude values, also update
@@ -572,6 +592,14 @@ export class GameMapImpl implements GameMap {
     if (this.pristineTerrain !== null) {
       for (const [ref, orig] of this.pristineTerrain) {
         h = (h - mix(ref, terrain[ref]) + mix(ref, orig)) | 0;
+      }
+    }
+    // A feature layer changes the rules, so a snapshot must not restore onto
+    // the same terrain with other features. Maps without one hash as before.
+    const features = this.features;
+    if (features !== null) {
+      for (let i = 0; i < features.length; i++) {
+        h = (h + mix(i + terrain.length, features[i] ^ 0x5a)) | 0;
       }
     }
     return h >>> 0;

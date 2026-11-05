@@ -32,6 +32,7 @@ import {
   ReadonlyTileSet,
   UnitPredicate,
 } from "@openfront/engine-api/game/ReadViews";
+import { TerrainFeature } from "@openfront/engine-api/game/TerrainFeature";
 import {
   AllPlayersStats,
   ClientID,
@@ -1569,6 +1570,9 @@ export class GameImpl implements Game {
   }
   terrainType(ref: TileRef): TerrainType {
     return this._map.terrainType(ref);
+  }
+  terrainFeature(ref: TileRef): TerrainFeature {
+    return this._map.terrainFeature(ref);
   }
   forEachTile(fn: (tile: TileRef) => void): void {
     return this._map.forEachTile(fn);

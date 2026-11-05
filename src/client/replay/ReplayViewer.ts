@@ -21,6 +21,7 @@ import type { GameRecord } from "@openfront/shared/WireSchemas";
 import { html, LitElement, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { MapLayerController } from "../controllers/MapLayerController";
+import { pushTerrainFeatures } from "../controllers/TerrainFeatures";
 import { ViewModeController } from "../controllers/ViewModeController";
 import "../hud/layers/EventsDisplay";
 import type { EventsDisplay } from "../hud/layers/EventsDisplay";
@@ -448,6 +449,7 @@ export class ReplayViewer extends LitElement {
     const showEmojis = () => userSettings.emojis();
     adapter.showEmojis = showEmojis;
     playback.frameBuilder.showEmojis = showEmojis;
+    adapter.featureAt = (ref) => map.terrainFeature(ref);
 
     await this.updateComplete;
     if (this.abort.signal.aborted) return;
@@ -460,6 +462,7 @@ export class ReplayViewer extends LitElement {
       config,
       userSettings,
     );
+    pushTerrainFeatures(view, terrain);
     // The map's decoration layers, loaded in the background like in game.
     new MapLayerController(
       view,

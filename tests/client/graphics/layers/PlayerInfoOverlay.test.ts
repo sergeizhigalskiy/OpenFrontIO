@@ -41,6 +41,7 @@ vi.mock("../../../../src/client/hud/PlayerIcons", () => ({
 }));
 
 import { PlayerType, UnitType } from "@openfront/engine-api/game/GameTypes";
+import { TerrainFeature } from "@openfront/engine-api/game/TerrainFeature";
 import { EventBus } from "@openfront/shared/EventBus";
 import {
   afterEach,
@@ -111,6 +112,7 @@ describe("PlayerInfoOverlay", () => {
       gameConfig: () => ({}),
     }),
     teamClanTag: () => undefined,
+    terrainFeature: () => TerrainFeature.None,
   });
 
   beforeEach(() => {
@@ -191,6 +193,29 @@ describe("PlayerInfoOverlay", () => {
     expect(out).toContain("Bob");
     expect(out).toContain("text-white");
     expect(out).not.toContain("text-green-500");
+  });
+
+  it("shows the terrain feature under the cursor", () => {
+    overlay.game = {
+      ...makeGame(null),
+      terrainFeature: () => TerrainFeature.Forest,
+    } as never;
+    overlay.maybeShow(10, 10);
+    let out = flatten(overlay.render());
+    expect(out).toContain("Bob");
+    expect(out).toContain("terrain_feature.forest_owned");
+
+    // Unowned land with a feature gets a card of its own.
+    overlay.game = {
+      ...makeGame(null),
+      owner: () => ({ isPlayer: () => false }),
+      isLand: () => true,
+      terrainFeature: () => TerrainFeature.River,
+    } as never;
+    overlay.maybeShow(10, 10);
+    out = flatten(overlay.render());
+    expect(out).toContain("terrain_feature.river");
+    expect(out).not.toContain("Bob");
   });
 
   it("stays hidden in the onboarding tutorial", () => {

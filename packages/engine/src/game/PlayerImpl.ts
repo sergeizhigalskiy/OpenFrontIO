@@ -38,6 +38,7 @@ import {
   MINEFIELD_MIN_DENSITY,
   MINEFIELD_PLACEMENT_RANGE,
 } from "@openfront/engine-lib/game/NavalDefense";
+import { terrainFeatureAllowsStructures } from "@openfront/engine-lib/game/TerrainFeatures";
 import { TileSet } from "@openfront/engine-lib/game/TileSet";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import {
@@ -1901,6 +1902,8 @@ export class PlayerImpl implements Player {
     const minDistSquared = this.mg.config().structureMinDist() ** 2;
     const valid: TileRef[] = [];
     for (const t of nearbyTiles) {
+      // Nothing is built on river or ford tiles.
+      if (!terrainFeatureAllowsStructures(map.terrainFeature(t))) continue;
       let blocked = false;
       for (const { unit } of nearbyUnits) {
         if (this.mg.euclideanDistSquared(unit.tile(), t) < minDistSquared) {

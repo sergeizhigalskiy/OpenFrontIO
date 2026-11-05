@@ -11,6 +11,7 @@ import {
   Nation,
 } from "@openfront/engine-api/game/MapFiles";
 import { GameMapImpl } from "./GameMapImpl";
+import { TERRAIN_FEATURES_VERSION } from "./TerrainFeatures";
 
 export type TerrainMapData = {
   nations: Nation[];
@@ -20,6 +21,11 @@ export type TerrainMapData = {
   teamGameSpawnAreas?: TeamGameSpawnAreas;
   /** Map layers from the manifest, if any. */
   layers?: MapLayer[];
+  /**
+   * The packed terrain feature layer of `gameMap` (see TerrainFeatures.ts),
+   * or undefined when the map has none.
+   */
+  terrainFeatures?: Uint8Array;
 };
 
 /**
@@ -34,12 +40,34 @@ export async function loadTerrainMap(files: MapFiles): Promise<TerrainMapData> {
     return data;
   };
 
+  // The feature layer (forests, rivers, fords) covers the grid the game is
+  // played on. Maps without one load exactly as before.
+  if (
+    manifest.features !== undefined &&
+    manifest.features.version !== TERRAIN_FEATURES_VERSION
+  ) {
+    throw new Error(
+      `Map ${map}: feature layer version ${manifest.features.version} is not ${TERRAIN_FEATURES_VERSION}`,
+    );
+  }
+  const features =
+    manifest.features === undefined
+      ? undefined
+      : mapSize === GameMapSize.Normal
+        ? bin(files.featuresBin, "features.bin")
+        : bin(files.features4xBin, "features4x.bin");
+
   const gameMap =
     mapSize === GameMapSize.Normal
-      ? await genTerrainFromBin(manifest.map, bin(files.mapBin, "map.bin"))
+      ? await genTerrainFromBin(
+          manifest.map,
+          bin(files.mapBin, "map.bin"),
+          features,
+        )
       : await genTerrainFromBin(
           manifest.map4x,
           bin(files.map4xBin, "map4x.bin"),
+          features,
         );
 
   const miniMap =
@@ -115,12 +143,15 @@ export async function loadTerrainMap(files: MapFiles): Promise<TerrainMapData> {
     miniGameMap: miniMap,
     teamGameSpawnAreas,
     layers,
+    terrainFeatures: features,
   };
 }
 
 export async function genTerrainFromBin(
   mapData: MapMetadata,
   data: Uint8Array,
+  /** The map's packed feature layer at this size (TerrainFeatures.ts). */
+  features?: Uint8Array,
 ): Promise<GameMap> {
   if (data.length !== mapData.width * mapData.height) {
     throw new Error(
@@ -133,5 +164,6 @@ export async function genTerrainFromBin(
     mapData.height,
     data,
     mapData.num_land_tiles,
+    features ?? null,
   );
 }

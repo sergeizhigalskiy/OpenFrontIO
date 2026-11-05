@@ -13,6 +13,7 @@ import {
   TerraNullius,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
+import { terrainFeatureLossMultiplier } from "@openfront/engine-lib/game/TerrainFeatures";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import { Versioned } from "@openfront/engine-lib/snapshot/SnapshotType";
 import {
@@ -1440,10 +1441,11 @@ export class NationAttackBehavior extends AiAttackBehavior {
     return Math.max(stack, tiles * this.botTileLoss(bot, stack));
   }
 
-  // Troops lost per tile at that stack: Impossible reads the terrain on a 6x6 grid
-  // over the bot's land, Hard assumes highland
+  // Troops lost per tile at that stack: Impossible reads the terrain (and its
+  // forest or river) on a 6x6 grid over the bot's land, Hard assumes highland
   private botTileLoss(bot: Player, stack: number): number {
     const terrains: TerrainType[] = [];
+    const featureLoss: number[] = [];
     const box = bot.largestClusterBoundingBox;
     const { difficulty } = this.game.config().gameConfig();
     if (difficulty === Difficulty.Impossible && box) {
@@ -1457,31 +1459,38 @@ export class NationAttackBehavior extends AiAttackBehavior {
           );
           if (this.game.ownerID(tile) === bot.smallID()) {
             terrains.push(this.game.terrainType(tile));
+            featureLoss.push(
+              terrainFeatureLossMultiplier(
+                this.game.terrainFeature(tile),
+                true,
+              ),
+            );
           }
         }
       }
     }
     if (terrains.length === 0) terrains.push(TerrainType.Highland);
     let loss = 0;
-    for (const terrain of terrains) {
-      loss += this.game.config().attackLogic({
-        terrain,
-        attackTroops: stack,
-        attacker: {
-          type: this.player.type(),
-          numTiles: this.player.numTilesOwned(),
-        },
-        defender: {
-          type: bot.type(),
-          numTiles: bot.numTilesOwned(),
-          troops: bot.troops(),
-          isTraitor: bot.isTraitor(),
-          isDisconnectedTeammate: false,
-        },
-        defenderHasDefensePost: false,
-        falloutRatio: null,
-        borderSize: 1,
-      }).attackerTroopLoss;
+    for (const [i, terrain] of terrains.entries()) {
+      loss +=
+        this.game.config().attackLogic({
+          terrain,
+          attackTroops: stack,
+          attacker: {
+            type: this.player.type(),
+            numTiles: this.player.numTilesOwned(),
+          },
+          defender: {
+            type: bot.type(),
+            numTiles: bot.numTilesOwned(),
+            troops: bot.troops(),
+            isTraitor: bot.isTraitor(),
+            isDisconnectedTeammate: false,
+          },
+          defenderHasDefensePost: false,
+          falloutRatio: null,
+          borderSize: 1,
+        }).attackerTroopLoss * (featureLoss[i] ?? 1);
     }
     return loss / terrains.length;
   }

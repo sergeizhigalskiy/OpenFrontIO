@@ -63,6 +63,10 @@ type MapResult struct {
 	Map       MapInfo
 	Map4x     MapInfo
 	Map16x    MapInfo
+	// Packed feature layers (see packFeatures) at map and map4x size; nil
+	// when the map has no features.png.
+	Features   []byte
+	Features4x []byte
 }
 
 // MapInfo contains the serialized map data and metadata for a specific scale.
@@ -77,7 +81,9 @@ type MapInfo struct {
 type GeneratorArgs struct {
 	Name        string
 	ImageBuffer []byte
-	RemoveSmall bool
+	// Optional features.png (forest, river, ford); nil when the map has none.
+	FeaturesBuffer []byte
+	RemoveSmall    bool
 }
 
 // GenerateMap is the main map-generator workflow.
@@ -117,6 +123,7 @@ func GenerateMap(ctx context.Context, args GeneratorArgs) (MapResult, error) {
 
 	bounds := img.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
+	srcWidth, srcHeight := width, height
 
 	// Ensure width and height are multiples of 4 for the mini map downscaling
 	width = width - (width % 4)
@@ -181,7 +188,25 @@ func GenerateMap(ctx context.Context, args GeneratorArgs) (MapResult, error) {
 	processWater(ctx, terrain16x, false)
 	setImpassableNeighborWaterDepth(ctx, terrain16x)
 
+	// Feature layer: read once the terrain is final, so features only sit on
+	// land that survived island and lake removal.
+	var features, features4x [][]Feature
+	if args.FeaturesBuffer != nil {
+		features, err = decodeFeatures(args.FeaturesBuffer, width, height, srcWidth, srcHeight)
+		if err != nil {
+			return MapResult{}, err
+		}
+		args.FeaturesBuffer = nil
+		maskFeatures(features, terrain)
+		features4x = downscaleFeatures(features, terrain4x)
+		counts := countFeatures(features)
+		logger.Info(fmt.Sprintf("Features: %d forest, %d river, %d ford tiles", counts[FeatureForest], counts[FeatureRiver], counts[FeatureFord]))
+	}
+
 	thumb := createMapThumbnail(ctx, terrain4x, 0.5)
+	if features4x != nil {
+		tintThumbnail(thumb, features4x, 0.5)
+	}
 	webp, err := convertToWebP(ThumbData{
 		Data:   thumb.Pix,
 		Width:  thumb.Bounds().Dx(),
@@ -204,6 +229,12 @@ func GenerateMap(ctx context.Context, args GeneratorArgs) (MapResult, error) {
 
 	if mapNumLandTiles == 0 {
 		return MapResult{}, fmt.Errorf("Map has 0 land tiles")
+	}
+
+	var featuresData, features4xData []byte
+	if features != nil {
+		featuresData = packFeatures(features)
+		features4xData = packFeatures(features4x)
 	}
 	if mapNumLandTiles > maxRecommendedLandTileCount {
 		logger.Debug(fmt.Sprintf("Map has more land tiles (%d) than recommended maximum (%d)", mapNumLandTiles, maxRecommendedLandTileCount), PerformanceLogTag)
@@ -228,7 +259,9 @@ func GenerateMap(ctx context.Context, args GeneratorArgs) (MapResult, error) {
 			Height:       height / 4,
 			NumLandTiles: numLandTiles16x,
 		},
-		Thumbnail: webp,
+		Thumbnail:  webp,
+		Features:   featuresData,
+		Features4x: features4xData,
 	}, nil
 }
 

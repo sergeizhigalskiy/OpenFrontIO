@@ -1,5 +1,6 @@
 import { Cell, TerrainType } from "./GameTypes";
 import { ReadonlyTileSet } from "./ReadViews";
+import { TerrainFeature } from "./TerrainFeature";
 
 export type TileRef = number;
 
@@ -59,6 +60,8 @@ export interface GameMap {
   isShore(ref: TileRef): boolean;
   cost(ref: TileRef): number;
   terrainType(ref: TileRef): TerrainType;
+  /** Forest, river or ford from the map's feature layer; None without one. */
+  terrainFeature(ref: TileRef): TerrainFeature;
   forEachTile(fn: (tile: TileRef) => void): void;
 
   manhattanDist(c1: TileRef, c2: TileRef): number;

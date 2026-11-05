@@ -10,6 +10,9 @@ export interface MapData {
   mapBin: () => Promise<Uint8Array>;
   map4xBin: () => Promise<Uint8Array>;
   map16xBin: () => Promise<Uint8Array>;
+  /** features.bin / features4x.bin; only maps whose manifest lists `features` have them. */
+  featuresBin: () => Promise<Uint8Array>;
+  features4xBin: () => Promise<Uint8Array>;
   manifest: () => Promise<MapManifest>;
   webpPath: string;
   /**
@@ -27,25 +30,36 @@ export async function loadMapFiles(
   mapSize: GameMapSize,
 ): Promise<MapFiles> {
   const data = loader.getMapData(map);
+  const manifestLoad = data.manifest();
+  // The feature layer is fetched alongside the bins once the manifest says
+  // the map has one.
+  const features = (bin: () => Promise<Uint8Array>) =>
+    manifestLoad.then((m) => (m.features === undefined ? undefined : bin()));
   if (mapSize === GameMapSize.Normal) {
-    const [manifest, mapBin, map4xBin] = await Promise.all([
-      data.manifest(),
+    const [manifest, mapBin, map4xBin, featuresBin] = await Promise.all([
+      manifestLoad,
       data.mapBin(),
       data.map4xBin(),
+      features(() => data.featuresBin()),
     ]);
-    return { map, mapSize, manifest, mapBin, map4xBin };
+    return { map, mapSize, manifest, mapBin, map4xBin, featuresBin };
   }
-  const [manifest, map4xBin, map16xBin] = await Promise.all([
-    data.manifest(),
+  const [manifest, map4xBin, map16xBin, features4xBin] = await Promise.all([
+    manifestLoad,
     data.map4xBin(),
     data.map16xBin(),
+    features(() => data.features4xBin()),
   ]);
-  return { map, mapSize, manifest, map4xBin, map16xBin };
+  return { map, mapSize, manifest, map4xBin, map16xBin, features4xBin };
 }
 
 /** The files' buffers, to move them to a worker instead of copying them. */
 export function mapFilesTransfer(files: MapFiles): ArrayBuffer[] {
-  return [files.mapBin, files.map4xBin, files.map16xBin].flatMap((bin) =>
-    bin === undefined ? [] : [bin.buffer as ArrayBuffer],
-  );
+  return [
+    files.mapBin,
+    files.map4xBin,
+    files.map16xBin,
+    files.featuresBin,
+    files.features4xBin,
+  ].flatMap((bin) => (bin === undefined ? [] : [bin.buffer as ArrayBuffer]));
 }

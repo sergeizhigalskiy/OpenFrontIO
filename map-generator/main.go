@@ -125,11 +125,24 @@ func processMap(ctx context.Context, name string, isTest bool) (string, error) {
 		return "", fmt.Errorf("failed to parse info.json for %s: %w", name, err)
 	}
 
+	// Optional terrain feature layer (forests, rivers, fords).
+	featuresPath := filepath.Join(inputMapDir, name, "features.png")
+	var featuresBuffer []byte
+	if _, err := os.Stat(featuresPath); err == nil {
+		featuresBuffer, err = os.ReadFile(featuresPath)
+		if err != nil {
+			return "", fmt.Errorf("failed to read features file %s: %w", featuresPath, err)
+		}
+	} else if !os.IsNotExist(err) {
+		return "", fmt.Errorf("failed to stat features file %s: %w", featuresPath, err)
+	}
+
 	// Generate maps
 	result, err := GenerateMap(ctx, GeneratorArgs{
-		ImageBuffer: imageBuffer,
-		RemoveSmall: !isTest, // Don't remove small islands for test maps
-		Name:        name,
+		ImageBuffer:    imageBuffer,
+		FeaturesBuffer: featuresBuffer,
+		RemoveSmall:    !isTest, // Don't remove small islands for test maps
+		Name:           name,
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to generate map for %s: %w", name, err)
@@ -166,6 +179,9 @@ func processMap(ctx context.Context, name string, isTest bool) (string, error) {
 	}
 	if err := os.WriteFile(filepath.Join(mapDir, "thumbnail.webp"), result.Thumbnail, 0644); err != nil {
 		return "", fmt.Errorf("failed to write thumbnail for %s: %w", name, err)
+	}
+	if err := writeFeatureFiles(mapDir, result, manifest); err != nil {
+		return "", fmt.Errorf("failed to write feature layer for %s: %w", name, err)
 	}
 
 	// Validate layer PNGs and write them out as WebP (full size and map4x).

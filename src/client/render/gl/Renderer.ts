@@ -61,6 +61,7 @@ import { SpawnOverlayPass } from "./passes/SpawnOverlayPass";
 import { SpiralRibbonPass } from "./passes/SpiralRibbonPass";
 import { StructureLevelPass } from "./passes/StructureLevelPass";
 import { StructurePass } from "./passes/StructurePass";
+import { TerrainFeaturePass } from "./passes/TerrainFeaturePass";
 import { TerrainPass } from "./passes/TerrainPass";
 import { TerritoryPass } from "./passes/TerritoryPass";
 import { TrailPass } from "./passes/TrailPass";
@@ -163,6 +164,8 @@ export class GPURenderer {
   private storedLayers: MapLayer[] = [];
   /** Stored layer images for context-restore re-creation. */
   private storedLayerImages: Map<string, ImageBitmap> = new Map();
+  /** Forests, rivers and fords; null on maps without a feature layer. */
+  private terrainFeaturePass: TerrainFeaturePass | null = null;
 
   private paletteTex: WebGLTexture;
   private paletteData: Float32Array;
@@ -1370,6 +1373,7 @@ export class GPURenderer {
       if (this.altView && layerPass.placement === 0) continue;
       layerPass.draw(cam);
     }
+    this.terrainFeaturePass?.draw(cam);
     if (pe.territory) this.territoryPass.draw(cam);
   }
 
@@ -1465,6 +1469,28 @@ export class GPURenderer {
     }
   }
 
+  /**
+   * Draw the map's terrain features (one TerrainFeature byte per tile)
+   * between terrain and territory. Called once per map, and again after a
+   * context restore.
+   */
+  setTerrainFeatures(features: Uint8Array): void {
+    this.terrainFeaturePass?.dispose();
+    this.terrainFeaturePass = null;
+    if (!this.terrainBytesTex) return;
+    if (features.length !== this.mapW * this.mapH) {
+      console.warn("[Renderer] terrain feature layer does not match the map");
+      return;
+    }
+    this.terrainFeaturePass = new TerrainFeaturePass(
+      this.gl,
+      this.terrainBytesTex,
+      features,
+      this.mapW,
+      this.mapH,
+    );
+  }
+
   /** Toggle visibility of a single layer (driven by graphics settings). */
   setLayerVisible(layerId: string, visible: boolean): void {
     this.mapLayerPasses.get(layerId)?.setVisible(visible);
@@ -1504,6 +1530,8 @@ export class GPURenderer {
     this.stopLoop();
     for (const p of this.mapLayerPasses.values()) p.dispose();
     this.mapLayerPasses.clear();
+    this.terrainFeaturePass?.dispose();
+    this.terrainFeaturePass = null;
     if (this.terrainBytesTex) {
       this.gl.deleteTexture(this.terrainBytesTex);
       this.terrainBytesTex = null;

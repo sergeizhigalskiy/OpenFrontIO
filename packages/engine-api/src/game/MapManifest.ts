@@ -64,6 +64,9 @@ export const MapLayerSchema = z.strictObject({
     .refine((id) => id !== "image", {
       message: '"image" is reserved for the terrain source',
     })
+    .refine((id) => id !== "features", {
+      message: '"features" is reserved for the terrain feature layer',
+    })
     .describe("Layer id. Also the PNG file name without the extension."),
   placement: z
     .enum(["land", "water"])
@@ -211,6 +214,15 @@ export const MapInfoSchema = z
   .refine(...featuredRankRule);
 
 /**
+ * Written by the generator when the map has a features.png: the map then
+ * ships features.bin (map size) and features4x.bin (map4x size), 2 bits per
+ * tile (see engine-lib/game/TerrainFeatures.ts). Absent on maps without one.
+ */
+const TerrainFeaturesMetaSchema = z.strictObject({
+  version: z.literal(1),
+});
+
+/**
  * resources/maps/<map>/manifest.json: info.json without $schema, plus the
  * dimensions the generator measured. The engine gets it in MapFiles.
  */
@@ -220,6 +232,7 @@ export const MapManifestSchema = z
     map: MapMetadataSchema,
     map4x: MapMetadataSchema,
     map16x: MapMetadataSchema,
+    features: TerrainFeaturesMetaSchema.optional(),
   })
   .refine(...featuredRankRule)
   .superRefine((manifest, ctx) => {

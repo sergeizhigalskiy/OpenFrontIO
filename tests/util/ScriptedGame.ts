@@ -57,6 +57,8 @@ export class TestDataMapLoader implements GameMapLoader {
       mapBin: read("map.bin"),
       map4xBin: read("map4x.bin"),
       map16xBin: read("map16x.bin"),
+      featuresBin: read("features.bin"),
+      features4xBin: read("features4x.bin"),
       manifest: async () =>
         JSON.parse(
           fs.readFileSync(path.join(dir, "manifest.json"), "utf8"),

@@ -10,6 +10,7 @@ import {
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
 import { renderTroops } from "@openfront/engine-lib/Format";
+import { withTerrainFeatureCost } from "@openfront/engine-lib/game/TerrainFeatures";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import {
   zInt,
@@ -360,10 +361,16 @@ export class AttackExecution implements Execution {
         continue;
       }
       this.addNeighbors(tileToConquer);
-      const { attackerTroopLoss, defenderTroopLoss, tickFraction } = this.mg
-        .config()
-        .attackLogic(
-          this.attackLogicInput(troopCount, tileToConquer, borderSize),
+      // Forest, river and ford multipliers (engine-lib/game/TerrainFeatures).
+      const { attackerTroopLoss, defenderTroopLoss, tickFraction } =
+        withTerrainFeatureCost(
+          this.mg
+            .config()
+            .attackLogic(
+              this.attackLogicInput(troopCount, tileToConquer, borderSize),
+            ),
+          this.map.terrainFeature(tileToConquer),
+          targetPlayer !== null,
         );
       tickBudget -= tickFraction;
       troopCount -= attackerTroopLoss;

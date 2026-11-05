@@ -1590,6 +1590,7 @@
     "branchingpaths": "Branching Paths",
     "britannia": "Britannia",
     "britanniaclassic": "Britannia (Classic)",
+    "caldera": "Caldera",
     "canaryislands": "Canary Islands",
     "capecod": "Cape Cod",
     "capeofgoodhope": "Cape Of Good Hope",
@@ -1607,6 +1608,7 @@
     "deglaciatedantarctica": "Deglaciated Antarctica",
     "didier": "Didier",
     "didierfrance": "Didier (France)",
+    "drowningdelta": "Drowning Delta",
     "dyslexdria": "Dyslexdria",
     "earth": "Earth",
     "eastasia": "East Asia",
@@ -1631,6 +1633,7 @@
     "hecatestrait": "Hecate Strait",
     "hongkong": "Hong Kong",
     "hornofafrica": "Horn Of Africa",
+    "hourglass": "Hourglass",
     "iceland": "Iceland",
     "indiansubcontinent": "Indian Subcontinent",
     "irishsea": "Irish Sea",
@@ -1674,6 +1677,8 @@
     "russia": "Russia",
     "sanfrancisco": "San Francisco",
     "scandinavia": "Scandinavia",
+    "sevenpasses": "Seven Passes",
+    "shatteredcrown": "Shattered Crown",
     "sierpinski": "Sierpinski",
     "sol": "Sol",
     "southamerica": "South America",
@@ -2644,6 +2649,12 @@
     "red": "Red",
     "teal": "Teal",
     "yellow": "Yellow"
+  },
+  "terrain_feature": {
+    "ford": "Ford: crosses the river at normal cost, no building",
+    "forest_owned": "Forest: defenders +{percent}%",
+    "forest_unowned": "Forest: capture time +{percent}%",
+    "river": "River: crossing time +{time}%, attacker losses +{loss}%, no building"
   },
   "territory_patterns": {
     "pattern": {
