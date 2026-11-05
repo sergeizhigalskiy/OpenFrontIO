@@ -993,6 +993,8 @@
     "plague_contact_infection": "Your troops on the infected border are turning. You lose {percent}% of them every second",
     "plague_outbreak": "Outbreak! The Infected rise with {troops} troops",
     "plane_shot_down_by_flak": "{name}'s flak shot down your {unit}",
+    "port_blockaded": "{name}'s warships are blockading your port",
+    "rail_cut": "{name} cut one of your rail lines",
     "received_gold_from_captured_ship": "Received {gold} gold from ship captured from {name}",
     "received_gold_from_conquest": "Conquered {name}, received {gold} gold",
     "received_gold_from_player": "Received {gold} gold from {name}",

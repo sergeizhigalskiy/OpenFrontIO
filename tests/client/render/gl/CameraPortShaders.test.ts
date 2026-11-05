@@ -6,14 +6,18 @@
  *
  * Also checked without a browser: no vertex shader still takes the old
  * `uniform mat3 uCamera`, and every map-space one includes the camera.
+ *
+ * Add a new pass to PASSES.
  */
 import fs from "fs";
 import path from "path";
 import { Config } from "@openfront/engine-lib/configuration/Config";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { CAMERA_INCLUDE } from "../../../../src/client/render/gl/camera/CameraBlock";
+import { BlockadePass } from "../../../../src/client/render/gl/passes/BlockadePass";
 import { CapitalPass } from "../../../../src/client/render/gl/passes/CapitalPass";
 import { DefenseCoveragePass } from "../../../../src/client/render/gl/passes/DefenseCoveragePass";
+import { RailroadPass } from "../../../../src/client/render/gl/passes/RailroadPass";
 import { ReloadBarPass } from "../../../../src/client/render/gl/passes/ReloadBarPass";
 import { RuinsPass } from "../../../../src/client/render/gl/passes/RuinsPass";
 import { StructurePass } from "../../../../src/client/render/gl/passes/StructurePass";
@@ -53,33 +57,80 @@ function header() {
   };
 }
 
-/** The passes to check, by name. */
+interface PassCase {
+  name: string;
+  build: (gl: WebGL2RenderingContext) => unknown;
+  /** Draws through the camera block (false: a tile-space target). */
+  camera: boolean;
+}
+
+const settings = createRenderSettings();
+const config = new Config({} as never, false);
+const tex = {} as WebGLTexture;
+
+const PASSES: PassCase[] = [
+  // reload-bars
+  {
+    name: "ReloadBarPass",
+    build: (gl) => new ReloadBarPass(gl, header(), settings, config),
+    camera: true,
+  },
+  // world-features
+  { name: "RuinsPass", build: (gl) => new RuinsPass(gl), camera: true },
+  // volcanoes-tides
+  { name: "VolcanoPass", build: (gl) => new VolcanoPass(gl), camera: true },
+  {
+    name: "TideWarningPass",
+    build: (gl) => new TideWarningPass(gl, MAP_W, MAP_H),
+    camera: true,
+  },
+  // weather-seasons
+  {
+    name: "WeatherPass",
+    build: (gl) => new WeatherPass(gl, MAP_W, MAP_H, tex),
+    camera: true,
+  },
+  // conventional war capitals
+  { name: "CapitalPass", build: (gl) => new CapitalPass(gl), camera: true },
+  // trade-routes: blockade rings and cut rails
+  { name: "BlockadePass", build: (gl) => new BlockadePass(gl), camera: true },
+  {
+    name: "RailroadPass",
+    build: (gl) =>
+      new RailroadPass(
+        gl,
+        MAP_W,
+        MAP_H,
+        tex,
+        tex,
+        tex,
+        new Uint8Array(MAP_W * MAP_H),
+        settings,
+      ),
+    camera: true,
+  },
+  // defense-lines: stamped in tile space, read by the territory overlay
+  {
+    name: "DefenseCoveragePass",
+    build: (gl) => new DefenseCoveragePass(gl, MAP_W, MAP_H, tex),
+    camera: false,
+  },
+  // unit-art: new structure shapes and unit sprites
+  {
+    name: "StructurePass",
+    build: (gl) => new StructurePass(gl, header(), tex, tex, settings),
+    camera: true,
+  },
+  {
+    name: "UnitPass",
+    build: (gl) => new UnitPass(gl, header(), tex, tex, settings, config),
+    camera: true,
+  },
+];
+
 function passPrograms(): CapturedProgram[] {
   vi.stubGlobal("Image", PendingImage);
-  const settings = createRenderSettings();
-  const config = new Config({} as never, false);
-  const tex = {} as WebGLTexture;
-  const builds: [string, (gl: WebGL2RenderingContext) => unknown][] = [
-    ["ReloadBarPass", (gl) => new ReloadBarPass(gl, header(), settings, config)],
-    ["RuinsPass", (gl) => new RuinsPass(gl)],
-    ["VolcanoPass", (gl) => new VolcanoPass(gl)],
-    ["TideWarningPass", (gl) => new TideWarningPass(gl, MAP_W, MAP_H)],
-    ["WeatherPass", (gl) => new WeatherPass(gl, MAP_W, MAP_H, tex)],
-    ["CapitalPass", (gl) => new CapitalPass(gl)],
-    [
-      "DefenseCoveragePass",
-      (gl) => new DefenseCoveragePass(gl, MAP_W, MAP_H, tex),
-    ],
-    [
-      "StructurePass",
-      (gl) => new StructurePass(gl, header(), tex, tex, settings),
-    ],
-    [
-      "UnitPass",
-      (gl) => new UnitPass(gl, header(), tex, tex, settings, config),
-    ],
-  ];
-  return builds.flatMap(([name, build]) => capturePrograms(name, build));
+  return PASSES.flatMap((p) => capturePrograms(p.name, p.build));
 }
 
 const SHADER_DIR = path.resolve(
@@ -135,19 +186,7 @@ describe.skipIf(chrome === null)(
 
     it("captures a program for every pass", () => {
       const passes = new Set(programs.map((p) => p.pass));
-      for (const name of [
-        "ReloadBarPass",
-        "RuinsPass",
-        "VolcanoPass",
-        "TideWarningPass",
-        "WeatherPass",
-        "CapitalPass",
-        "DefenseCoveragePass",
-        "StructurePass",
-        "UnitPass",
-      ]) {
-        expect(passes.has(name), name).toBe(true);
-      }
+      for (const p of PASSES) expect(passes.has(p.name), p.name).toBe(true);
       expect(results).toHaveLength(programs.length);
     });
 
@@ -168,21 +207,10 @@ describe.skipIf(chrome === null)(
         expect(r.usesCamera, `${r.pass} #${r.index}`).toBe(included);
         if (included) expect(r.cameraBlockBytes, r.pass).toBe(144);
       }
-      // Every pass but the tile-space defense coverage draws through it.
-      const camera = new Set(results.filter((r) => r.usesCamera).map((r) => r.pass));
-      expect(camera.has("DefenseCoveragePass")).toBe(false);
-      for (const name of [
-        "ReloadBarPass",
-        "RuinsPass",
-        "VolcanoPass",
-        "TideWarningPass",
-        "WeatherPass",
-        "CapitalPass",
-        "StructurePass",
-        "UnitPass",
-      ]) {
-        expect(camera.has(name), name).toBe(true);
-      }
+      const camera = new Set(
+        results.filter((r) => r.usesCamera).map((r) => r.pass),
+      );
+      for (const p of PASSES) expect(camera.has(p.name), p.name).toBe(p.camera);
     });
 
     it("draws without a GL error in flat, tilt and terrain3d", () => {

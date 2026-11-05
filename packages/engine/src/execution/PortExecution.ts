@@ -1,4 +1,5 @@
 import { UnitType } from "@openfront/engine-api/game/GameTypes";
+import { BLOCKADE_CHECK_INTERVAL } from "@openfront/engine-lib/game/TradeRoutes";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import {
   zInt,
@@ -7,6 +8,7 @@ import {
 } from "@openfront/engine-lib/snapshot/SnapshotType";
 import { z } from "zod";
 import { Execution, Game, Unit } from "../game/Game";
+import { portBlockader, refreshPortBlockade } from "../game/PortBlockade";
 import { execSnapshotType } from "../snapshot/ExecutionSnapshot";
 import type {
   ExecRecord,
@@ -23,6 +25,8 @@ export class PortExecution implements Execution {
   private random: PseudoRandom;
   private checkOffset: number;
   private tradeShipSpawnRejections = 0;
+  // Whether a hostile warship blockaded the port at the last check.
+  private blockaded = false;
 
   constructor(port: Unit) {
     this.port = port;
@@ -52,8 +56,17 @@ export class PortExecution implements Execution {
       this.createStation();
     }
 
+    if ((this.mg.ticks() + this.checkOffset) % BLOCKADE_CHECK_INTERVAL === 0) {
+      this.blockaded = refreshPortBlockade(this.mg, this.port, this.blockaded);
+    }
+
     // Only check every 10 ticks for performance.
     if ((this.mg.ticks() + this.checkOffset) % 10 !== 0) {
+      return;
+    }
+
+    // A blockaded port launches no trade ships (see PortBlockade.ts).
+    if (this.blockaded) {
       return;
     }
 
@@ -131,6 +144,8 @@ export class PortExecution implements Execution {
         }
         return false;
       })
+      // Nobody picks a blockaded port as a destination.
+      .filter((p) => portBlockader(this.mg, p) === null)
       .sort((p1, p2) => {
         return (
           this.mg.manhattanDist(this.port!.tile(), p1.tile()) -
@@ -169,6 +184,7 @@ export class PortExecution implements Execution {
         ? { random: w.random(this.random), checkOffset: this.checkOffset }
         : null,
       tradeShipSpawnRejections: this.tradeShipSpawnRejections,
+      blockaded: this.blockaded,
     });
   }
 
@@ -181,6 +197,7 @@ export class PortExecution implements Execution {
       this.checkOffset = s.init.checkOffset;
     }
     this.tradeShipSpawnRejections = s.tradeShipSpawnRejections;
+    this.blockaded = s.blockaded;
   }
 }
 
@@ -190,12 +207,17 @@ const PortStateSchema = z.object({
   // Set by init.
   init: z.object({ random: zRandom(), checkOffset: zInt() }).nullable(),
   tradeShipSpawnRejections: zInt(),
+  blockaded: z.boolean(),
 });
 type PortState = z.infer<typeof PortStateSchema>;
 
 export const PortExecutionSnapshot = execSnapshotType({
   name: "Port",
-  version: 1,
+  // v2 added blockaded (naval blockades, see PortBlockade.ts).
+  version: 2,
+  migrations: {
+    1: (d) => ({ ...(d as Record<string, unknown>), blockaded: false }),
+  },
   schema: PortStateSchema,
   cls: () => PortExecution,
 });

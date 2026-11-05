@@ -34,6 +34,7 @@ import { Camera } from "./Camera";
 import { CameraUniforms } from "./camera/CameraUniforms";
 import { GLUnavailableError, initGL } from "./initGL";
 import { BarPass } from "./passes/BarPass";
+import { BlockadeMarker, BlockadePass } from "./passes/BlockadePass";
 import { BorderComputePass } from "./passes/BorderComputePass";
 import { BorderStampPass } from "./passes/BorderStampPass";
 import { CapitalMarker, CapitalPass } from "./passes/CapitalPass";
@@ -163,6 +164,7 @@ export class GPURenderer {
   private volcanoPass: VolcanoPass;
   private tideWarningPass: TideWarningPass;
   private weatherPass: WeatherPass;
+  private blockadePass: BlockadePass;
   private samRadiusPass: SAMRadiusPass;
   private crosshairPass: CrosshairPass;
   private railroadPass: RailroadPass;
@@ -607,6 +609,8 @@ export class GPURenderer {
     // --- Seasons and weather (winter tint, weather cells) ---
     // Created above; only dispose() clears it.
     this.weatherPass = new WeatherPass(gl, mapW, mapH, this.terrainBytesTex!);
+    // --- Blockade rings on ports (trade-route cutting) ---
+    this.blockadePass = new BlockadePass(gl);
 
     // --- SAM radius overlay (dashed green circles during build mode) ---
     this.samRadiusPass = new SAMRadiusPass(gl, mapW, this.settings);
@@ -1208,6 +1212,11 @@ export class GPURenderer {
     this.namePass.setHiddenTroops(hidden);
   }
 
+  /** The blockaded ports to ring. */
+  updateBlockades(ports: BlockadeMarker[]): void {
+    this.blockadePass.update(ports);
+  }
+
   updateSmallPlayerGlow(set: Uint8Array | null): void {
     this.smallPlayerGlowPass.update(set);
   }
@@ -1519,6 +1528,7 @@ export class GPURenderer {
     this.capitalPass.draw(cam);
     this.ruinsPass.draw(cam);
     this.volcanoPass.draw(cam);
+    this.blockadePass.draw(cam);
     // Small-player glow draws after structures so buildings can't hide it.
     this.smallPlayerGlowPass.draw(cam);
     if (pe.bar) this.barPass.draw(cam);
@@ -1661,6 +1671,7 @@ export class GPURenderer {
     this.volcanoPass.dispose();
     this.tideWarningPass.dispose();
     this.weatherPass.dispose();
+    this.blockadePass.dispose();
     this.samRadiusPass.dispose();
     this.crosshairPass.dispose();
     this.structurePass.dispose();

@@ -32,6 +32,7 @@ import type {
   UnitState,
 } from "../types";
 import type { MapViewSource } from "./camera/MapViewSource";
+import type { BlockadeMarker } from "./passes/BlockadePass";
 import type { CapitalMarker } from "./passes/CapitalPass";
 import type { RuinMarker } from "./passes/RuinsPass";
 import type { SpawnCenter } from "./passes/SpawnOverlayPass";
@@ -357,6 +358,11 @@ export class MapRenderer {
   /** Fog: players (smallIDs) whose name label shows no troop count. */
   setFogHiddenTroops(hidden: ReadonlySet<number>): void {
     this.renderer?.setFogHiddenTroops(hidden);
+  }
+
+  /** The blockaded ports to ring (see BlockadePass). */
+  updateBlockades(ports: BlockadeMarker[]): void {
+    this.renderer?.updateBlockades(ports);
   }
 
   /** Set the small-player glow set (1 byte per owner smallID), or null = off. */

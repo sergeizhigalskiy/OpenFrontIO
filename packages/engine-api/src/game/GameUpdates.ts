@@ -129,6 +129,7 @@ export enum GameUpdateType {
   Cataclysm,
   // The live weather cells (see WeatherUpdate).
   Weather,
+  RailroadCutEvent,
 }
 
 export type GameUpdate =
@@ -157,7 +158,8 @@ export type GameUpdate =
   | DonateEventUpdate
   | RuinsUpdate
   | CataclysmUpdate
-  | WeatherUpdate;
+  | WeatherUpdate
+  | RailroadCutUpdate;
 
 /**
  * Every unclaimed ruin on the map (see engine-lib/game/WorldFeatures.ts),
@@ -186,6 +188,17 @@ export interface RailroadConstructionUpdate {
 export interface RailroadDestructionUpdate {
   type: GameUpdateType.RailroadDestructionEvent;
   id: number;
+}
+
+/**
+ * A railroad was cut (a hostile player holds one of its tiles) or
+ * reconnected. A cut rail stays on the map but carries no trains (see
+ * engine-lib game/TradeRoutes).
+ */
+export interface RailroadCutUpdate {
+  type: GameUpdateType.RailroadCutEvent;
+  id: number;
+  cut: boolean;
 }
 
 export interface RailroadSnapUpdate {

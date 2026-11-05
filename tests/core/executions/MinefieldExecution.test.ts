@@ -605,7 +605,10 @@ describe("nations lay minefields", () => {
       game.euclideanDistSquared(field.tile(), busiest.tile()),
     ).toBeLessThanOrEqual(MINEFIELD_RADIUS * MINEFIELD_RADIUS);
 
-    // Mined already: no second field.
+    // The warship blockades the small port too (BLOCKADE_RANGE covers this
+    // map), so it gets the next field; then every port is mined.
+    expect(behavior.maybeLayMinefield()).toBe(true);
+    executeTicks(game, 3);
     expect(behavior.maybeLayMinefield()).toBe(false);
   });
 });

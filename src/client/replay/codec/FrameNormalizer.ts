@@ -89,6 +89,8 @@ const UPDATE_TYPE_ROUTING: Record<
   // in the tile state.
   Cataclysm: "dropped",
   Weather: "misc",
+  // Not rebuilt on seek: replays draw cut rails like intact ones.
+  RailroadCutEvent: "misc",
 };
 
 /**
