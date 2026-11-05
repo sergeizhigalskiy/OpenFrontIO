@@ -152,7 +152,6 @@ export interface RenderSettings {
     highlightBrighten: number;
     highlightFillBrighten: number;
     highlightThicken: number;
-    defensePostRange: number;
     embargoTintRatio: number;
     friendlyTintRatio: number;
     embargoTintR: number;

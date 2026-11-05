@@ -8,6 +8,11 @@ import {
 import { AllianceView } from "@openfront/engine-api/game/GameUpdates";
 import { UnitLike } from "@openfront/engine-api/game/ReadViews";
 import { renderNumber, renderTroops } from "@openfront/engine-lib/Format";
+import {
+  AttackForecast,
+  attackForecast,
+  attackFrontSizes,
+} from "@openfront/engine-lib/game/AttackForecast";
 import { assetUrl } from "@openfront/shared/AssetUrls";
 import { EventBus } from "@openfront/shared/EventBus";
 import { html, LitElement, TemplateResult } from "lit";
@@ -25,6 +30,7 @@ import {
 import { Platform } from "../../Platform";
 import { themeProvider } from "../../theme/ThemeProvider";
 import { TransformHandler } from "../../TransformHandler";
+import { UIState } from "../../UIState";
 import { UserSettings } from "../../UserSettings";
 import {
   formatKeyForDisplay,
@@ -67,6 +73,14 @@ const soldierIcon = assetUrl("images/SoldierIcon.svg");
 const CONVOY_HOVER_RADIUS = 5;
 /** How close (in tiles) the cursor must be to a coastal battery to show it. */
 const COASTAL_BATTERY_HOVER_RADIUS = 3;
+/** How often (ms) the attack forecast re-reads my border for its front size. */
+const FRONT_REFRESH_MS = 1000;
+
+/** Troops for the forecast: one decimal while small, as they move per tile. */
+function renderForecastTroops(troops: number): string {
+  const shown = troops / 10;
+  return shown < 10 ? shown.toFixed(1) : renderTroops(troops);
+}
 
 /** Unit types whose hover card names them through a translation key. */
 const UNIT_NAME_KEYS: Partial<Record<UnitType, string>> = {
@@ -105,6 +119,9 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
   @property({ type: Object })
   public transform!: TransformHandler;
 
+  /** For the attack ratio the forecast prices; no forecast without it. */
+  public uiState?: UIState;
+
   @state()
   private player: PlayerView | null = null;
   /** The tile the panel was shown for; the action buttons act on it. */
@@ -127,6 +144,16 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
 
   @state()
   private unit: UnitView | null = null;
+
+  /** What attacking the hovered tile would cost, or null when I can't. */
+  @state() private forecast: AttackForecast | null = null;
+  /** The tile the forecast is for. */
+  private forecastTile: TileRef | null = null;
+  /** My attack front per owner small id (attackFrontSizes), when known. */
+  private frontSizes: Map<number, number> | null = null;
+  private frontSizesFor: PlayerView | null = null;
+  private frontSizesFetchedAt = 0;
+  private frontSizesPending = false;
 
   @state()
   private _isInfoVisible: boolean = false;
@@ -232,6 +259,8 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
     this.setVisible(false);
     this.unit = null;
     this.player = null;
+    this.forecast = null;
+    this.forecastTile = null;
   }
 
   public maybeShow(x: number, y: number) {
@@ -276,6 +305,8 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
     }
 
     const owner = this.game.owner(tile);
+    this.forecastTile = tile;
+    this.forecast = this.computeForecast(tile);
 
     if (owner && owner.isPlayer()) {
       this.player = owner as PlayerView;
@@ -284,6 +315,9 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
         this.playerProfile = p;
       });
       this.refreshPlayerActions(this.player, tile);
+      this.setVisible(true);
+    } else if (this.forecast !== null) {
+      // Unclaimed land: the card shows just what taking it would cost.
       this.setVisible(true);
     } else if (!this.game.isLand(tile)) {
       const units = this.game
@@ -344,12 +378,128 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
       });
   }
 
+  /**
+   * The forecast for attacking `tile` with my attack-ratio troops, or null
+   * when I couldn't attack it by land: not enemy or unclaimed land, no
+   * border with its owner, spawn phase, a replay, or no attack ratio wired.
+   */
+  private computeForecast(tile: TileRef): AttackForecast | null {
+    const uiState = this.uiState;
+    if (uiState === undefined) return null;
+    const game = this.game;
+    if (game.config().isReplay() || game.inSpawnPhase()) return null;
+    const me = game.myPlayer();
+    if (!me || !me.isAlive()) return null;
+    if (!game.isLand(tile) || game.isImpassable(tile)) return null;
+    const owner = game.owner(tile);
+    const defender = owner.isPlayer() ? (owner as PlayerView) : null;
+    if (defender !== null && (defender === me || me.isFriendly(defender))) {
+      return null;
+    }
+    this.refreshFrontSizes(me);
+    const front =
+      this.frontSizes === null
+        ? null
+        : (this.frontSizes.get(owner.smallID()) ?? 0);
+    if (front === 0) return null;
+    return attackForecast(
+      game,
+      me,
+      defender,
+      tile,
+      me.troops() * uiState.attackRatio,
+      front,
+    );
+  }
+
+  /** Re-reads my border for the forecast's front sizes, at most once a second. */
+  private refreshFrontSizes(me: PlayerView) {
+    if (this.frontSizesPending) return;
+    const now = Date.now();
+    if (
+      this.frontSizesFor === me &&
+      now - this.frontSizesFetchedAt < FRONT_REFRESH_MS
+    ) {
+      return;
+    }
+    this.frontSizesPending = true;
+    this.frontSizesFetchedAt = now;
+    me.borderTiles()
+      .then((bt) => {
+        this.frontSizes = attackFrontSizes(
+          this.game,
+          bt.borderTiles,
+          me.smallID(),
+        );
+        this.frontSizesFor = me;
+        // Now the speed is known (or the tile turns out to be unreachable).
+        if (this.forecastTile !== null && this._isInfoVisible) {
+          this.forecast = this.computeForecast(this.forecastTile);
+        }
+      })
+      .catch((error) => {
+        console.warn("Failed to read border for attack forecast:", error);
+      })
+      .finally(() => {
+        this.frontSizesPending = false;
+      });
+  }
+
   tick() {
     // Keep the action buttons current while the mouse rests on a player.
     if (this._isInfoVisible && this.player && this.tile !== null) {
       this.refreshPlayerActions(this.player, this.tile);
     }
+    // Troops and fronts move while the mouse rests: keep the forecast live.
+    if (this._isInfoVisible && this.forecastTile !== null && !this.unit) {
+      this.forecast = this.computeForecast(this.forecastTile);
+    }
     this.requestUpdate();
+  }
+
+  /** Up to three short lines: loss per tile, speed, and defense cover. */
+  private renderAttackForecast(f: AttackForecast) {
+    const speed =
+      f.tilesPerSecond === null
+        ? null
+        : f.tilesPerSecond < 10
+          ? f.tilesPerSecond.toFixed(1)
+          : Math.round(f.tilesPerSecond).toString();
+    let cover = "";
+    if (f.defensePostLevel > 0) {
+      cover = translateText(
+        f.siegeReduced
+          ? "attack_forecast.defense_post_reduced"
+          : "attack_forecast.defense_post",
+        { level: f.defensePostLevel.toString() },
+      );
+    }
+    return html`<div
+      class="px-2 py-1 border-t border-gray-600 text-xs leading-tight"
+      translate="no"
+    >
+      <div>
+        ${translateText("attack_forecast.loss", {
+          troops: renderForecastTroops(f.lossPerTile),
+        })}
+      </div>
+      ${
+        speed !== null
+          ? html`<div>
+              ${translateText("attack_forecast.speed", { speed })}
+            </div>`
+          : ""
+      }
+      ${
+        cover !== ""
+          ? html`<div
+              class=${f.siegeReduced ? "text-yellow-300" : "text-red-400"}
+            >
+              ${cover}
+            </div>`
+          : ""
+      }
+    </div>`;
   }
 
   setVisible(visible: boolean) {
@@ -990,6 +1140,11 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
         >
           ${this.player ? this.renderPlayerInfo(this.player) : ""}
           ${this.unit ? this.renderUnitInfo(this.unit) : ""}
+          ${
+            this.forecast !== null && this.unit === null
+              ? this.renderAttackForecast(this.forecast)
+              : ""
+          }
         </div>
       </div>
     `;

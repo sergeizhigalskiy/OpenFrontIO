@@ -25,6 +25,7 @@ import {
   UT_MISSILE_SILO,
   UT_PORT,
   UT_SAM_LAUNCHER,
+  UT_SIEGE_CAMP,
 } from "../../types";
 import { DynamicInstanceBuffer } from "../DynamicBuffer";
 import type { RenderSettings } from "../RenderSettings";
@@ -72,6 +73,8 @@ const BORROWED_ICONS: ReadonlyMap<string, (typeof STRUCTURE_ORDER)[number]> =
     // planes like a SAM.
     [UT_AIRBASE, UT_MISSILE_SILO],
     [UT_FLAK_GUN, UT_SAM_LAUNCHER],
+    // A siege camp is a field workshop for breaking defense lines.
+    [UT_SIEGE_CAMP, UT_FACTORY],
   ]);
 
 // ---------------------------------------------------------------------------

@@ -33,6 +33,7 @@ import {
   COASTAL_BATTERY_RANGE,
   MINEFIELD_RADIUS,
 } from "@openfront/engine-lib/game/NavalDefense";
+import { SIEGE_CAMP_RANGE } from "@openfront/engine-lib/game/Siege";
 import { EventBus } from "@openfront/shared/EventBus";
 import { Controller } from "../Controller";
 import { airOrderExtras } from "../hud/layers/AirOrders";
@@ -859,7 +860,13 @@ export class BuildPreviewController implements Controller {
       case UnitType.Factory:
         return this.game.config().trainStationMaxRange();
       case UnitType.DefensePost:
-        return this.game.config().defensePostRange();
+        // An upgrade previews the range the post grows to.
+        return this.game
+          .config()
+          .defensePostRange(this.resolveGhostRangeLevel(u) ?? 1);
+      case UnitType.SiegeCamp:
+        // The enemy defense posts it would reduce.
+        return SIEGE_CAMP_RANGE;
       case UnitType.Minefield:
         return MINEFIELD_RADIUS;
       case UnitType.CoastalBattery:
@@ -1462,13 +1469,20 @@ export class BuildPreviewController implements Controller {
   private resolveGhostRangeLevel(
     buildableUnit: BuildableUnit,
   ): number | undefined {
-    if (buildableUnit.type !== UnitType.SAMLauncher) return undefined;
+    if (
+      buildableUnit.type !== UnitType.SAMLauncher &&
+      buildableUnit.type !== UnitType.DefensePost
+    ) {
+      return undefined;
+    }
     if (buildableUnit.canUpgrade !== false) {
       const existing = this.game.unit(buildableUnit.canUpgrade);
       if (existing) {
         return existing.level() + 1;
       } else {
-        console.warn("Failed to find existing SAMLauncher for upgrade");
+        console.warn(
+          `Failed to find existing ${buildableUnit.type} for upgrade`,
+        );
       }
     }
     return 1;

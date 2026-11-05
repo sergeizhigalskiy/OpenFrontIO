@@ -199,6 +199,8 @@ export interface UnitInfo {
   damage?: number;
   constructionDuration?: number;
   upgradable?: boolean;
+  /** Highest level an upgradable unit reaches; unset means no limit. */
+  maxLevel?: number;
 }
 
 function unitTypeGroup<T extends readonly UnitType[]>(types: T) {
@@ -251,6 +253,10 @@ export enum UnitType {
   BallisticMissile = "Ballistic Missile",
   ClusterMissile = "Cluster Missile",
   ClusterWarhead = "Cluster Warhead",
+  // A land structure built near a hostile border: while it stands, enemy
+  // defense posts near it give attacks by its owner and their friends a
+  // smaller bonus (see engine-lib/game/Siege.ts). In every game mode.
+  SiegeCamp = "Siege Camp",
 }
 
 export enum TrainType {
@@ -289,6 +295,7 @@ export const Structures = unitTypeGroup([
   UnitType.CoastalBattery,
   UnitType.Airbase,
   UnitType.FlakGun,
+  UnitType.SiegeCamp,
 ] as const);
 
 export const BuildMenus = unitTypeGroup([

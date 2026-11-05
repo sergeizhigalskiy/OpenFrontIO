@@ -38,6 +38,7 @@ import {
   MINEFIELD_MIN_DENSITY,
   MINEFIELD_PLACEMENT_RANGE,
 } from "@openfront/engine-lib/game/NavalDefense";
+import { SIEGE_CAMP_BORDER_RANGE } from "@openfront/engine-lib/game/Siege";
 import { TileSet } from "@openfront/engine-lib/game/TileSet";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import {
@@ -1518,6 +1519,9 @@ export class PlayerImpl implements Player {
     if (unit.isUnderConstruction()) {
       return false;
     }
+    if (unit.level() >= this.maxUpgradeLevel(unit.type())) {
+      return false;
+    }
     if (unit.isMarkedForDeletion()) {
       return false;
     }
@@ -1525,6 +1529,11 @@ export class PlayerImpl implements Player {
       return false;
     }
     return true;
+  }
+
+  /** The highest level a unit of `type` can be upgraded to. */
+  private maxUpgradeLevel(type: UnitType): number {
+    return this.mg.config().unitInfo(type).maxLevel ?? Infinity;
   }
 
   public canUpgradeUnit(unit: Unit): boolean {
@@ -1570,6 +1579,9 @@ export class PlayerImpl implements Player {
 
       const cost = config.unitInfo(u).cost(mg, this);
       let canUpgrade: number | false = false;
+      // Levels the upgradable unit can still gain (a cap like a defense
+      // post's shortens the bulk-upgrade totals below).
+      let levelsLeft = MAX_UPGRADE_AMOUNT;
       let canBuild: TileRef | false = false;
       // `cost` is a minefield's price at the default density; the player
       // picks the density, so it is buildable as soon as the thinnest field
@@ -1591,6 +1603,10 @@ export class PlayerImpl implements Player {
             this.isUnitValidToUpgrade(existingUnit)
           ) {
             canUpgrade = existingUnit.id();
+            levelsLeft = Math.min(
+              MAX_UPGRADE_AMOUNT,
+              this.maxUpgradeLevel(u) - existingUnit.level(),
+            );
           }
         }
         canBuild = this.canSpawnUnitType(u, tile, validTiles);
@@ -1606,9 +1622,9 @@ export class PlayerImpl implements Player {
       // already had n extra units — cost(mg, this, n).
       let upgradeCosts: Gold[] | undefined;
       if (canUpgrade !== false) {
-        upgradeCosts = new Array<Gold>(MAX_UPGRADE_AMOUNT);
+        upgradeCosts = new Array<Gold>(levelsLeft);
         let total = 0n;
-        for (let n = 0; n < MAX_UPGRADE_AMOUNT; n++) {
+        for (let n = 0; n < levelsLeft; n++) {
           total += config.unitInfo(u).cost(mg, this, n);
           upgradeCosts[n] = total;
         }
@@ -1681,6 +1697,8 @@ export class PlayerImpl implements Player {
         return this.minefieldSpawn(targetTile);
       case UnitType.CoastalBattery:
         return this.coastalBatterySpawn(targetTile, validTiles);
+      case UnitType.SiegeCamp:
+        return this.siegeCampSpawn(targetTile, validTiles);
       case UnitType.Airstrike:
         return airstrikeSpawn(this.mg, this, targetTile);
       case UnitType.Airdrop:
@@ -1807,6 +1825,56 @@ export class PlayerImpl implements Player {
     for (const t of tiles) {
       if (this.mg.map().isOceanShore(t)) {
         return t;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * A siege camp goes on one of this player's land tiles within
+   * SIEGE_CAMP_BORDER_RANGE of a hostile player's land (a player that is
+   * neither this one nor friendly to it).
+   */
+  siegeCampSpawn(tile: TileRef, validTiles: TileRef[] | null): TileRef | false {
+    const map = this.mg.map();
+    if (!map.isValidRef(tile)) return false;
+    // Candidates lie within 15 tiles of the click: with no hostile land
+    // within 15 + SIEGE_CAMP_BORDER_RANGE of it, none can qualify.
+    if (!this.hostileLandWithin(tile, 15 + SIEGE_CAMP_BORDER_RANGE)) {
+      return false;
+    }
+    const tiles = validTiles ?? this.validStructureSpawnTiles(tile);
+    for (const t of tiles) {
+      if (this.hostileLandWithin(t, SIEGE_CAMP_BORDER_RANGE)) return t;
+    }
+    return false;
+  }
+
+  /** True when a hostile player owns a tile within `range` (euclidean) of `tile`. */
+  private hostileLandWithin(tile: TileRef, range: number): boolean {
+    const map = this.mg.map();
+    const rangeSquared = range * range;
+    const cx = map.x(tile);
+    const cy = map.y(tile);
+    const mine = this.smallID();
+    // Owners seen so far are mostly the same few: remember the last verdict.
+    let lastOwner = -1;
+    let lastHostile = false;
+    for (let dy = -range; dy <= range; dy++) {
+      const y = cy + dy;
+      if (y < 0 || y >= map.height()) continue;
+      for (let dx = -range; dx <= range; dx++) {
+        if (dx * dx + dy * dy > rangeSquared) continue;
+        const x = cx + dx;
+        if (x < 0 || x >= map.width()) continue;
+        const owner = map.ownerID(map.ref(x, y));
+        if (owner === 0 || owner === mine) continue;
+        if (owner !== lastOwner) {
+          lastOwner = owner;
+          const other = this.mg.playerBySmallID(owner);
+          lastHostile = other.isPlayer() && !this.isFriendly(other);
+        }
+        if (lastHostile) return true;
       }
     }
     return false;

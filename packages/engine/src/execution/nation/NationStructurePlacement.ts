@@ -132,6 +132,8 @@ export class NationStructurePlacement {
       // build; they build no flak guns.
       case UnitType.Airbase:
       case UnitType.FlakGun:
+      // NationSiegeBehavior places siege camps next to the attack front.
+      case UnitType.SiegeCamp:
         return null;
       default:
         throw new Error(`Value function not implemented for ${type}`);

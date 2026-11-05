@@ -4,7 +4,6 @@ import {
   Gold,
   PlayerInfo,
   PlayerType,
-  TerrainType,
   TerraNullius,
   Tick,
   UnitType,
@@ -13,7 +12,7 @@ import { PlayerLike } from "@openfront/engine-api/game/ReadViews";
 import { TeamCountConfig } from "@openfront/engine-api/Schemas";
 import { NukeType } from "@openfront/engine-api/StatsSchemas";
 import { Config } from "@openfront/engine-lib/configuration/Config";
-import { exp, log, pow2 } from "@openfront/engine-lib/DetMath";
+import { exp, pow2 } from "@openfront/engine-lib/DetMath";
 import {
   AIRDROP_COST,
   BALLISTIC_MISSILE_COST,
@@ -29,6 +28,7 @@ import {
   MINEFIELD_DEFAULT_DENSITY,
   minefieldCost,
 } from "@openfront/engine-lib/game/NavalDefense";
+import { siegeCampCost } from "@openfront/engine-lib/game/Siege";
 import {
   assertNever,
   sigmoid,
@@ -37,101 +37,13 @@ import {
 } from "@openfront/engine-lib/Util";
 import type { EngineUnitInfo, Game, Player, Unit } from "../game/Game";
 
-export interface AttackLogicInput {
-  terrain: TerrainType;
-  attackTroops: number;
-  attacker: { type: PlayerType; numTiles: number };
-  /** null when attacking terra nullius. */
-  defender: {
-    type: PlayerType;
-    numTiles: number;
-    troops: number;
-    isTraitor: boolean;
-    /** Defender is disconnected and on the attacker's team. */
-    isDisconnectedTeammate: boolean;
-  } | null;
-  /** A defense post owned by the defender is in range of the tile. */
-  defenderHasDefensePost: boolean;
-  /** Fraction of land tiles with fallout, or null if the tile has no fallout. */
-  falloutRatio: number | null;
-  /** Tiles on the attack front this tick (plus jitter); fixed for the tick. */
-  borderSize: number;
-}
-
-export interface AttackLogicResult {
-  attackerTroopLoss: number;
-  defenderTroopLoss: number;
-  /**
-   * Share of this tick's conquest budget the tile consumes. An attack keeps
-   * conquering tiles until the fractions sum to 1, so a tile costing 0.1
-   * means about ten such tiles per tick.
-   */
-  tickFraction: number;
-}
-
-// attackLogic tunables
-const LARGE_TERRITORY_MIDPOINT = 300_000;
-const LARGE_TERRITORY_STEEPNESS = 2.5;
-// Floors: a huge attacker's bonus bottoms at 0.3x (losses; speed uses the
-// deeper LARGE_ATTACKER_SPEED_DEPTH below), a huge defender's at 0.7x.
-const LARGE_ATTACKER_DEPTH = 0.7;
-const LARGE_DEFENDER_DEPTH = 0.3;
-const BOT_DEFENDER_LOSS_MULT = 0.7;
-const TERRA_NULLIUS_COST_SCALE = 2000;
-const TERRA_NULLIUS_MIN_COST = 5;
-const TERRA_NULLIUS_MAX_COST = 100;
-// Attacker loss = mag * clampedRatio * (BASE * largeAttackerBonus + DENSITY * troopsPerTile).
-// BASE is the old 0.48 ratio weight times the 0.965 large-defender sigmoid
-// tail that every defender used to get. DENSITY sets which stack size pays
-// the old 0.0052 density weight: at 0.0039 a stack of 3/4 the defender's
-// army matches the old cost, bigger stacks pay less, smaller pay more.
-const ATTACKER_LOSS_BASE = 0.463;
-/** Defender troops per attacking troop at or below which the attacker's losses stop shrinking */
-export const CHEAPEST_TROOP_RATIO = 0.6;
-const ATTACKER_LOSS_PER_DENSITY = 0.0039;
-// Speed divisor: 8.25 / 0.965, absorbing the same sigmoid tail. 8.25 is the
-// old 7.5 raised ~10%: v34 pace feedback said attacks felt a bit too slow, so
-// every player-vs-player attack lands ~10% faster across the board.
-const SPEED_COST_DIVISOR = 8.55;
-// Speed-only: the attacker's territory bonus runs a touch deeper for speed
-// than the 0.7 loss depth above (floor 0.27x vs 0.3x). Paired with the 0.82
-// sub-parity floor on the ratio curve, an overwhelming push lands ~18%
-// faster for a small attacker, ~20% at the 300k midpoint, ~25% for giants.
-const LARGE_ATTACKER_SPEED_DEPTH = 0.73;
-
-/**
- * Logistic in log(tiles): ~1 for small territories, easing down to
- * 1 - depth for huge ones, halfway at LARGE_TERRITORY_MIDPOINT.
- */
-function largeTerritoryBonus(numTiles: number, depth: number): number {
-  return (
-    1 -
-    depth *
-      sigmoid(
-        log(numTiles),
-        LARGE_TERRITORY_STEEPNESS,
-        log(LARGE_TERRITORY_MIDPOINT),
-      )
-  );
-}
-
-function terrainAttackBase(terrain: TerrainType): {
-  mag: number;
-  tileCost: number;
-} {
-  switch (terrain) {
-    case TerrainType.Plains:
-      return { mag: 80, tileCost: 16.5 };
-    case TerrainType.Highland:
-      return { mag: 100, tileCost: 20 };
-    case TerrainType.Mountain:
-      return { mag: 120, tileCost: 25 };
-    case TerrainType.Impassable:
-      throw new Error(`impassable terrain cannot be attacked`);
-    default:
-      throw new Error(`terrain type ${terrain} not supported`);
-  }
-}
+// The attack math moved to engine-lib (game/AttackLogic.ts) so the client's
+// attack forecast runs it too; re-exported for the engine's callers.
+export type {
+  AttackLogicInput,
+  AttackLogicResult,
+} from "@openfront/engine-lib/game/AttackLogic";
+export { CHEAPEST_TROOP_RATIO } from "@openfront/engine-lib/game/AttackLogic";
 
 /**
  * The engine's rules: everything in Config plus the tunables only the
@@ -139,10 +51,6 @@ function terrainAttackBase(terrain: TerrainType): {
  */
 export class EngineConfig extends Config {
   private engineUnitInfoCache = new Map<UnitType, EngineUnitInfo>();
-
-  traitorSpeedDebuff(): number {
-    return 0.8;
-  }
 
   teamLandShareWinThresholdTenths(): number {
     return 7;
@@ -154,20 +62,6 @@ export class EngineConfig extends Config {
 
   setGameType(gameType: GameType): void {
     this._gameConfig = { ...this._gameConfig, gameType };
-  }
-
-  falloutDefenseModifier(falloutRatio: number): number {
-    // falloutRatio is between 0 and 1
-    // So defense modifier is between [5, 2.5]
-    return 5 - falloutRatio * 2;
-  }
-
-  defensePostDefenseBonus(): number {
-    return 5;
-  }
-
-  defensePostSpeedBonus(): number {
-    return 3;
   }
 
   playerTeams(): TeamCountConfig {
@@ -433,6 +327,11 @@ export class EngineConfig extends Config {
           (numUnits: number) => flakGunCost(numUnits),
           UnitType.FlakGun,
         );
+      case UnitType.SiegeCamp:
+        return this.costWrapper(
+          (numUnits: number) => siegeCampCost(numUnits),
+          UnitType.SiegeCamp,
+        );
       case UnitType.Airstrike:
         return this.costWrapper(() => AIRSTRIKE_COST, UnitType.Airstrike);
       case UnitType.Airdrop:
@@ -593,112 +492,6 @@ export class EngineConfig extends Config {
   }
   numBots(): number {
     return this.bots();
-  }
-
-  /**
-   * Per-tile attack outcome. Pure: depends only on the given input and this
-   * config's tunables, never on Game/Player objects. AttackExecution gathers
-   * the input from the simulation.
-   *
-   * Two base values come from the terrain and are scaled by the situation:
-   *  - `mag`: how bloody the tile is (drives attacker troop loss)
-   *  - `tileCost`: how expensive the tile is to take (higher = slower)
-   *
-   * Speed: each tick the attack can take about `borderSize` tiles worth of
-   * budget; each tile consumes `tileCost`, scaled by how outnumbered the
-   * attack is. The result reports that as a fraction of the tick.
-   */
-  attackLogic(input: AttackLogicInput): AttackLogicResult {
-    const { attackTroops, attacker, defender } = input;
-    let { mag, tileCost } = terrainAttackBase(input.terrain);
-
-    if (defender !== null && input.defenderHasDefensePost) {
-      mag *= this.defensePostDefenseBonus();
-      tileCost *= this.defensePostSpeedBonus();
-    }
-    if (input.falloutRatio !== null) {
-      const fallout = this.falloutDefenseModifier(input.falloutRatio);
-      mag *= fallout;
-      tileCost *= fallout;
-    }
-
-    if (defender === null) {
-      const tickBudget = input.borderSize * 2;
-      return {
-        attackerTroopLoss: mag / (attacker.type === PlayerType.Bot ? 10 : 5),
-        defenderTroopLoss: 0,
-        tickFraction:
-          within(
-            (TERRA_NULLIUS_COST_SCALE * tileCost) / attackTroops,
-            TERRA_NULLIUS_MIN_COST,
-            TERRA_NULLIUS_MAX_COST,
-          ) / tickBudget,
-      };
-    }
-
-    if (defender.isDisconnectedTeammate) {
-      // No troop loss if defender is disconnected and on same team
-      mag = 0;
-    }
-    if (
-      (attacker.type === PlayerType.Human ||
-        attacker.type === PlayerType.Nation) &&
-      defender.type === PlayerType.Bot
-    ) {
-      mag *= BOT_DEFENDER_LOSS_MULT;
-    }
-
-    // Big territories are cheaper and faster to attack from and into, so
-    // late games stay dynamic. The attacker's bonus is the stronger one.
-    const largeAttackerBonus = largeTerritoryBonus(
-      attacker.numTiles,
-      LARGE_ATTACKER_DEPTH,
-    );
-    const largeDefenderBonus = largeTerritoryBonus(
-      defender.numTiles,
-      LARGE_DEFENDER_DEPTH,
-    );
-
-    const traitorLossMod = defender.isTraitor ? this.traitorDefenseDebuff() : 1;
-    const traitorCostMod = defender.isTraitor ? this.traitorSpeedDebuff() : 1;
-
-    // Defender loses its average troops-per-tile.
-    const defenderTroopLoss = defender.troops / defender.numTiles;
-
-    // Two ratios drive the attacker's loss: how outnumbered the attack is
-    // (defender army / attack stack, clamped: bigger pushes pay less per
-    // tile) scales a cost made of a base plus the defender's troop density
-    // (packed land is expensive, spread-thin land is cheap).
-    const troopRatio = defender.troops / attackTroops;
-    const attackerTroopLoss =
-      mag *
-      traitorLossMod *
-      within(troopRatio, CHEAPEST_TROOP_RATIO, 2) *
-      (ATTACKER_LOSS_BASE * largeAttackerBonus * largeDefenderBonus +
-        ATTACKER_LOSS_PER_DENSITY * defenderTroopLoss);
-
-    // Speed: a tile's cost in tick-fractions grows with how outnumbered the
-    // attack is. Floored at 0.82 below parity (overwhelming stacks land ~18%
-    // faster), then rising linearly (saturating at 7.5x), with a second ramp
-    // for hopeless attacks past 20x.
-    const speedCost =
-      (within(troopRatio, 0.82, 7.5) * within(troopRatio / 20, 1, 50)) /
-      SPEED_COST_DIVISOR;
-    const largeAttackerSpeedBonus = largeTerritoryBonus(
-      attacker.numTiles,
-      LARGE_ATTACKER_SPEED_DEPTH,
-    );
-    return {
-      attackerTroopLoss,
-      defenderTroopLoss,
-      tickFraction:
-        (speedCost *
-          tileCost *
-          largeAttackerSpeedBonus *
-          largeDefenderBonus *
-          traitorCostMod) /
-        input.borderSize,
-    };
   }
 
   boatAttackAmount(

@@ -54,6 +54,8 @@ const cruiseMissileIcon = assetUrl("images/NukeIconWhite.svg");
 const ballisticMissileIcon = assetUrl("images/MushroomCloudIconWhite.svg");
 const clusterMissileIcon = assetUrl("images/MIRVIcon.svg");
 const droneIcon = assetUrl("images/SwordIconWhite.svg");
+// An existing icon: the build hammer, for a field workshop.
+const siegeCampIcon = assetUrl("images/BuildIconWhite.svg");
 
 export interface BuildItemDisplay {
   unitType: PlayerBuildableUnitType;
@@ -162,6 +164,13 @@ const buildTable: BuildItemDisplay[][] = [
       icon: shieldIcon,
       description: "build_menu.desc.defense_post",
       key: "unit_type.defense_post",
+      countable: true,
+    },
+    {
+      unitType: UnitType.SiegeCamp,
+      icon: siegeCampIcon,
+      description: "build_menu.desc.siege_camp",
+      key: "unit_type.siege_camp",
       countable: true,
     },
     {

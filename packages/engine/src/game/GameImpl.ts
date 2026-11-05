@@ -1447,6 +1447,16 @@ export class GameImpl implements Game {
     );
   }
 
+  someUnitNearby<C>(
+    tile: TileRef,
+    searchRange: number,
+    type: UnitType,
+    ctx: C,
+    visit: (unit: Unit, distSquared: number, ctx: C) => boolean,
+  ): boolean {
+    return this.unitGrid.someUnitNearby(tile, searchRange, type, ctx, visit);
+  }
+
   nearbyUnits(
     tile: TileRef,
     searchRange: number,

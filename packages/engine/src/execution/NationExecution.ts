@@ -38,6 +38,7 @@ import { NationAttackBehavior } from "./nation/NationAttackBehavior";
 import { NationEmojiBehavior } from "./nation/NationEmojiBehavior";
 import { NationMIRVBehavior } from "./nation/NationMIRVBehavior";
 import { NationNukeBehavior } from "./nation/NationNukeBehavior";
+import { considerSiegeCamp } from "./nation/NationSiegeBehavior";
 import { NationStructureBehavior } from "./nation/NationStructureBehavior";
 import { NationWarshipBehavior } from "./nation/NationWarshipBehavior";
 import { tutorialCollapse } from "./nation/TutorialCollapse";
@@ -270,6 +271,8 @@ export class NationExecution implements Execution {
     this.nukeBehavior.maybeSendNuke();
     // Conventional war only; stateless, so nothing to snapshot.
     considerAirPower(this.mg, this.player);
+    // Stateless too: only draws from this execution's PRNG.
+    considerSiegeCamp(this.mg, this.player, this.random);
   }
 
   private initializeBehaviors(): void {
