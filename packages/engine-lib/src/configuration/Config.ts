@@ -256,6 +256,16 @@ export class Config implements AttackRules {
     return this._gameConfig.cityStates !== false && !this._gameConfig.tutorial;
   }
 
+  /** Volcanoes modifier (see game/Volcanoes.ts). */
+  volcanoes(): boolean {
+    return this._gameConfig.volcanoes ?? false;
+  }
+
+  /** Rising tide mode (see game/RisingTide.ts). */
+  risingTide(): boolean {
+    return this._gameConfig.risingTide ?? false;
+  }
+
   isUnitDisabled(unitType: UnitType): boolean {
     // The mode decides first: air units exist only in conventional war, and
     // conventional war has no nukes. disabledUnits can still turn more off.

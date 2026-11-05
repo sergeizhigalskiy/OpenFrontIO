@@ -7,6 +7,7 @@ import {
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import { Attack, Game, Player, Unit } from "../../game/Game";
 import { ConstructionExecution } from "../ConstructionExecution";
+import { isCataclysmHazard } from "./NationCataclysm";
 
 /**
  * A nation builds a siege camp when the front of one of its land attacks
@@ -138,6 +139,9 @@ function campTile(
     if (game.owner(n) !== player) continue;
     const spawn = player.canBuild(UnitType.SiegeCamp, n);
     if (spawn === false) return null;
+    // Like every nation build: not where a volcano is about to erupt or the
+    // tide is about to flood (NationCataclysm).
+    if (isCataclysmHazard(game, spawn)) return null;
     return game.euclideanDistSquared(spawn, post.tile()) <= rangeSquared
       ? n
       : null;

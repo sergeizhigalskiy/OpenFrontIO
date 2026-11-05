@@ -9,6 +9,7 @@ import { assertNever } from "@openfront/engine-lib/Util";
 import { Game, Player, Unit } from "../../game/Game";
 import { Cluster } from "../../game/TrainStation";
 import { nearestTileDist, nearestTileDistCapped } from "../Util";
+import { isCataclysmHazard } from "./NationCataclysm";
 import { randTerritoryTileArray } from "./NationUtils";
 
 /**
@@ -60,6 +61,8 @@ export class NationStructurePlacement {
     for (const t of tiles) {
       const v = valueFunction(t);
       if (v <= bestValue && bestTile !== null) continue;
+      // Not where a volcano is about to erupt or the tide is about to flood.
+      if (isCataclysmHazard(this.game, t)) continue;
       if (!this.player.canBuild(type, t)) continue;
       // Found a better tile
       bestTile = t;

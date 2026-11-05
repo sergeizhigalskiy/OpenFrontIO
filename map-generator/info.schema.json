@@ -304,6 +304,30 @@
         "additionalProperties": false
       }
     },
+    "volcanoes": {
+      "description": "Volcano sites for the Volcanoes modifier, used instead of auto-placement.",
+      "minItems": 1,
+      "maxItems": 4,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "x": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "y": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["x", "y"],
+        "additionalProperties": false,
+        "description": "Volcano tile position. Origin is top-left; y extends down."
+      }
+    },
     "author": {
       "description": "Map creator.",
       "type": "string",

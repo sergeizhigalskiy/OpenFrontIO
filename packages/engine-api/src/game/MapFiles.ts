@@ -22,4 +22,5 @@ export type {
   MapManifest,
   MapMetadata,
   Nation,
+  VolcanoSite,
 } from "./MapManifest";

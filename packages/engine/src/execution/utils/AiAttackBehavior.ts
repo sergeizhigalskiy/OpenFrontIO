@@ -218,7 +218,8 @@ export abstract class AiAttackBehavior {
 
   /**
    * The tile a land expansion into free land pushes toward first (a
-   * spearhead, see AttackExecution), or null to advance evenly.
+   * spearhead, see AttackExecution), or null to advance evenly. Nations aim
+   * for high ground in rising tide, else for a nearby ruin.
    */
   protected expansionFocus(): TileRef | null {
     return null;

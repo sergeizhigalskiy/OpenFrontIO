@@ -137,6 +137,8 @@ export class HostLobbyModal extends BaseModal {
   // World features: both on by default.
   @state() private ruins: boolean = true;
   @state() private cityStates: boolean = true;
+  @state() private volcanoes: boolean = false;
+  @state() private risingTide: boolean = false;
   @state() private lobbyId = "";
   @state() private lobbyUrlSuffix = "";
   @state() private clients: ClientInfo[] = [];
@@ -805,6 +807,14 @@ export class HostLobbyModal extends BaseModal {
                     checked: this.cityStates,
                   },
                   {
+                    labelKey: "game_settings.volcanoes",
+                    checked: this.volcanoes,
+                  },
+                  {
+                    labelKey: "game_settings.rising_tide",
+                    checked: this.risingTide,
+                  },
+                  {
                     labelKey: "game_settings.doomsday_clock",
                     checked: this.doomsdayClock,
                     doomsdayClockSpeed: this.doomsdayClockSpeed,
@@ -1176,6 +1186,8 @@ export class HostLobbyModal extends BaseModal {
     this.bossRaidBoss = BOSS_RAID_NATION_BOSS;
     this.ruins = true;
     this.cityStates = true;
+    this.volcanoes = false;
+    this.risingTide = false;
     this.hostCheatsEnabled = false;
     this.hostCheatInfiniteGold = false;
     this.hostCheatInfiniteTroops = false;
@@ -1329,6 +1341,14 @@ export class HostLobbyModal extends BaseModal {
         break;
       case "game_settings.city_states":
         this.cityStates = checked;
+        void this.putGameConfig();
+        break;
+      case "game_settings.volcanoes":
+        this.volcanoes = checked;
+        void this.putGameConfig();
+        break;
+      case "game_settings.rising_tide":
+        this.risingTide = checked;
         void this.putGameConfig();
         break;
       case "game_settings.doomsday_clock":
@@ -1866,6 +1886,8 @@ export class HostLobbyModal extends BaseModal {
       conventionalWar: this.conventionalWar,
       ruins: this.ruins,
       cityStates: this.cityStates,
+      volcanoes: this.volcanoes,
+      risingTide: this.risingTide,
       doomsdayClock: this.doomsdayClock,
       doomsdayClockSpeed: this.doomsdayClockSpeed,
       overtime: this.overtime,
@@ -1916,6 +1938,8 @@ export class HostLobbyModal extends BaseModal {
     this.conventionalWar = config.conventionalWar ?? false;
     this.ruins = config.ruins ?? true;
     this.cityStates = config.cityStates ?? true;
+    this.volcanoes = config.volcanoes ?? false;
+    this.risingTide = config.risingTide ?? false;
     this.doomsdayClock = config.doomsdayClock ?? false;
     this.doomsdayClockSpeed = config.doomsdayClockSpeed ?? "normal";
     this.overtime = config.overtime ?? false;
@@ -2108,6 +2132,8 @@ export class HostLobbyModal extends BaseModal {
             bossRaid: this.bossRaidOn() ? { boss: this.bossRaidBoss } : null,
             ruins: this.ruins,
             cityStates: this.cityStates,
+            volcanoes: this.volcanoes,
+            risingTide: this.risingTide,
             hostCheats: this.hostCheatsEnabled
               ? {
                   infiniteGold: this.hostCheatInfiniteGold || undefined,

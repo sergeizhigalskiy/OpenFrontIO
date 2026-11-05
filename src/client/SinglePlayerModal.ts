@@ -159,6 +159,8 @@ const DEFAULT_OPTIONS = {
   // World features: both on by default.
   ruins: true,
   cityStates: true,
+  volcanoes: false,
+  risingTide: false,
   doomsdayClock: false,
   doomsdayClockSpeed: "normal" as DoomsdayClockSpeed,
   overtime: false,
@@ -254,6 +256,8 @@ export class SinglePlayerModal extends BaseModal {
   @state() private bossRaid: boolean = DEFAULT_OPTIONS.bossRaid;
   @state() private ruins: boolean = DEFAULT_OPTIONS.ruins;
   @state() private cityStates: boolean = DEFAULT_OPTIONS.cityStates;
+  @state() private volcanoes: boolean = DEFAULT_OPTIONS.volcanoes;
+  @state() private risingTide: boolean = DEFAULT_OPTIONS.risingTide;
   @state() private doomsdayClock: boolean = DEFAULT_OPTIONS.doomsdayClock;
   @state() private doomsdayClockSpeed: DoomsdayClockSpeed =
     DEFAULT_OPTIONS.doomsdayClockSpeed;
@@ -643,6 +647,14 @@ export class SinglePlayerModal extends BaseModal {
                     checked: this.cityStates,
                   },
                   {
+                    labelKey: "game_settings.volcanoes",
+                    checked: this.volcanoes,
+                  },
+                  {
+                    labelKey: "game_settings.rising_tide",
+                    checked: this.risingTide,
+                  },
+                  {
                     labelKey: "game_settings.doomsday_clock",
                     checked: this.doomsdayClock,
                     doomsdayClockSpeed: this.doomsdayClockSpeed,
@@ -720,6 +732,8 @@ export class SinglePlayerModal extends BaseModal {
       this.bossRaid !== DEFAULT_OPTIONS.bossRaid ||
       this.ruins !== DEFAULT_OPTIONS.ruins ||
       this.cityStates !== DEFAULT_OPTIONS.cityStates ||
+      this.volcanoes !== DEFAULT_OPTIONS.volcanoes ||
+      this.risingTide !== DEFAULT_OPTIONS.risingTide ||
       this.doomsdayClock !== DEFAULT_OPTIONS.doomsdayClock ||
       // Pace only matters when the mode is on (startGame drops it when off).
       (this.doomsdayClock &&
@@ -855,6 +869,8 @@ export class SinglePlayerModal extends BaseModal {
     this.bossRaid = DEFAULT_OPTIONS.bossRaid;
     this.ruins = DEFAULT_OPTIONS.ruins;
     this.cityStates = DEFAULT_OPTIONS.cityStates;
+    this.volcanoes = DEFAULT_OPTIONS.volcanoes;
+    this.risingTide = DEFAULT_OPTIONS.risingTide;
     this.doomsdayClock = DEFAULT_OPTIONS.doomsdayClock;
     this.doomsdayClockSpeed = DEFAULT_OPTIONS.doomsdayClockSpeed;
     this.overtime = DEFAULT_OPTIONS.overtime;
@@ -904,6 +920,8 @@ export class SinglePlayerModal extends BaseModal {
       conventionalWar: this.conventionalWar,
       ruins: this.ruins,
       cityStates: this.cityStates,
+      volcanoes: this.volcanoes,
+      risingTide: this.risingTide,
       doomsdayClock: this.doomsdayClock,
       doomsdayClockSpeed: this.doomsdayClockSpeed,
       overtime: this.overtime,
@@ -936,6 +954,8 @@ export class SinglePlayerModal extends BaseModal {
     this.conventionalWar = config.conventionalWar ?? false;
     this.ruins = config.ruins ?? true;
     this.cityStates = config.cityStates ?? true;
+    this.volcanoes = config.volcanoes ?? false;
+    this.risingTide = config.risingTide ?? false;
     this.doomsdayClock = config.doomsdayClock ?? false;
     this.doomsdayClockSpeed = config.doomsdayClockSpeed ?? "normal";
     this.overtime = config.overtime ?? false;
@@ -1119,6 +1139,12 @@ export class SinglePlayerModal extends BaseModal {
         break;
       case "game_settings.city_states":
         this.cityStates = checked;
+        break;
+      case "game_settings.volcanoes":
+        this.volcanoes = checked;
+        break;
+      case "game_settings.rising_tide":
+        this.risingTide = checked;
         break;
       case "game_settings.doomsday_clock":
         this.doomsdayClock = checked;
@@ -1463,6 +1489,8 @@ export class SinglePlayerModal extends BaseModal {
             // On unless turned off, so only an off switch is sent.
             ...(this.ruins ? {} : { ruins: false }),
             ...(this.cityStates ? {} : { cityStates: false }),
+            ...(this.volcanoes ? { volcanoes: true } : {}),
+            ...(this.risingTide ? { risingTide: true } : {}),
             ...(this.doomsdayClock
               ? {
                   doomsdayClock: {

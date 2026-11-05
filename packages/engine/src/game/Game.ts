@@ -196,6 +196,11 @@ export interface Execution {
    * ExecutionSnapshotType in snapshot/ExecutionRegistry.ts.
    */
   snapshot(w: SnapshotWriter): ExecRecord;
+  /**
+   * Optional: re-sends the updates a view with no history needs to show this
+   * execution's state (see Game.queueViewResync).
+   */
+  viewResync?(): void;
 }
 
 export interface Attack {
@@ -812,8 +817,12 @@ export interface Game extends GameLike {
   /** Incremented each time the water navigation graph is rebuilt (e.g. after nuke terrain change). */
   waterGraphVersion(): number;
 
-  /** Queue a land tile for conversion to water (batched every few ticks). Tile must be unowned. */
-  queueWaterConversion(tile: TileRef): void;
+  /**
+   * Queue a land tile for conversion to water (batched every few ticks). Tile must be unowned.
+   * `flood` (rising tide): always water, even without water nukes, and the
+   * water graph is rebuilt in the same tick (see WaterManager.queueTile).
+   */
+  queueWaterConversion(tile: TileRef, flood?: boolean): void;
 
   /** Queue a tile that was inside a nuke blast radius (for nukeable layer destruction). */
   queueNukeImpact(tile: TileRef): void;

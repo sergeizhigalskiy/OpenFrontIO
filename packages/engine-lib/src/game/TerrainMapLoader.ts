@@ -9,6 +9,7 @@ import {
   MapLayer,
   MapMetadata,
   Nation,
+  VolcanoSite,
 } from "@openfront/engine-api/game/MapFiles";
 import { GameMapImpl } from "./GameMapImpl";
 
@@ -20,6 +21,8 @@ export type TerrainMapData = {
   teamGameSpawnAreas?: TeamGameSpawnAreas;
   /** Map layers from the manifest, if any. */
   layers?: MapLayer[];
+  /** Hand-placed volcano sites from the manifest, if any (scaled for compact maps). */
+  volcanoes?: VolcanoSite[];
 };
 
 /**
@@ -72,6 +75,14 @@ export async function loadTerrainMap(files: MapFiles): Promise<TerrainMapData> {
     });
   }
 
+  const volcanoes =
+    mapSize === GameMapSize.Compact
+      ? manifest.volcanoes?.map((v) => ({
+          x: Math.floor(v.x / 2),
+          y: Math.floor(v.y / 2),
+        }))
+      : manifest.volcanoes;
+
   // Scale spawn areas for compact maps
   let teamGameSpawnAreas = manifest.teamGameSpawnAreas;
   if (mapSize === GameMapSize.Compact && teamGameSpawnAreas) {
@@ -115,6 +126,7 @@ export async function loadTerrainMap(files: MapFiles): Promise<TerrainMapData> {
     miniGameMap: miniMap,
     teamGameSpawnAreas,
     layers,
+    volcanoes,
   };
 }
 

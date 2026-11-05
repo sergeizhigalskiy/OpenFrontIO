@@ -39,6 +39,7 @@ import { AiAttackBehavior, BoatRoute } from "../utils/AiAttackBehavior";
 import { bossFor, withBossStrategy } from "./BossRaidTargeting";
 import { planBotAttacks, walledInBots } from "./BotAnnexation";
 import { NationAllianceBehavior } from "./NationAllianceBehavior";
+import { highGroundFocusTile } from "./NationCataclysm";
 import {
   EMOJI_ASSIST_ACCEPT,
   EMOJI_ASSIST_RELATION_TOO_LOW,
@@ -809,9 +810,13 @@ export class NationAttackBehavior extends AiAttackBehavior {
     return this.sendLandAttack(target);
   }
 
-  // Free-land expansion pushes toward a nearby unclaimed ruin first
+  // Free-land expansion pushes toward higher ground in rising tide
+  // (NationCataclysm; null in other games), else toward a nearby unclaimed ruin
   protected override expansionFocus(): TileRef | null {
-    return ruinToSeek(this.game, this.player);
+    return (
+      highGroundFocusTile(this.game, this.player) ??
+      ruinToSeek(this.game, this.player)
+    );
   }
 
   // Hard & Impossible take bots in an order that walls others in, annexing them for free

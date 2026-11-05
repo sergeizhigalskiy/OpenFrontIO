@@ -142,6 +142,10 @@ const CONVENTIONAL_WAR_EXECS = new Set([
   "FlakGun",
 ]);
 
+// Volcanoes and rising tide: lobby modes that stay quiet for this game's
+// 1500 ticks. CataclysmSnapshots.test.ts covers their snapshots.
+const CATACLYSM_EXECS = new Set(["Volcano", "RisingTide"]);
+
 describe.each(VARIANTS)("full game snapshots: %s", (_, overrides) => {
   const start = scriptedGameStart(overrides);
   let reference: Reference;
@@ -224,7 +228,8 @@ describe.each(VARIANTS)("full game snapshots: %s", (_, overrides) => {
         (name) =>
           !reference.execTypes.has(name) &&
           !neverStored.has(name) &&
-          !CONVENTIONAL_WAR_EXECS.has(name),
+          !CONVENTIONAL_WAR_EXECS.has(name) &&
+          !CATACLYSM_EXECS.has(name),
       );
       expect(missing).toEqual([]);
     },

@@ -85,6 +85,9 @@ const UPDATE_TYPE_ROUTING: Record<
   DonateEvent: "misc",
   // Kept for the record; the replay viewer draws no ruins yet.
   Ruins: "misc",
+  // Volcano rings and tide warnings are live-only; the land they change is
+  // in the tile state.
+  Cataclysm: "dropped",
 };
 
 /**

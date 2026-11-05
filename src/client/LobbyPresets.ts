@@ -46,6 +46,8 @@ export const LobbyPresetConfigSchema = z.object({
   conventionalWar: z.boolean().optional(),
   ruins: z.boolean().optional(),
   cityStates: z.boolean().optional(),
+  volcanoes: z.boolean().optional(),
+  risingTide: z.boolean().optional(),
   doomsdayClock: z.boolean().optional(),
   doomsdayClockSpeed: z.enum(DOOMSDAY_CLOCK_SPEEDS).optional(),
   overtime: z.boolean().optional(),

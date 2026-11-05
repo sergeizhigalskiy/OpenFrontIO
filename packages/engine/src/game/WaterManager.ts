@@ -52,6 +52,9 @@ export class WaterManager {
   private _waterGraphVersion: number = 0;
   private _waterGraphDirty: boolean = false;
   private _waterGraphLastRebuildTick: number = 0;
+  // Set by queueTile(tile, true) and cleared by the same tick's tick(), so it
+  // is always false between ticks (not snapshot state).
+  private _rebuildNow: boolean = false;
 
   private _pendingWaterTiles: Set<TileRef> = new Set();
   private _dirtyMiniTiles: Set<TileRef> = new Set();
@@ -114,7 +117,8 @@ export class WaterManager {
    * The water graph is rebuilt from the restored components rather than
    * stored. While the graph is dirty (up to WATER_GRAPH_REBUILD_INTERVAL
    * ticks after a water nuke) the live game still routes on the stale graph,
-   * which a restore cannot reproduce.
+   * which a restore cannot reproduce. Rising tide floods with rebuildNow, so
+   * its graph is never dirty at a tick boundary and does not hit this gap.
    */
   restoreSnapshot(s: WaterManagerState): void {
     this._waterGraphVersion = s.waterGraphVersion;
@@ -136,8 +140,15 @@ export class WaterManager {
     }
   }
 
-  queueTile(tile: TileRef): void {
+  /**
+   * @param rebuildNow Rebuild the water graph at the end of this tick, right
+   *   after the conversion, instead of on the throttle (rising tide). Then no
+   *   ship ever routes on a stale graph, so a snapshot taken after the flood
+   *   restores exactly (see restoreSnapshot).
+   */
+  queueTile(tile: TileRef, rebuildNow = false): void {
     this._pendingWaterTiles.add(tile);
+    if (rebuildNow) this._rebuildNow = true;
   }
 
   /**
@@ -171,16 +182,20 @@ export class WaterManager {
       }
     }
 
+    const rebuildNow = this._rebuildNow;
+    this._rebuildNow = false;
     // Throttled water graph rebuild: at most once every 20 ticks
     if (
       this._waterGraphDirty &&
       !this.disableNavMesh &&
-      // Keep terrain fixup and graph rebuilding out of the same tick. The
-      // graph is already allowed to remain stale between throttled rebuilds,
-      // and a one-tick delay avoids combining both water-nuke CPU spikes.
-      !convertedThisTick &&
-      currentTick - this._waterGraphLastRebuildTick >=
-        WATER_GRAPH_REBUILD_INTERVAL
+      (rebuildNow ||
+        // Keep terrain fixup and graph rebuilding out of the same tick. The
+        // graph is already allowed to remain stale between throttled
+        // rebuilds, and a one-tick delay avoids combining both water-nuke
+        // CPU spikes.
+        (!convertedThisTick &&
+          currentTick - this._waterGraphLastRebuildTick >=
+            WATER_GRAPH_REBUILD_INTERVAL))
     ) {
       this._waterGraphDirty = false;
       this._waterGraphLastRebuildTick = currentTick;

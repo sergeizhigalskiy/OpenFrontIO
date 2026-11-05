@@ -150,6 +150,16 @@ export function notableLobbySettings(
       label: translateText("game_settings.city_states"),
       value: disabled,
     });
+  if (c.volcanoes)
+    items.push({
+      label: translateText("game_settings.volcanoes"),
+      value: enabled,
+    });
+  if (c.risingTide)
+    items.push({
+      label: translateText("game_settings.rising_tide"),
+      value: enabled,
+    });
   if (c.waterNukes)
     items.push({
       label: translateText("game_settings.water_nukes"),

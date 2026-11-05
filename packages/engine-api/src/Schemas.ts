@@ -369,6 +369,12 @@ export const GameConfigSchema = z.object({
   // Neutral city-states (see engine-lib/game/WorldFeatures.ts). On when
   // absent; false turns them off.
   cityStates: z.boolean().optional(),
+  // Volcanoes: mountain sites rumble and erupt on a seeded schedule (see
+  // engine-lib/game/Volcanoes.ts). Off when absent.
+  volcanoes: z.boolean().optional(),
+  // Rising tide: flood waves turn the lowest coastal land into water every few
+  // minutes (see engine-lib/game/RisingTide.ts). Off when absent.
+  risingTide: z.boolean().optional(),
 });
 
 // What a host sends in update_game_config. maxPlayers is the private-lobby

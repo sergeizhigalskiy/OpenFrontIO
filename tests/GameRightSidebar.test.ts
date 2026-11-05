@@ -45,6 +45,7 @@ function createSidebar(overrides: Partial<TimerState> = {}) {
       // The overtime panel is embedded in the sidebar's template, so its
       // config read must exist even though these tests keep the mode off.
       overtimeConfig: () => ({ enabled: false, startMinutes: 30 }),
+      risingTide: () => false,
       gameConfig: () => ({
         gameType: GameType.Public,
         maxTimerValue: state.maxTimerValue,

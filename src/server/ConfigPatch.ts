@@ -33,6 +33,8 @@ const COPIED_KEYS = [
   "conventionalWar",
   "ruins",
   "cityStates",
+  "volcanoes",
+  "risingTide",
   "anonymizeNames",
   "nameReveals",
   "nameRevealPublicIds",

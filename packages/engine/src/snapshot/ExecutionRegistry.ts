@@ -40,6 +40,7 @@ import { PortExecutionSnapshot } from "../execution/PortExecution";
 import { QuickChatExecutionSnapshot } from "../execution/QuickChatExecution";
 import { RecomputeRailClusterExecutionSnapshot } from "../execution/RecomputeRailClusterExecution";
 import { RetreatExecutionSnapshot } from "../execution/RetreatExecution";
+import { RisingTideExecutionSnapshot } from "../execution/RisingTideExecution";
 import { RuinsExecutionSnapshot } from "../execution/RuinsExecution";
 import { SAMLauncherExecutionSnapshot } from "../execution/SAMLauncherExecution";
 import { SAMMissileExecutionSnapshot } from "../execution/SAMMissileExecution";
@@ -53,6 +54,7 @@ import { TrainStationExecutionSnapshot } from "../execution/TrainStationExecutio
 import { TransportShipExecutionSnapshot } from "../execution/TransportShipExecution";
 import { TribeExecutionSnapshot } from "../execution/TribeExecution";
 import { UpgradeStructureExecutionSnapshot } from "../execution/UpgradeStructureExecution";
+import { VolcanoExecutionSnapshot } from "../execution/VolcanoExecution";
 import { WarshipExecutionSnapshot } from "../execution/WarshipExecution";
 import { WinCheckExecutionSnapshot } from "../execution/WinCheckExecution";
 import type { ExecutionSnapshotType } from "./ExecutionSnapshot";
@@ -104,6 +106,7 @@ export const EXECUTION_SNAPSHOT_TYPES = [
   QuickChatExecutionSnapshot,
   RecomputeRailClusterExecutionSnapshot,
   RetreatExecutionSnapshot,
+  RisingTideExecutionSnapshot,
   RuinsExecutionSnapshot,
   SAMLauncherExecutionSnapshot,
   SAMMissileExecutionSnapshot,
@@ -117,6 +120,7 @@ export const EXECUTION_SNAPSHOT_TYPES = [
   TransportShipExecutionSnapshot,
   TribeExecutionSnapshot,
   UpgradeStructureExecutionSnapshot,
+  VolcanoExecutionSnapshot,
   WarshipExecutionSnapshot,
   WinCheckExecutionSnapshot,
 ] as unknown as readonly ExecutionSnapshotType<unknown>[];

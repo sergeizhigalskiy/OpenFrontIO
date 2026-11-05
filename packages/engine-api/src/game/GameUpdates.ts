@@ -125,6 +125,8 @@ export enum GameUpdateType {
   GamePaused,
   DonateEvent,
   Ruins,
+  // Volcanoes and rising tide (lobby modes, off by default).
+  Cataclysm,
 }
 
 export type GameUpdate =
@@ -151,7 +153,8 @@ export type GameUpdate =
   | SpawnPhaseEndUpdate
   | GamePausedUpdate
   | DonateEventUpdate
-  | RuinsUpdate;
+  | RuinsUpdate
+  | CataclysmUpdate;
 
 /**
  * Every unclaimed ruin on the map (see engine-lib/game/WorldFeatures.ts),
@@ -419,4 +422,37 @@ export interface SpawnPhaseEndUpdate {
 export interface GamePausedUpdate {
   type: GameUpdateType.GamePaused;
   paused: boolean;
+}
+
+/**
+ * Volcanoes and rising tide (see engine-lib/game/Volcanoes.ts and
+ * RisingTide.ts). Each update carries the whole state of its `kind`, sent
+ * when it changes and again on a view resync, so a view keeps the latest one.
+ */
+export type CataclysmUpdate = VolcanoUpdate | RisingTideUpdate;
+
+export interface VolcanoUpdate {
+  type: GameUpdateType.Cataclysm;
+  kind: "volcano";
+  /** Every volcano site, fixed for the game. */
+  sites: TileRef[];
+  /** The site rumbling now (its warning ring is up), or null. */
+  rumblingSite: TileRef | null;
+  /** Tick the rumbling site erupts; 0 while none rumbles. */
+  eruptionTick: Tick;
+  /** The site that erupted this tick, or null. An event, not state. */
+  eruptedSite: TileRef | null;
+}
+
+export interface RisingTideUpdate {
+  type: GameUpdateType.Cataclysm;
+  kind: "tide";
+  /** Tick the next wave floods; null once the tide has stopped. */
+  nextWaveTick: Tick | null;
+  /** Tiles the next wave floods, during its warning; empty otherwise. */
+  warningTiles: TileRef[];
+  /** Waves flooded so far. */
+  wave: number;
+  /** Land tiles when the tide started (a view counts the land left itself). */
+  originalLand: number;
 }

@@ -67,8 +67,10 @@ import { StructureLevelPass } from "./passes/StructureLevelPass";
 import { StructurePass } from "./passes/StructurePass";
 import { TerrainPass } from "./passes/TerrainPass";
 import { TerritoryPass } from "./passes/TerritoryPass";
+import { TideWarningPass } from "./passes/TideWarningPass";
 import { TrailPass } from "./passes/TrailPass";
 import { UnitPass } from "./passes/UnitPass";
+import { VolcanoMarker, VolcanoPass } from "./passes/VolcanoPass";
 import { WorldTextPass } from "./passes/WorldTextPass";
 import type { RenderSettings } from "./RenderSettings";
 import { AffiliationPalette } from "./utils/Affiliation";
@@ -144,6 +146,8 @@ export class GPURenderer {
   private minefieldPass: MinefieldPass;
   private capitalPass: CapitalPass;
   private ruinsPass: RuinsPass;
+  private volcanoPass: VolcanoPass;
+  private tideWarningPass: TideWarningPass;
   private samRadiusPass: SAMRadiusPass;
   private crosshairPass: CrosshairPass;
   private railroadPass: RailroadPass;
@@ -571,6 +575,9 @@ export class GPURenderer {
 
     // --- Ruins icons (world features) ---
     this.ruinsPass = new RuinsPass(gl);
+    // --- Volcano sites and the rising tide warning ---
+    this.volcanoPass = new VolcanoPass(gl);
+    this.tideWarningPass = new TideWarningPass(gl, mapW, mapH);
 
     // --- SAM radius overlay (dashed green circles during build mode) ---
     this.samRadiusPass = new SAMRadiusPass(gl, mapW, this.settings);
@@ -1126,6 +1133,21 @@ export class GPURenderer {
     this.ruinsPass.update(ruins);
   }
 
+  /** Volcanoes: the sites to draw. */
+  updateVolcanoes(markers: VolcanoMarker[]): void {
+    this.volcanoPass.update(markers);
+  }
+
+  /** Volcanoes: starts the eruption glow at a site. */
+  volcanoErupted(x: number, y: number): void {
+    this.volcanoPass.erupt(x, y);
+  }
+
+  /** Rising tide: the tiles the coming wave floods (empty hides them). */
+  updateTideWarning(tiles: ArrayLike<number>): void {
+    this.tideWarningPass.update(tiles);
+  }
+
   updateSmallPlayerGlow(set: Uint8Array | null): void {
     this.smallPlayerGlowPass.update(set);
   }
@@ -1388,6 +1410,7 @@ export class GPURenderer {
     if (pe.railroad) this.railroadPass.draw(cam, zoom);
     // Under the ships that sail through them.
     this.minefieldPass.draw(cam);
+    this.tideWarningPass.draw(cam);
     if (pe.unit) this.unitPass.drawGround(cam);
     if (pe.falloutBloom) this.bloomPass.draw(cam, this.frameTick);
     this.samRadiusPass.draw(cam);
@@ -1398,6 +1421,7 @@ export class GPURenderer {
     if (pe.structure) this.structureLevelPass.draw(cam, zoom);
     this.capitalPass.draw(cam);
     this.ruinsPass.draw(cam);
+    this.volcanoPass.draw(cam);
     // Small-player glow draws after structures so buildings can't hide it.
     this.smallPlayerGlowPass.draw(cam);
     if (pe.bar) this.barPass.draw(cam);
@@ -1534,6 +1558,8 @@ export class GPURenderer {
     this.minefieldPass.dispose();
     this.capitalPass.dispose();
     this.ruinsPass.dispose();
+    this.volcanoPass.dispose();
+    this.tideWarningPass.dispose();
     this.samRadiusPass.dispose();
     this.crosshairPass.dispose();
     this.structurePass.dispose();
