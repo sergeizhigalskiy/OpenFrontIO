@@ -91,7 +91,7 @@
     "defenseCheckerDarken": 0.7,
     "territoryDefenseDarken": 0.85,
     "territorySaturation": 0.85,
-    "territoryAlpha": 0.588,
+    "territoryAlpha": 0.55,
     "coordinateGridOpacity": 0.5,
     "staleNukeBase": 0,
     "staleNukeVariation": 0.05,
@@ -109,7 +109,16 @@
     "embargoTintB": 0,
     "friendlyTintR": 0,
     "friendlyTintG": 1,
-    "friendlyTintB": 0
+    "friendlyTintB": 0,
+    "borderLineMinPx": 1.25,
+    "borderLineMaxPx": 3.5,
+    "borderLineTileFrac": 0.25,
+    "borderSeamPx": 0.6,
+    "borderSeamDarken": 0.5,
+    "borderBandPx": 6,
+    "borderBandAlpha": 0.55,
+    "borderBandDarken": 0.7,
+    "territoryRelief": 0.45
   },
   "affiliation": {
     "selfR": 0,
@@ -141,38 +150,42 @@
     "shapes": {
       "City": {
         "scale": 1,
-        "iconFill": 0.85
+        "iconFill": 0.88
       },
       "Port": {
-        "scale": 1.08,
-        "iconFill": 0.85
+        "scale": 1.12,
+        "iconFill": 0.82
       },
       "Factory": {
         "scale": 1.08,
-        "iconFill": 0.85
+        "iconFill": 0.86
       },
       "Defense Post": {
-        "scale": 1,
+        "scale": 1.04,
         "iconFill": 0.8
       },
       "SAM Launcher": {
-        "scale": 1.4,
-        "iconFill": 1
+        "scale": 1.28,
+        "iconFill": 0.86
       },
       "Missile Silo": {
         "scale": 1.55,
-        "iconFill": 0.85
+        "iconFill": 0.9
       },
       "Coastal Battery": {
         "scale": 1.12,
-        "iconFill": 0.85
+        "iconFill": 0.82
       },
       "Airbase": {
         "scale": 1.55,
-        "iconFill": 0.8
+        "iconFill": 0.82
       },
       "Flak Gun": {
-        "scale": 1.4,
+        "scale": 1.3,
+        "iconFill": 0.88
+      },
+      "Siege Camp": {
+        "scale": 1.08,
         "iconFill": 0.9
       }
     },
@@ -258,6 +271,9 @@
     "hoverFadeAlpha": 0.5,
     "hoverGlowWidth": 5,
     "hoverGlowAlpha": 0.75,
+    "outlineLift": 0.6,
+    "haloWidth": 3,
+    "haloAlpha": 0.55,
     "flagAlpha": 1
   },
   "fx": {

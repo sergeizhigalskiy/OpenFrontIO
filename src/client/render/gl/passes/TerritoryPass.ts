@@ -5,7 +5,8 @@
  *   - Owned territory (player color fill)
  *   - Any fallout tile (stale-nuke ground, overrides owned territory)
  *
- * No borders, embers, trails, or defense checkerboard — those are
+ * The fill carries the terrain's hillshade (territory.frag.glsl), so the
+ * relief reads through it. No borders, embers or trails — those are
  * handled by BorderStampPass and TrailPass at full brightness.
  *
  * Owns the CPU-side tile state and the drip queue that staggers tile
@@ -16,6 +17,8 @@ import type { RenderSettings } from "../RenderSettings";
 import { getPaletteSize } from "../utils/ColorUtils";
 import { createMapQuad, createProgram, shaderSrc } from "../utils/GlUtils";
 import { FALLOUT_BIT, OWNER_MASK, TILE_DEFINES } from "../utils/TileCodec";
+
+import { HEIGHT_UNITS_PER_LEVEL, lightDirection } from "../terrain/Relief";
 
 import overlayVertSrc from "../shaders/map-overlay/overlay.vert.glsl?raw";
 import territoryFragSrc from "../shaders/map-overlay/territory.frag.glsl?raw";
@@ -43,6 +46,9 @@ export class TerritoryPass {
   private uSaturation: WebGLUniformLocation;
   private uTerritoryAlpha: WebGLUniformLocation;
   private uAltFillAlpha: WebGLUniformLocation;
+  private uShadeStrength: WebGLUniformLocation;
+  private uReliefScale: WebGLUniformLocation;
+  private uLightDir: WebGLUniformLocation;
   private highlightOwner = 0;
   private isTeamMode = false;
 
@@ -55,7 +61,6 @@ export class TerritoryPass {
   private skinLayerTex: WebGLTexture;
   private skinAnchorTex: WebGLTexture;
   private defenseCoverageTex: WebGLTexture | null = null;
-  private borderTex: WebGLTexture | null = null;
   private affiliationTex: WebGLTexture | null = null;
 
   private altView = false;
@@ -182,6 +187,12 @@ export class TerritoryPass {
       "uTerritoryAlpha",
     )!;
     this.uAltFillAlpha = gl.getUniformLocation(this.program, "uAltFillAlpha")!;
+    this.uShadeStrength = gl.getUniformLocation(
+      this.program,
+      "uShadeStrength",
+    )!;
+    this.uReliefScale = gl.getUniformLocation(this.program, "uReliefScale")!;
+    this.uLightDir = gl.getUniformLocation(this.program, "uLightDir")!;
 
     gl.useProgram(this.program);
     gl.uniform1i(gl.getUniformLocation(this.program, "uTileTex"), 0);
@@ -192,7 +203,6 @@ export class TerritoryPass {
     gl.uniform1i(gl.getUniformLocation(this.program, "uSkinLayer"), 5);
     gl.uniform1i(gl.getUniformLocation(this.program, "uSkinAnchor"), 6);
     gl.uniform1i(gl.getUniformLocation(this.program, "uDefenseCoverageTex"), 7);
-    gl.uniform1i(gl.getUniformLocation(this.program, "uBorderTex"), 8);
     gl.uniform1i(gl.getUniformLocation(this.program, "uAffiliation"), 9);
 
     this.vao = createMapQuad(gl, mapW, mapH);
@@ -406,11 +416,6 @@ export class TerritoryPass {
     this.defenseCoverageTex = tex;
   }
 
-  /** Border flags (RGBA8) — used to skip the defense darken on border tiles. */
-  setBorderTex(tex: WebGLTexture): void {
-    this.borderTex = tex;
-  }
-
   /** Affiliation palette (row 0 = border/relation colors) for the alt-view fill. */
   setAffiliationTex(tex: WebGLTexture): void {
     this.affiliationTex = tex;
@@ -446,6 +451,18 @@ export class TerritoryPass {
     gl.uniform1f(this.uSaturation, mo.territorySaturation);
     gl.uniform1f(this.uTerritoryAlpha, mo.territoryAlpha);
     gl.uniform1f(this.uAltFillAlpha, this.settings.altView.fillAlpha);
+    // The terrain's hillshade (TerrainPass), for the fill to carry.
+    const view = this.settings.mapView;
+    const shade = view.hillshade
+      ? view.hillshadeStrength * mo.territoryRelief
+      : 0;
+    gl.uniform1f(this.uShadeStrength, shade);
+    gl.uniform1f(this.uReliefScale, view.reliefScale / HEIGHT_UNITS_PER_LEVEL);
+    const [lx, ly, lz] = lightDirection(
+      view.lightAzimuthDeg,
+      view.lightAltitudeDeg,
+    );
+    gl.uniform3f(this.uLightDir, lx, ly, lz);
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.tileTex);
@@ -464,10 +481,6 @@ export class TerritoryPass {
     if (this.defenseCoverageTex) {
       gl.activeTexture(gl.TEXTURE7);
       gl.bindTexture(gl.TEXTURE_2D, this.defenseCoverageTex);
-    }
-    if (this.borderTex) {
-      gl.activeTexture(gl.TEXTURE8);
-      gl.bindTexture(gl.TEXTURE_2D, this.borderTex);
     }
     if (this.affiliationTex) {
       gl.activeTexture(gl.TEXTURE9);

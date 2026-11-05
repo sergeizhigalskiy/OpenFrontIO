@@ -2,8 +2,11 @@
  * BorderStampPass — territory borders + defense checkerboard.
  *
  * Always draws at full brightness (after the optional night composite).
- * Reads pre-computed border flags and defense proximity
- * from the BorderComputePass RGBA8 buffer.
+ * Borders are anti-aliased lines along the tile edges between owners, at a
+ * near-constant screen width (border-stamp.frag.glsl), with a dark seam at
+ * the edge and a soft darker band inside. Reads pre-computed border flags
+ * (highlight, relation) from the BorderComputePass RGBA8 buffer and defense
+ * coverage from DefenseCoveragePass.
  */
 
 import type { RenderSettings } from "../RenderSettings";
@@ -30,6 +33,14 @@ export class BorderStampPass {
   private uEmbargoTint: WebGLUniformLocation;
   private uFriendlyTint: WebGLUniformLocation;
   private uAltView: WebGLUniformLocation;
+  private uLineMinPx: WebGLUniformLocation;
+  private uLineMaxPx: WebGLUniformLocation;
+  private uLineTileFrac: WebGLUniformLocation;
+  private uSeamPx: WebGLUniformLocation;
+  private uSeamDarken: WebGLUniformLocation;
+  private uBandPx: WebGLUniformLocation;
+  private uBandAlpha: WebGLUniformLocation;
+  private uBandDarken: WebGLUniformLocation;
 
   private vao: WebGLVertexArrayObject;
   private tileTex: WebGLTexture;
@@ -85,6 +96,14 @@ export class BorderStampPass {
     this.uEmbargoTint = gl.getUniformLocation(this.program, "uEmbargoTint")!;
     this.uFriendlyTint = gl.getUniformLocation(this.program, "uFriendlyTint")!;
     this.uAltView = gl.getUniformLocation(this.program, "uAltView")!;
+    this.uLineMinPx = gl.getUniformLocation(this.program, "uLineMinPx")!;
+    this.uLineMaxPx = gl.getUniformLocation(this.program, "uLineMaxPx")!;
+    this.uLineTileFrac = gl.getUniformLocation(this.program, "uLineTileFrac")!;
+    this.uSeamPx = gl.getUniformLocation(this.program, "uSeamPx")!;
+    this.uSeamDarken = gl.getUniformLocation(this.program, "uSeamDarken")!;
+    this.uBandPx = gl.getUniformLocation(this.program, "uBandPx")!;
+    this.uBandAlpha = gl.getUniformLocation(this.program, "uBandAlpha")!;
+    this.uBandDarken = gl.getUniformLocation(this.program, "uBandDarken")!;
 
     gl.useProgram(this.program);
     gl.uniform1i(gl.getUniformLocation(this.program, "uTileTex"), 0);
@@ -106,7 +125,7 @@ export class BorderStampPass {
     this.defenseCoverageTex = tex;
   }
 
-  /** Draw borders + defense checkerboard. Blending must be enabled. */
+  /** Draw borders + defense dashes. Blending must be enabled. */
   draw(cameraMatrix: Float32Array): void {
     const gl = this.gl;
     const mo = this.settings.mapOverlay;
@@ -130,6 +149,14 @@ export class BorderStampPass {
       mo.friendlyTintB,
     );
     gl.uniform1i(this.uAltView, this.altView ? 1 : 0);
+    gl.uniform1f(this.uLineMinPx, mo.borderLineMinPx);
+    gl.uniform1f(this.uLineMaxPx, mo.borderLineMaxPx);
+    gl.uniform1f(this.uLineTileFrac, mo.borderLineTileFrac);
+    gl.uniform1f(this.uSeamPx, mo.borderSeamPx);
+    gl.uniform1f(this.uSeamDarken, mo.borderSeamDarken);
+    gl.uniform1f(this.uBandPx, mo.borderBandPx);
+    gl.uniform1f(this.uBandAlpha, mo.borderBandAlpha);
+    gl.uniform1f(this.uBandDarken, mo.borderBandDarken);
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.tileTex);

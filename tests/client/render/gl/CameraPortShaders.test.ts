@@ -15,15 +15,18 @@ import path from "path";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { CAMERA_INCLUDE } from "../../../../src/client/render/gl/camera/CameraBlock";
 import { BlockadePass } from "../../../../src/client/render/gl/passes/BlockadePass";
+import { BorderStampPass } from "../../../../src/client/render/gl/passes/BorderStampPass";
 import { CanalPass } from "../../../../src/client/render/gl/passes/CanalPass";
 import { CapitalPass } from "../../../../src/client/render/gl/passes/CapitalPass";
 import { DefenseCoveragePass } from "../../../../src/client/render/gl/passes/DefenseCoveragePass";
+import { TextProgram } from "../../../../src/client/render/gl/passes/name-pass/TextProgram";
 import { RailroadPass } from "../../../../src/client/render/gl/passes/RailroadPass";
 import { ReloadBarPass } from "../../../../src/client/render/gl/passes/ReloadBarPass";
 import { ResourceSitePass } from "../../../../src/client/render/gl/passes/ResourceSitePass";
 import { RuinsPass } from "../../../../src/client/render/gl/passes/RuinsPass";
 import { StructurePass } from "../../../../src/client/render/gl/passes/StructurePass";
 import { TerrainFeaturePass } from "../../../../src/client/render/gl/passes/TerrainFeaturePass";
+import { TerritoryPass } from "../../../../src/client/render/gl/passes/TerritoryPass";
 import { TideWarningPass } from "../../../../src/client/render/gl/passes/TideWarningPass";
 import { UnitPass } from "../../../../src/client/render/gl/passes/UnitPass";
 import { VolcanoPass } from "../../../../src/client/render/gl/passes/VolcanoPass";
@@ -68,6 +71,17 @@ interface PassCase {
 }
 
 const settings = createRenderSettings();
+// The name font's metrics (resources/atlases/msdf-atlas.json); the glyph
+// tables aren't needed to build the program.
+const MSDF_ATLAS = {
+  fontSize: 48,
+  base: 36,
+  scaleW: 1024,
+  scaleH: 1024,
+  distanceRange: 16,
+  chars: [],
+  kernings: [],
+};
 const config = new Config({} as never, false);
 const tex = {} as WebGLTexture;
 
@@ -147,6 +161,43 @@ const PASSES: PassCase[] = [
   {
     name: "UnitPass",
     build: (gl) => new UnitPass(gl, header(), tex, tex, settings, config),
+    camera: true,
+  },
+  // gfx-overlay: territory fill with relief, anti-aliased border lines and
+  // haloed name labels
+  {
+    name: "TerritoryPass",
+    build: (gl) =>
+      new TerritoryPass(
+        gl,
+        MAP_W,
+        MAP_H,
+        tex,
+        tex,
+        tex,
+        tex,
+        tex,
+        tex,
+        tex,
+        settings,
+      ),
+    camera: true,
+  },
+  {
+    name: "BorderStampPass",
+    build: (gl) =>
+      new BorderStampPass(gl, MAP_W, MAP_H, tex, tex, tex, settings),
+    camera: true,
+  },
+  {
+    name: "TextProgram",
+    build: (gl) =>
+      new TextProgram(gl, MSDF_ATLAS, {
+        glyphMetrics: tex,
+        cursor: tex,
+        strings: tex,
+        playerData: tex,
+      }),
     camera: true,
   },
 ];

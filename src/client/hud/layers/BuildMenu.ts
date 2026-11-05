@@ -55,8 +55,8 @@ const cruiseMissileIcon = assetUrl("images/CruiseMissileIconWhite.svg");
 const ballisticMissileIcon = assetUrl("images/BallisticMissileIconWhite.svg");
 const clusterMissileIcon = assetUrl("images/ClusterMissileIconWhite.svg");
 const droneIcon = assetUrl("images/DroneIconWhite.svg");
-// An existing icon: the build hammer, for a field workshop.
-const siegeCampIcon = assetUrl("images/BuildIconWhite.svg");
+// A catapult (scripts/genUnitArt.ts).
+const siegeCampIcon = assetUrl("images/SiegeCampIconWhite.svg");
 // Canals open routes for ships.
 const canalIcon = assetUrl("images/BoatIconWhite.svg");
 

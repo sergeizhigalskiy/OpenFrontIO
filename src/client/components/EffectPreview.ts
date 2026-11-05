@@ -37,7 +37,7 @@ const WATER = "#4785b5";
 const PLAINS = "#bedc8a";
 // Territory and trails paint over terrain at mapOverlay.territoryAlpha /
 // trailAlpha.
-const TERRITORY_ALPHA = 0.588;
+const TERRITORY_ALPHA = 0.55;
 const TRAIL_ALPHA = 0.588;
 // The local player's rails take the theme's focused-border color (white).
 const RAIL_COLOR = "#ffffff";

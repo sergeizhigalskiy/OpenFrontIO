@@ -115,8 +115,8 @@ float sdPolygon(vec2 p, float R, float n, float rot) {
 
 // Per-structure-type shape SDF.
 // Atlas indices: 0=City, 1=Port, 2=Factory, 3=DefensePost, 4=SAM, 5=Silo,
-// 6=CoastalBattery, 7=Airbase, 8=FlakGun. Each newer shape is a flipped or
-// turned sibling of an older one, so they still read apart as dots.
+// 6=CoastalBattery, 7=Airbase, 8=FlakGun, 9=SiegeCamp. Each newer shape is a
+// flipped or turned sibling of an older one, so they still read apart as dots.
 float shapeSDF(vec2 p, float R) {
   if (vAtlasIdx < 0.5)
     return length(p) - R;                     // City → circle
@@ -134,7 +134,9 @@ float shapeSDF(vec2 p, float R) {
     return sdPolygon(p, R, 5.0, -PI * 0.5);   // Coastal Battery → pentagon (vertex down)
   if (vAtlasIdx < 7.5)
     return sdPolygon(p, R, 3.0, -PI * 0.5);   // Airbase → triangle (vertex down)
-  return sdPolygon(p, R, 4.0, PI * 0.25);     // Flak Gun → diamond
+  if (vAtlasIdx < 8.5)
+    return sdPolygon(p, R, 4.0, PI * 0.25);   // Flak Gun → diamond
+  return sdPolygon(p, R, 6.0, 0.0);           // Siege Camp → hexagon (pointy top)
 }
 
 void main() {
@@ -149,7 +151,12 @@ void main() {
   float highlightOutlineW = uHighlightMask != 0 ? uHighlightOutlineW / vShapeScale : 0.0;
   float outerAlpha = 1.0 - smoothstep(-fw, fw, sdf - highlightOutlineW);
 
-  if (outerAlpha <= 0.0) discard;
+  // A soft drop shadow, down and to the right, so the badge lifts off busy
+  // terrain. The quad is padded to make room for it (structure.vert.glsl).
+  float shadowSdf = shapeSDF(vLocalPos - vec2(0.015, 0.035), radius);
+  float shadow = (1.0 - smoothstep(-0.03, 0.06, shadowSdf)) * 0.4;
+
+  if (outerAlpha <= 0.0 && shadow <= 0.002) discard;
 
   float borderMask = 1.0 - smoothstep(-fw, fw, sdf + borderWidth);
 
@@ -197,6 +204,9 @@ void main() {
     }
   }
 
+  // A gentle top-lit gradient on the fill, so the badge reads as raised.
+  fillColor.rgb *= 1.0 - 0.14 * vLocalPos.y;
+
   vec4 bgColor = mix(borderColor, fillColor, borderMask);
 
   // Sample icon from atlas (white on transparent)
@@ -212,8 +222,9 @@ void main() {
     // Zero out icon outside the valid UV region (clamped pixels would repeat the edge)
     float inBounds = step(colStart, vAtlasUV.x) * step(vAtlasUV.x, colEnd)
                    * step(0.0, vAtlasUV.y) * step(vAtlasUV.y, 1.0);
-    // Clip to fill area so icon doesn't bleed into the border ring.
-    iconAlpha = iconSample.a * borderMask * inBounds;
+    // Clip to fill area so icon doesn't bleed into the border ring. The
+    // alpha is firmed up so thin strokes stay solid when the glyph is small.
+    iconAlpha = smoothstep(0.08, 0.6, iconSample.a) * borderMask * inBounds;
   }
 
   // Composite: tinted icon over player-colored shape.
@@ -256,6 +267,7 @@ void main() {
   finalRGB = mix(finalRGB, uOutlineColor, tintActive * 0.5);
 
   float finalAlpha = bgColor.a * outerAlpha * uGhostAlpha * uIconAlpha;
+  float shadowAlpha = shadow * uGhostAlpha * uIconAlpha;
 
   // Build-button hover highlight: white outline on matching types, dim the rest
   if (uHighlightMask != 0) {
@@ -269,8 +281,12 @@ void main() {
       finalAlpha = max(finalAlpha, outlineBand);
     } else {
       finalAlpha *= uHighlightDimAlpha;
+      shadowAlpha *= uHighlightDimAlpha;
     }
   }
 
-  fragColor = vec4(finalRGB, finalAlpha);
+  // Badge over its shadow.
+  float outA = finalAlpha + shadowAlpha * (1.0 - finalAlpha);
+  if (outA <= 0.002) discard;
+  fragColor = vec4(finalRGB * finalAlpha / outA, outA);
 }

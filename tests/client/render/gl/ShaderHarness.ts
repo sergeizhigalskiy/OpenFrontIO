@@ -170,7 +170,9 @@ export function findChrome(): string | null {
 }
 
 // The page: compile, link, then draw once per camera mode with the block
-// bound, samplers on distinct units with textures of their own type.
+// bound, samplers on distinct units with textures of their own type. A
+// program with an unsigned-integer output (a tile-state scatter) draws into a
+// small RGBA16UI target, as it does in the renderer, not the canvas.
 const PAGE_SCRIPT = `
 const out = [];
 const canvas = document.createElement("canvas");
@@ -208,7 +210,16 @@ else {
   gl.bindTexture(gl.TEXTURE_2D, null);
   gl.bindTexture(gl.TEXTURE_2D_ARRAY, null);
   const vao = gl.createVertexArray();
+  const uintTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, uintTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16UI, 64, 64, 0, gl.RGBA_INTEGER, gl.UNSIGNED_SHORT, null);
+  gl.bindTexture(gl.TEXTURE_2D, null);
+  const uintFbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, uintFbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, uintTex, 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   PROGRAMS.forEach((p, index) => {
+    const uintOut = /\\bout\\s+(highp\\s+|mediump\\s+|lowp\\s+)?(uvec[234]|uint)\\b/.test(p.fs);
     const r = { pass: p.pass, index, compiled: false, linked: false, log: "", usesCamera: false, cameraBlockBytes: 0, drawErrors: {} };
     const shaders = [[gl.VERTEX_SHADER, p.vs], [gl.FRAGMENT_SHADER, p.fs]].map(([type, src]) => {
       const s = gl.createShader(type);
@@ -251,8 +262,10 @@ else {
         gl.bufferSubData(gl.UNIFORM_BUFFER, 0, new Float32Array(block));
         gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, ubo);
         gl.bindVertexArray(vao);
+        if (uintOut) gl.bindFramebuffer(gl.FRAMEBUFFER, uintFbo);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         r.drawErrors[mode] = gl.getError();
+        if (uintOut) gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       }
     }
     out.push(r);
