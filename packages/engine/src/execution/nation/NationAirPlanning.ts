@@ -338,6 +338,9 @@ export function structureStrikeValue(unit: Unit): number {
       return 10_000;
     case UnitType.DefensePost:
       return 5_000 * level;
+    // Like a post: a front-line structure (defense lines).
+    case UnitType.SiegeCamp:
+      return 5_000;
     default:
       return 0;
   }

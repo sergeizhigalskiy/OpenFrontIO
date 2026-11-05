@@ -139,7 +139,16 @@ describe("airstrike effects", () => {
     expect(b.troops()).toBeGreaterThan(500_000 - 20_000 - 1);
   });
 
-  test("15% of a nearby attack, never land", async () => {
+  test("destroys an enemy siege camp, a military structure", async () => {
+    const { game, a, b } = await twoSides();
+    structure(game, a, UnitType.Airbase, game.ref(90, 100));
+    const camp = structure(game, b, UnitType.SiegeCamp, game.ref(140, 100));
+    order(game, a, UnitType.Airstrike, camp.tile());
+    landAll(game);
+    expect(camp.isActive()).toBe(false);
+  });
+
+    test("15% of a nearby attack, never land", async () => {
     const { game, a, b } = await twoSides();
     structure(game, a, UnitType.Airbase, game.ref(60, 100));
     b.setTroops(100_000);

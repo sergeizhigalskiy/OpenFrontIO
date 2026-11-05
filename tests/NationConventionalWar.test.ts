@@ -161,7 +161,25 @@ describe("nation air support in conventional war", () => {
     expect(missions(execs, UnitType.Airstrike)).toHaveLength(0);
   });
 
-  test("an open target gets an airstrike, paid like a human's", async () => {
+  test("an enemy siege camp on the front gets an airstrike, like a post", async () => {
+    const { game, nation, enemy } = await war(Difficulty.Hard);
+    structure(game, nation, UnitType.Airbase, game.ref(80, 100));
+    const camp = structure(game, enemy, UnitType.SiegeCamp, game.ref(110, 100));
+    nation.setTroops(1_000_000);
+    enemy.setTroops(10_000);
+    game.addExecution(new AttackExecution(200_000, nation, enemy.id(), null));
+    executeTicks(game, 2);
+    setGold(nation, 100_000_000n);
+    const execs = added(game);
+    behaviors(game, nation).attack.maybeSupportFromTheAir();
+    const strikes = missions(execs, UnitType.Airstrike);
+    expect(strikes).toHaveLength(1);
+    expect((strikes[0] as unknown as { dst: number }).dst).toBe(camp.tile());
+    executeTicks(game, 40);
+    expect(camp.isActive()).toBe(false);
+  });
+
+    test("an open target gets an airstrike, paid like a human's", async () => {
     const { game, nation, post } = await frontWithPost(Difficulty.Hard);
     const execs = added(game);
     behaviors(game, nation).attack.maybeSupportFromTheAir();

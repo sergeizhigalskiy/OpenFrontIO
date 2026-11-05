@@ -121,6 +121,8 @@ export const MILITARY_STRUCTURE_TYPES: readonly UnitType[] = [
   UnitType.Airbase,
   UnitType.MissileSilo,
   UnitType.FlakGun,
+  // Defense lines (Siege.ts): a camp is a field workshop at the front.
+  UnitType.SiegeCamp,
 ];
 
 // ---------------------------------------------------------------------------
@@ -404,6 +406,7 @@ export const DRONE_TARGET_TYPES: readonly UnitType[] = [
   UnitType.Airbase,
   UnitType.FlakGun,
   UnitType.CoastalBattery,
+  UnitType.SiegeCamp,
   UnitType.Warship,
   UnitType.TransportShip,
   UnitType.Convoy,

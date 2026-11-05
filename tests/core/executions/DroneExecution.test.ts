@@ -174,7 +174,23 @@ describe("drones against structures", () => {
     expect(city.isActive()).toBe(false);
   });
 
-  test("a coastal battery loses a third of its health per hit", async () => {
+  test("a siege camp survives 2 drone hits and dies to 3", async () => {
+    const { game, a, b } = await land();
+    structure(game, a, UnitType.Airbase, game.ref(40, 100));
+    const camp = structure(game, b, UnitType.SiegeCamp, game.ref(100, 100));
+    expect(a.canBuild(UnitType.Drone, camp.tile())).not.toBe(false);
+    order(game, a, UnitType.Drone, camp.tile(), { count: 2 });
+    executeTicks(game, 3);
+    settle(game);
+    expect(camp.isActive()).toBe(true);
+    expect(camp.droneHits()).toBe(2);
+    order(game, a, UnitType.Drone, camp.tile(), { count: 1 });
+    executeTicks(game, 3);
+    settle(game);
+    expect(camp.isActive()).toBe(false);
+  });
+
+    test("a coastal battery loses a third of its health per hit", async () => {
     const { game, a, b } = await land();
     structure(game, a, UnitType.Airbase, game.ref(40, 100));
     const battery = b.buildUnit(

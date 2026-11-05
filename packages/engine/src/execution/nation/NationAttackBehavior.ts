@@ -20,6 +20,7 @@ import {
   CRUISE_MISSILE_RANGE,
 } from "@openfront/engine-lib/game/ConventionalWar";
 import { COASTAL_BATTERY_RANGE } from "@openfront/engine-lib/game/NavalDefense";
+import { SIEGE_CAMP_RANGE } from "@openfront/engine-lib/game/Siege";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import { Versioned } from "@openfront/engine-lib/snapshot/SnapshotType";
 import {
@@ -27,7 +28,10 @@ import {
   boundingBoxCenter,
   calculateBoundingBoxCenter,
 } from "@openfront/engine-lib/Util";
-import { CHEAPEST_TROOP_RATIO } from "../../configuration/EngineConfig";
+import {
+  CHEAPEST_TROOP_RATIO,
+  EngineConfig,
+} from "../../configuration/EngineConfig";
 import { Attack, Game, Player, Unit } from "../../game/Game";
 import {
   canBuildTransportShip,
@@ -1982,7 +1986,10 @@ export class NationAttackBehavior extends AiAttackBehavior {
     return false;
   }
 
-  /** Enemy defense posts and coastal batteries covering our attack fronts, by id. */
+  /**
+   * Enemy defense posts, coastal batteries and siege camps whose reach
+   * covers our attack fronts, by id.
+   */
   private frontStructures(): Unit[] {
     const config = this.game.config();
     const found: Unit[] = [];
@@ -1993,13 +2000,10 @@ export class NationAttackBehavior extends AiAttackBehavior {
       for (const unit of target.units(
         UnitType.DefensePost,
         UnitType.CoastalBattery,
+        UnitType.SiegeCamp,
       )) {
         if (unit.isUnderConstruction() || found.includes(unit)) continue;
-        // A post covers by its own level (defense lines).
-        const range =
-          unit.type() === UnitType.DefensePost
-            ? config.defensePostRange(unit.level())
-            : COASTAL_BATTERY_RANGE;
+        const range = frontStructureRange(config, unit);
         if (this.frontWithin(attack, unit.tile(), range)) found.push(unit);
       }
     }
@@ -2062,5 +2066,21 @@ export class NationAttackBehavior extends AiAttackBehavior {
     if (spareAirGold(game, player) < upgrade) return false;
     game.addExecution(new UpgradeStructureExecution(player, best.id()));
     return true;
+  }
+}
+
+/**
+ * How far a front structure reaches: a defense post by its own level, a
+ * siege camp as far as it weakens posts (defense lines, Siege.ts), a coastal
+ * battery its gun range.
+ */
+function frontStructureRange(config: EngineConfig, unit: Unit): number {
+  switch (unit.type()) {
+    case UnitType.DefensePost:
+      return config.defensePostRange(unit.level());
+    case UnitType.SiegeCamp:
+      return SIEGE_CAMP_RANGE;
+    default:
+      return COASTAL_BATTERY_RANGE;
   }
 }
