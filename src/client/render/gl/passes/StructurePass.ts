@@ -1,8 +1,10 @@
 /**
  * StructurePass — GPU-rendered structures with icon sprites.
  *
- * Renders a filled circle in player color with a white icon overlay,
- * sampled from a pre-built 6-column sprite atlas (generate-sprite-atlases.mjs).
+ * Renders a filled shape in player color with a white icon overlay, sampled
+ * from a sprite atlas: the pre-built 6-column icon-atlas.png
+ * (generate-sprite-atlases.mjs, not in this repo) followed by
+ * icon-atlas-ext.png's columns (scripts/genUnitArt.ts).
  *
  * Two LODs based on zoom:
  *   - zoom > 0.5: full icon with circle background
@@ -29,6 +31,7 @@ import {
 } from "../../types";
 import { DynamicInstanceBuffer } from "../DynamicBuffer";
 import type { RenderSettings } from "../RenderSettings";
+import { loadAtlasImages, uploadAtlasStrip } from "../utils/AtlasStrip";
 import {
   getPaletteSize,
   MAX_TRAIL_COLORS,
@@ -41,6 +44,8 @@ import structureFragSrc from "../shaders/structure/structure.frag.glsl?raw";
 import structureVertSrc from "../shaders/structure/structure.vert.glsl?raw";
 
 const iconAtlasUrl = assetUrl("atlases/icon-atlas.png");
+/** Glyphs for the structures after the silo (see STRUCTURE_ORDER). */
+const iconAtlasExtUrl = assetUrl("atlases/icon-atlas-ext.png");
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -50,32 +55,36 @@ const iconAtlasUrl = assetUrl("atlases/icon-atlas.png");
  * Structure types in atlas column order.
  * Index = atlas column index.
  */
-const STRUCTURE_ORDER = [
+export const STRUCTURE_ORDER = [
   UT_CITY,
   UT_PORT,
   UT_FACTORY,
   UT_DEFENSE_POST,
   UT_SAM_LAUNCHER,
   UT_MISSILE_SILO,
+  // icon-atlas-ext.png, in the order scripts/genUnitArt.ts draws them. Their
+  // shapes are in structure.frag.glsl's shapeSDF.
+  UT_COASTAL_BATTERY,
+  UT_AIRBASE,
+  UT_FLAK_GUN,
 ] as const;
 
 const ATLAS_COLS = STRUCTURE_ORDER.length;
 
 /**
- * Structures without an atlas column of their own, drawn with another's icon
- * (the atlas generator isn't in this repo). A coastal battery is a shore gun,
- * so it gets the defense post's shield.
+ * Structures without an atlas column of their own, drawn with another's
+ * glyph and shape. A siege camp is a field workshop for breaking defense
+ * lines, so it gets the factory's.
  */
 const BORROWED_ICONS: ReadonlyMap<string, (typeof STRUCTURE_ORDER)[number]> =
-  new Map([
-    [UT_COASTAL_BATTERY, UT_DEFENSE_POST],
-    // Conventional war: an airbase launches like a silo, a flak gun shoots
-    // planes like a SAM.
-    [UT_AIRBASE, UT_MISSILE_SILO],
-    [UT_FLAK_GUN, UT_SAM_LAUNCHER],
-    // A siege camp is a field workshop for breaking defense lines.
-    [UT_SIEGE_CAMP, UT_FACTORY],
-  ]);
+  new Map([[UT_SIEGE_CAMP, UT_FACTORY]]);
+
+/** A structure type's atlas column (its own or the one it borrows), or -1. */
+export function structureAtlasColumn(type: string): number {
+  return STRUCTURE_ORDER.indexOf(
+    BORROWED_ICONS.get(type) ?? (type as (typeof STRUCTURE_ORDER)[number]),
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Instance data layout
@@ -135,7 +144,7 @@ export class StructurePass {
 
   private instanceCount = 0;
 
-  /** unitType string → atlas column index (0–5) */
+  /** unitType string → atlas column index (see STRUCTURE_ORDER) */
   private typeToAtlasCol = new Map<string, number>();
   private mapW: number;
 
@@ -163,9 +172,7 @@ export class StructurePass {
     // Build unitType string → atlas column mapping
     for (let i = 0; i < header.unitTypes.length; i++) {
       const type = header.unitTypes[i];
-      const col = STRUCTURE_ORDER.indexOf(
-        BORROWED_ICONS.get(type) ?? (type as (typeof STRUCTURE_ORDER)[number]),
-      );
+      const col = structureAtlasColumn(type);
       if (col >= 0) {
         this.typeToAtlasCol.set(type, col);
       }
@@ -300,14 +307,11 @@ export class StructurePass {
   }
 
   private async loadAtlas(): Promise<void> {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.src = iconAtlasUrl;
-    await img.decode();
+    const images = await loadAtlasImages([iconAtlasUrl, iconAtlasExtUrl]);
     const gl = this.gl;
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.atlasTex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+    uploadAtlasStrip(gl, images);
     gl.generateMipmap(gl.TEXTURE_2D);
     gl.texParameteri(
       gl.TEXTURE_2D,

@@ -43,17 +43,17 @@ const atomBombIcon = assetUrl("images/NukeIconWhite.svg");
 const portIcon = assetUrl("images/PortIcon.svg");
 const samlauncherIcon = assetUrl("images/SamLauncherIconWhite.svg");
 const shieldIcon = assetUrl("images/ShieldIconWhite.svg");
-const minefieldIcon = assetUrl("images/ExplosionIconWhite.svg");
-const coastalBatteryIcon = assetUrl("images/TargetIconWhite.svg");
-// Conventional war: existing icons reused.
-const airbaseIcon = assetUrl("images/FastForwardIconSolidWhite.svg");
-const flakGunIcon = assetUrl("images/HighlightIconWhite.svg");
-const airstrikeIcon = assetUrl("images/FocusIconWhite.svg");
-const airdropIcon = assetUrl("images/TroopIconWhite.svg");
-const cruiseMissileIcon = assetUrl("images/NukeIconWhite.svg");
-const ballisticMissileIcon = assetUrl("images/MushroomCloudIconWhite.svg");
-const clusterMissileIcon = assetUrl("images/MIRVIcon.svg");
-const droneIcon = assetUrl("images/SwordIconWhite.svg");
+// Naval defense and conventional war (drawn by scripts/genUnitArt.ts).
+const minefieldIcon = assetUrl("images/MinefieldIconWhite.svg");
+const coastalBatteryIcon = assetUrl("images/CoastalBatteryIconWhite.svg");
+const airbaseIcon = assetUrl("images/AirbaseIconWhite.svg");
+const flakGunIcon = assetUrl("images/FlakGunIconWhite.svg");
+const airstrikeIcon = assetUrl("images/AirstrikeIconWhite.svg");
+const airdropIcon = assetUrl("images/AirdropIconWhite.svg");
+const cruiseMissileIcon = assetUrl("images/CruiseMissileIconWhite.svg");
+const ballisticMissileIcon = assetUrl("images/BallisticMissileIconWhite.svg");
+const clusterMissileIcon = assetUrl("images/ClusterMissileIconWhite.svg");
+const droneIcon = assetUrl("images/DroneIconWhite.svg");
 // An existing icon: the build hammer, for a field workshop.
 const siegeCampIcon = assetUrl("images/BuildIconWhite.svg");
 

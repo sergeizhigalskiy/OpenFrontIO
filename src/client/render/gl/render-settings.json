@@ -150,6 +150,18 @@
       "Missile Silo": {
         "scale": 1.55,
         "iconFill": 0.85
+      },
+      "Coastal Battery": {
+        "scale": 1.12,
+        "iconFill": 0.85
+      },
+      "Airbase": {
+        "scale": 1.55,
+        "iconFill": 0.8
+      },
+      "Flak Gun": {
+        "scale": 1.4,
+        "iconFill": 0.9
       }
     },
     "highlightOutlineWidth": 0.04,
