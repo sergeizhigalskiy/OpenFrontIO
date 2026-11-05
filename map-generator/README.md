@@ -163,6 +163,8 @@ Public-lobby rotation weights are not set here: the API computes them from how f
 | `additionalNations`  |          | Nation objects drawn at random when a game asks for more nations than `nations` lists.                                                                                                                                           |
 | `teamGameSpawnAreas` |          | Spawn rectangles per team count: `{ "2": [{ "x", "y", "width", "height" }, ...] }`. Must lie inside the map.                                                                                                                     |
 
+A `custom_tribes` object with `"static": true` is a neutral city-state instead of a tribe: it sits at its coordinates, or is placed randomly without them, and counts toward the map's city-states (see `../packages/engine-lib/src/game/WorldFeatures.ts`).
+
 ### Categories
 
 Each entry in `categories` must be one of:

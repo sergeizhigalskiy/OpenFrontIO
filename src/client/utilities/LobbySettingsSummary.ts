@@ -139,6 +139,17 @@ export function notableLobbySettings(
           ? translateText("boss_raid.nation_boss")
           : translateText("boss_raid.player_boss"),
     });
+  // World features are on unless turned off, so only off is notable.
+  if (c.ruins === false)
+    items.push({
+      label: translateText("game_settings.ruins"),
+      value: disabled,
+    });
+  if (c.cityStates === false)
+    items.push({
+      label: translateText("game_settings.city_states"),
+      value: disabled,
+    });
   if (c.waterNukes)
     items.push({
       label: translateText("game_settings.water_nukes"),

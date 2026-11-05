@@ -957,6 +957,7 @@
     "capital_captured": "You captured the capital of {name} and seized {gold} gold",
     "capital_lost": "{name} captured your capital: you lost {troops} troops and {gold} gold",
     "capital_moved": "Your capital moved",
+    "city_state_conquered": "You conquered the city-state {name}: +{gold} gold",
     "cluster_missile_inbound": "{name} - cluster missile inbound",
     "conquered_no_gold": "Conquered {name} (didn't play, no gold awarded)",
     "convoy_delivered": "Your convoy delivered {troops} troops to {name}",
@@ -994,6 +995,9 @@
     "renew_alliance": "Request to renew",
     "request_alliance": "{name} requests an alliance!",
     "retreating": "retreating",
+    "ruins_found_defense_post": "You found ruins: a free defense post",
+    "ruins_found_gold": "You found ruins: +{gold} gold",
+    "ruins_found_troops": "You found ruins: +{troops} troops",
     "sent_emoji": "Sent {name}: {emoji}",
     "sent_emoji_all": "Sent everyone: {emoji}",
     "sent_gold_to_player": "Sent {gold} gold to {name}",
@@ -1095,6 +1099,7 @@
   },
   "game_settings": {
     "bots": "Tribes: ",
+    "city_states": "City-states",
     "compact_map": "Compact Map",
     "conventional_war": "Conventional war",
     "custom_alliances": "Alliance Duration",
@@ -1110,6 +1115,7 @@
     "options": "Options",
     "overtime": "Overtime after (minutes)",
     "random_spawn": "Random spawn",
+    "ruins": "Ruins",
     "start": "Start Game",
     "starting": "Starting…",
     "starting_gold": "Starting Gold (Millions)",
@@ -2099,6 +2105,7 @@
   },
   "player_type": {
     "bot": "Tribe",
+    "city_state": "City-state",
     "nation": "Nation",
     "player": "Player"
   },
@@ -3071,5 +3078,8 @@
     "you_won": "You Won!",
     "your_team": "Your team won!",
     "youtube_tutorial": "Need some help?"
+  },
+  "world_features": {
+    "ruins": "Ruins"
   }
 }

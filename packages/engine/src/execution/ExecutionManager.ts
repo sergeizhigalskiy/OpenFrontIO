@@ -1,3 +1,4 @@
+import { Cell } from "@openfront/engine-api/game/GameTypes";
 import {
   ClientID,
   GameID,
@@ -13,6 +14,8 @@ import { AllianceRequestExecution } from "./alliance/AllianceRequestExecution";
 import { BreakAllianceExecution } from "./alliance/BreakAllianceExecution";
 import { AttackExecution } from "./AttackExecution";
 import { BoatRetreatExecution } from "./BoatRetreatExecution";
+import { CityStateExecution } from "./CityStateExecution";
+import { CityStateSpawner } from "./CityStateSpawner";
 import { ConstructionExecution } from "./ConstructionExecution";
 import { DeleteUnitExecution } from "./DeleteUnitExecution";
 import { DonateGoldExecution } from "./DonateGoldExecution";
@@ -155,14 +158,27 @@ export class Executor {
   }
 
   spawnTribes(numTribes: number): SpawnExecution[] {
-    const nationCells = this.mg
+    return new TribeSpawner(
+      this.mg,
+      this.gameID_,
+      this.nationCells(),
+    ).spawnTribes(numTribes, this.purchasedTribeNames);
+  }
+
+  /** The neutral city-states (see CityStateSpawner). */
+  spawnCityStates(): CityStateExecution[] {
+    return new CityStateSpawner(
+      this.mg,
+      this.gameID_,
+      this.nationCells(),
+    ).spawnCityStates();
+  }
+
+  private nationCells(): Cell[] {
+    return this.mg
       .nations()
       .map((n) => n.spawnCell)
       .filter((c): c is NonNullable<typeof c> => c !== undefined);
-    return new TribeSpawner(this.mg, this.gameID_, nationCells).spawnTribes(
-      numTribes,
-      this.purchasedTribeNames,
-    );
   }
 
   spawnPlayers(): SpawnExecution[] {

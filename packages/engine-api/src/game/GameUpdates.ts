@@ -124,6 +124,7 @@ export enum GameUpdateType {
   SpawnPhaseEnd,
   GamePaused,
   DonateEvent,
+  Ruins,
 }
 
 export type GameUpdate =
@@ -149,7 +150,18 @@ export type GameUpdate =
   | EmbargoUpdate
   | SpawnPhaseEndUpdate
   | GamePausedUpdate
-  | DonateEventUpdate;
+  | DonateEventUpdate
+  | RuinsUpdate;
+
+/**
+ * Every unclaimed ruin on the map (see engine-lib/game/WorldFeatures.ts),
+ * sent whenever the set changes: when the ruins are placed and each time one
+ * is claimed. Only the tiles: a ruin's reward stays hidden until claimed.
+ */
+export interface RuinsUpdate {
+  type: GameUpdateType.Ruins;
+  tiles: TileRef[];
+}
 
 export interface BonusEventUpdate {
   type: GameUpdateType.BonusEvent;
@@ -293,6 +305,11 @@ export interface PlayerUpdate {
    * moves). Undefined outside conventional war, for tribes, and before spawn.
    */
   capitalTile?: TileRef;
+  /**
+   * A neutral city-state (a tribe that never expands or attacks, see
+   * engine-lib/game/WorldFeatures.ts). Set when the player is created.
+   */
+  isCityState?: boolean;
 }
 
 export interface AllianceView {

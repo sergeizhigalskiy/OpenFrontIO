@@ -125,6 +125,9 @@ class ReplayPlayerView {
   type(): PlayerType {
     return playerTypeFromEnum(this.info.playerType);
   }
+  isCityState(): boolean {
+    return this.info.isCityState === true;
+  }
   team(): Team | null {
     return this.info.team;
   }
@@ -389,6 +392,10 @@ export class ReplayGameView {
   }
   inSpawnPhase(): boolean {
     return this.spawnPhase;
+  }
+  /** Replays draw no ruins (world features) yet, so none show on hover. */
+  ruins(): readonly number[] {
+    return [];
   }
   unit(id: number): ReplayUnitView | undefined {
     const state = this.frame?.units.get(id);

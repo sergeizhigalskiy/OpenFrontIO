@@ -46,6 +46,7 @@ import {
   GameID,
 } from "@openfront/engine-api/Schemas";
 import { MotionPlanRecord } from "@openfront/engine-lib/game/MotionPlans";
+import type { RuinReward } from "@openfront/engine-lib/game/WorldFeatures";
 import type { EngineConfig } from "../configuration/EngineConfig";
 import { AbstractGraph } from "../pathfinding/algorithms/AbstractGraph";
 import { PathFinder } from "../pathfinding/types";
@@ -431,6 +432,19 @@ export interface Player extends PlayerLike {
   /** Moves the capital to `tile` at `tick`. */
   moveCapital(tile: TileRef, tick: Tick): void;
 
+  /**
+   * A neutral city-state (see engine-lib/game/WorldFeatures.ts): a tribe that
+   * never expands or attacks, and can't ally, trade or be donated to.
+   */
+  isCityState(): boolean;
+  /** Makes this player a city-state; done once, as it is created. */
+  markCityState(): void;
+  /**
+   * True only the first time it is called for a city-state: its conquest
+   * bounty is paid once, however many times its conquest is recorded.
+   */
+  takeCityStateBounty(): boolean;
+
   // Territory
   tiles(): ReadonlyTileSet;
   borderTiles(): ReadonlyTileSet;
@@ -492,6 +506,16 @@ export interface Player extends PlayerLike {
     knownCost?: Gold | null,
   ): TileRef | false;
   buildUnit<T extends UnitType>(
+    type: T,
+    spawnTile: TileRef,
+    params: UnitParams<T>,
+  ): Unit;
+  /**
+   * Gives the player a unit for free: like buildUnit, but nothing is charged
+   * and it doesn't count as constructed (so later prices don't rise), as
+   * with a captured unit. A ruin's defense post, a city-state's own buildings.
+   */
+  grantUnit<T extends UnitType>(
     type: T,
     spawnTile: TileRef,
     params: UnitParams<T>,
@@ -796,4 +820,15 @@ export interface Game extends GameLike {
 
   /** Drain all tiles from nuke impacts this tick. Called once per tick. */
   drainNukeImpacts(): TileRef[];
+
+  /**
+   * The unclaimed ruins (engine-lib/game/WorldFeatures.ts) by tile, in the
+   * order they were placed. Empty until RuinsExecution places them.
+   */
+  ruins(): ReadonlyMap<TileRef, RuinReward>;
+  /**
+   * Places ruins. The first player to take a ruin's tile from unclaimed land
+   * claims it (see WorldFeatures.ts in this folder).
+   */
+  addRuins(ruins: readonly { tile: TileRef; reward: RuinReward }[]): void;
 }

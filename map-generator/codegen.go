@@ -107,10 +107,12 @@ func (m mapInfo) displayName() string {
 }
 
 // customTribe represents a single custom tribe entry, which is either a
-// plain string (random spawn) or an object with name and optional coordinates.
+// plain string (random spawn) or an object with name, optional coordinates
+// and an optional static flag (a neutral city-state instead of a tribe).
 type customTribe struct {
 	Name        string
 	Coordinates *[2]int // nil for random-spawn tribes
+	Static      bool
 }
 
 // parseCustomTribes decodes the mixed string/object custom_tribes array.
@@ -130,6 +132,7 @@ func parseCustomTribes(raw []json.RawMessage) ([]customTribe, error) {
 		var obj struct {
 			Name        string           `json:"name"`
 			Coordinates *json.RawMessage `json:"coordinates"`
+			Static      bool             `json:"static"`
 		}
 		if err := json.Unmarshal(r, &obj); err != nil {
 			return nil, fmt.Errorf("custom_tribes[%d]: invalid entry: %w", i, err)
@@ -137,7 +140,7 @@ func parseCustomTribes(raw []json.RawMessage) ([]customTribe, error) {
 		if obj.Name == "" {
 			return nil, fmt.Errorf("custom_tribes[%d]: name is empty", i)
 		}
-		ct := customTribe{Name: obj.Name}
+		ct := customTribe{Name: obj.Name, Static: obj.Static}
 		if obj.Coordinates != nil {
 			var coords []int64
 			if err := json.Unmarshal(*obj.Coordinates, &coords); err != nil {
@@ -391,6 +394,8 @@ func generateMapsTS(infos []mapInfo) (string, error) {
 	b.WriteString("export interface CustomTribe {\n")
 	b.WriteString("  name: string;\n")
 	b.WriteString("  coordinates?: [number, number];\n")
+	b.WriteString("  /** A neutral city-state instead of a tribe (see engine-lib/game/WorldFeatures.ts). */\n")
+	b.WriteString("  static?: boolean;\n")
 	b.WriteString("}\n\n")
 
 	b.WriteString("export type LayerPlacement = \"land\" | \"water\";\n\n")
@@ -464,10 +469,14 @@ func generateMapsTS(infos []mapInfo) (string, error) {
 				if i > 0 {
 					b.WriteString(", ")
 				}
+				staticField := ""
+				if ct.Static {
+					staticField = ", static: true"
+				}
 				if ct.Coordinates != nil {
-					b.WriteString(fmt.Sprintf("{name: %q, coordinates: [%d, %d]}", ct.Name, ct.Coordinates[0], ct.Coordinates[1]))
+					b.WriteString(fmt.Sprintf("{name: %q, coordinates: [%d, %d]%s}", ct.Name, ct.Coordinates[0], ct.Coordinates[1], staticField))
 				} else {
-					b.WriteString(fmt.Sprintf("{name: %q}", ct.Name))
+					b.WriteString(fmt.Sprintf("{name: %q%s}", ct.Name, staticField))
 				}
 			}
 			b.WriteString("],\n")

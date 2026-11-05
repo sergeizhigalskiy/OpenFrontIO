@@ -25,6 +25,8 @@ export interface PlayerStatic {
   playerType: PlayerTypeEnum;
   team: string | null;
   isLobbyCreator: boolean;
+  /** A neutral city-state (engine-lib/game/WorldFeatures.ts); absent otherwise. */
+  isCityState?: boolean;
   /** Resolved flag image URL, or undefined for no flag. */
   flag?: string;
   /** Resolved crown-cosmetic image URL, or undefined for no crown. */

@@ -363,6 +363,12 @@ export const GameConfigSchema = z.object({
   conventionalWar: z.boolean().optional(),
   // Boss Raid mode, only with gameMode Team. null clears it in a patch.
   bossRaid: BossRaidConfigSchema.nullable().optional(),
+  // Ruins with loot on unclaimed land (see engine-lib/game/WorldFeatures.ts).
+  // On when absent; false turns them off.
+  ruins: z.boolean().optional(),
+  // Neutral city-states (see engine-lib/game/WorldFeatures.ts). On when
+  // absent; false turns them off.
+  cityStates: z.boolean().optional(),
 });
 
 // What a host sends in update_game_config. maxPlayers is the private-lobby

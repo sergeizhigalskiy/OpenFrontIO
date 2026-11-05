@@ -235,6 +235,8 @@ export interface MapInfo {
 export interface CustomTribe {
   name: string;
   coordinates?: [number, number];
+  /** A neutral city-state instead of a tribe (see engine-lib/game/WorldFeatures.ts). */
+  static?: boolean;
 }
 
 export type LayerPlacement = "land" | "water";

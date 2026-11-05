@@ -46,6 +46,8 @@ export class TribeAttackBehavior extends AiAttackBehavior {
     for (const neighbor of this.random.shuffleArray(neighbors)) {
       if (!neighbor.isPlayer()) continue;
       if (this.player.isFriendly(neighbor)) continue;
+      // City-states are for players and nations to take (WorldFeatures.ts).
+      if (neighbor.isCityState()) continue;
       if (
         neighbor.type() === PlayerType.Nation ||
         neighbor.type() === PlayerType.Human

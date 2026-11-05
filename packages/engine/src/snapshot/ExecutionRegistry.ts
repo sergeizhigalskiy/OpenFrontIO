@@ -8,6 +8,7 @@ import { BreakAllianceExecutionSnapshot } from "../execution/alliance/BreakAllia
 import { AttackExecutionSnapshot } from "../execution/AttackExecution";
 import { BoatRetreatExecutionSnapshot } from "../execution/BoatRetreatExecution";
 import { CityExecutionSnapshot } from "../execution/CityExecution";
+import { CityStateExecutionSnapshot } from "../execution/CityStateExecution";
 import { CoastalBatteryExecutionSnapshot } from "../execution/CoastalBatteryExecution";
 import { ConstructionExecutionSnapshot } from "../execution/ConstructionExecution";
 import { ConvoyExecutionSnapshot } from "../execution/ConvoyExecution";
@@ -39,6 +40,7 @@ import { PortExecutionSnapshot } from "../execution/PortExecution";
 import { QuickChatExecutionSnapshot } from "../execution/QuickChatExecution";
 import { RecomputeRailClusterExecutionSnapshot } from "../execution/RecomputeRailClusterExecution";
 import { RetreatExecutionSnapshot } from "../execution/RetreatExecution";
+import { RuinsExecutionSnapshot } from "../execution/RuinsExecution";
 import { SAMLauncherExecutionSnapshot } from "../execution/SAMLauncherExecution";
 import { SAMMissileExecutionSnapshot } from "../execution/SAMMissileExecution";
 import { ShellExecutionSnapshot } from "../execution/ShellExecution";
@@ -72,6 +74,7 @@ export const EXECUTION_SNAPSHOT_TYPES = [
   BoatRetreatExecutionSnapshot,
   BreakAllianceExecutionSnapshot,
   CityExecutionSnapshot,
+  CityStateExecutionSnapshot,
   CoastalBatteryExecutionSnapshot,
   ConstructionExecutionSnapshot,
   ConvoyExecutionSnapshot,
@@ -101,6 +104,7 @@ export const EXECUTION_SNAPSHOT_TYPES = [
   QuickChatExecutionSnapshot,
   RecomputeRailClusterExecutionSnapshot,
   RetreatExecutionSnapshot,
+  RuinsExecutionSnapshot,
   SAMLauncherExecutionSnapshot,
   SAMMissileExecutionSnapshot,
   ShellExecutionSnapshot,

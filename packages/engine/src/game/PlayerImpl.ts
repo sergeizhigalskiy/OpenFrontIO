@@ -214,6 +214,10 @@ export class PlayerImpl implements Player {
   // moves away from the spawn tile.
   public _capitalTile: TileRef | undefined;
   private _capitalMovedTick: Tick | null = null;
+  // World features (WorldFeatures.ts): a neutral city-state, and whether its
+  // conquest bounty was paid.
+  private _isCityState = false;
+  private _cityStateBountyTaken = false;
   private _isDisconnected = false;
   private _disconnectSnapshot: DisconnectSnapshot | null = null;
 
@@ -434,6 +438,7 @@ export class PlayerImpl implements Player {
       lastDeleteUnitTick: this.lastDeleteUnitTick,
       isLobbyCreator: this.isLobbyCreator(),
       capitalTile: this.capitalTile(),
+      isCityState: this._isCityState,
     };
   }
 
@@ -787,6 +792,20 @@ export class PlayerImpl implements Player {
     this._capitalMovedTick = tick;
   }
 
+  isCityState(): boolean {
+    return this._isCityState;
+  }
+
+  markCityState(): void {
+    this._isCityState = true;
+  }
+
+  takeCityStateBounty(): boolean {
+    if (!this._isCityState || this._cityStateBountyTaken) return false;
+    this._cityStateBountyTaken = true;
+    return true;
+  }
+
   incomingAllianceRequests(): AllianceRequest[] {
     return this.mg.allianceRequests.filter((ar) => ar.recipient() === this);
   }
@@ -854,6 +873,10 @@ export class PlayerImpl implements Player {
       return false;
     }
     if (other === this) {
+      return false;
+    }
+    // City-states stay neutral (WorldFeatures.ts).
+    if (this._isCityState || other.isCityState()) {
       return false;
     }
     if (this.isDisconnected() || other.isDisconnected()) {
@@ -1122,7 +1145,8 @@ export class PlayerImpl implements Player {
   }
 
   canDonateGold(recipient: Player): boolean {
-    if (recipient === this) {
+    // Nobody donates to or from a city-state (WorldFeatures.ts).
+    if (recipient === this || this._isCityState || recipient.isCityState()) {
       return false;
     }
     if (
@@ -1152,7 +1176,8 @@ export class PlayerImpl implements Player {
   }
 
   canDonateTroops(recipient: Player): boolean {
-    if (recipient === this) {
+    // Nobody donates to or from a city-state (WorldFeatures.ts).
+    if (recipient === this || this._isCityState || recipient.isCityState()) {
       return false;
     }
     if (
@@ -1270,6 +1295,8 @@ export class PlayerImpl implements Player {
   }
 
   canTrade(other: Player): boolean {
+    // City-states don't trade (WorldFeatures.ts).
+    if (this._isCityState || other.isCityState()) return false;
     const embargo =
       other.hasEmbargoAgainst(this) || this.hasEmbargoAgainst(other);
     return !embargo && other.id() !== this.id();
@@ -1465,6 +1492,31 @@ export class PlayerImpl implements Player {
     this.mg.addUpdate(b.toUpdate());
     this.mg.addUnit(b);
 
+    return b;
+  }
+
+  grantUnit<T extends UnitType>(
+    type: T,
+    spawnTile: TileRef,
+    params: UnitParams<T>,
+  ): Unit {
+    if (this.mg.config().isUnitDisabled(type)) {
+      throw new Error(
+        `Attempted to grant disabled unit ${type} at tile ${spawnTile} to player ${this.name()}`,
+      );
+    }
+    const b = new UnitImpl(
+      type,
+      this.mg,
+      spawnTile,
+      this.mg.nextUnitID(),
+      this,
+      params,
+    );
+    this._units.push(b);
+    this._myUnitsVersion++;
+    this.mg.addUpdate(b.toUpdate());
+    this.mg.addUnit(b);
     return b;
   }
 
@@ -2201,6 +2253,8 @@ export class PlayerImpl implements Player {
       spawnTile: this._spawnTile ?? null,
       capitalTile: this._capitalTile ?? null,
       capitalMovedTick: this._capitalMovedTick,
+      isCityState: this._isCityState,
+      cityStateBountyTaken: this._cityStateBountyTaken,
       isDisconnected: this._isDisconnected,
       disconnectSnapshot: this._disconnectSnapshot
         ? { ...this._disconnectSnapshot }
@@ -2280,6 +2334,8 @@ export class PlayerImpl implements Player {
     this._spawnTile = s.spawnTile ?? undefined;
     this._capitalTile = s.capitalTile ?? undefined;
     this._capitalMovedTick = s.capitalMovedTick;
+    this._isCityState = s.isCityState;
+    this._cityStateBountyTaken = s.cityStateBountyTaken;
     this._isDisconnected = s.isDisconnected;
     this._disconnectSnapshot = s.disconnectSnapshot
       ? { ...s.disconnectSnapshot }
@@ -2299,13 +2355,20 @@ export class PlayerImpl implements Player {
 
 export const PlayerSnapshot = snapshotType({
   name: "Player",
-  // v2 added the conventional war capital (capitalTile, capitalMovedTick).
-  version: 2,
+  // v2 added the conventional war capital (capitalTile, capitalMovedTick),
+  // v3 the city-state flags (world features).
+  version: 3,
   migrations: {
     1: (d) => ({
       ...(d as Record<string, unknown>),
       capitalTile: null,
       capitalMovedTick: null,
+    }),
+    // Older builds had no city-states.
+    2: (d) => ({
+      ...(d as Record<string, unknown>),
+      isCityState: false,
+      cityStateBountyTaken: false,
     }),
   },
   schema: z.object({
@@ -2359,6 +2422,8 @@ export const PlayerSnapshot = snapshotType({
     spawnTile: zTile().nullable(),
     capitalTile: zTile().nullable(),
     capitalMovedTick: zInt().nullable(),
+    isCityState: z.boolean(),
+    cityStateBountyTaken: z.boolean(),
     isDisconnected: z.boolean(),
     disconnectSnapshot: z
       .object({

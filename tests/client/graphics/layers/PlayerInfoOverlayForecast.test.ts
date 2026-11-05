@@ -127,6 +127,8 @@ describe("PlayerInfoOverlay attack forecast", () => {
       inSpawnPhase: () => false,
       isLand: () => true,
       isImpassable: () => false,
+      // No unclaimed ruins near the cursor (world features).
+      ruins: () => [],
       config: () => ({
         isUnitDisabled: () => true,
         maxTroops: () => 1000,

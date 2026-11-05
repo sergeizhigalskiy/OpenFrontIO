@@ -425,6 +425,10 @@ export class PlayerView implements PlayerLike {
         return PlayerType.Bot;
     }
   }
+  /** A neutral city-state (engine-lib/game/WorldFeatures.ts). */
+  isCityState(): boolean {
+    return this.static.isCityState === true;
+  }
   isAlive(): boolean {
     return this.state.isAlive;
   }

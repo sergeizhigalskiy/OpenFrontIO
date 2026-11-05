@@ -151,6 +151,7 @@ export function makePlayerUpdate(
     betrayals: 0,
     lastDeleteUnitTick: 0,
     isLobbyCreator: false,
+    isCityState: false,
     ...overrides,
   };
 }

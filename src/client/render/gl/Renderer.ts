@@ -55,6 +55,7 @@ import { NukeTrajectoryPass } from "./passes/NukeTrajectoryPass";
 import { PointLightPass } from "./passes/PointLightPass";
 import { RailroadPass } from "./passes/RailroadPass";
 import { RangeCirclePass } from "./passes/RangeCirclePass";
+import { RuinMarker, RuinsPass } from "./passes/RuinsPass";
 import { SAMRadiusPass } from "./passes/SamRadiusPass";
 import { SelectionBoxPass } from "./passes/SelectionBoxPass";
 import { SkinAtlasArray } from "./passes/SkinAtlasArray";
@@ -142,6 +143,7 @@ export class GPURenderer {
   private rangeCirclePass: RangeCirclePass;
   private minefieldPass: MinefieldPass;
   private capitalPass: CapitalPass;
+  private ruinsPass: RuinsPass;
   private samRadiusPass: SAMRadiusPass;
   private crosshairPass: CrosshairPass;
   private railroadPass: RailroadPass;
@@ -566,6 +568,9 @@ export class GPURenderer {
 
     // --- Capital stars (conventional war) ---
     this.capitalPass = new CapitalPass(gl);
+
+    // --- Ruins icons (world features) ---
+    this.ruinsPass = new RuinsPass(gl);
 
     // --- SAM radius overlay (dashed green circles during build mode) ---
     this.samRadiusPass = new SAMRadiusPass(gl, mapW, this.settings);
@@ -1116,6 +1121,11 @@ export class GPURenderer {
     this.capitalPass.update(capitals);
   }
 
+  /** World features: the unclaimed ruins to draw. */
+  updateRuins(ruins: RuinMarker[]): void {
+    this.ruinsPass.update(ruins);
+  }
+
   updateSmallPlayerGlow(set: Uint8Array | null): void {
     this.smallPlayerGlowPass.update(set);
   }
@@ -1387,6 +1397,7 @@ export class GPURenderer {
     if (pe.structure) this.structurePass.draw(cam, zoom);
     if (pe.structure) this.structureLevelPass.draw(cam, zoom);
     this.capitalPass.draw(cam);
+    this.ruinsPass.draw(cam);
     // Small-player glow draws after structures so buildings can't hide it.
     this.smallPlayerGlowPass.draw(cam);
     if (pe.bar) this.barPass.draw(cam);
@@ -1522,6 +1533,7 @@ export class GPURenderer {
     this.rangeCirclePass.dispose();
     this.minefieldPass.dispose();
     this.capitalPass.dispose();
+    this.ruinsPass.dispose();
     this.samRadiusPass.dispose();
     this.crosshairPass.dispose();
     this.structurePass.dispose();

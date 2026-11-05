@@ -23,6 +23,7 @@ import {
 // Value import from the leaf module (not the ./render/gl barrel) so non-Vite
 // consumers don't pull in GPURenderer and its shaders — see note above.
 import type { CapitalMarker } from "./render/gl/passes/CapitalPass";
+import type { RuinMarker } from "./render/gl/passes/RuinsPass";
 import {
   EFFECT_PALETTE_BLOCKS,
   MAX_TRAIL_COLORS,
@@ -156,6 +157,8 @@ export class WebGLFrameBuilder {
   private readonly lastSpawnTile = new Map<number, number>();
   /** The capitals last sent to the renderer (see syncCapitals). */
   private lastCapitalsKey = "";
+  /** The ruin list last sent to the renderer (see syncRuins). */
+  private lastRuins: readonly number[] | null = null;
   /** Skin atlas allocated once on first syncPlayers — player set is locked at game start. */
   private skinsInitialized = false;
   // The renderer needs to know which player is "me" so affiliation tint,
@@ -181,6 +184,7 @@ export class WebGLFrameBuilder {
     this.effectPalette.fill(0);
     this.lastSpawnTile.clear();
     this.lastCapitalsKey = "";
+    this.lastRuins = null;
     this.localPlayerSmallID = 0;
     this.skinsInitialized = false;
   }
@@ -243,6 +247,7 @@ export class WebGLFrameBuilder {
     this.syncLocalPlayer(gameView);
     this.syncSpawnOverlay(gameView);
     this.syncCapitals(gameView);
+    this.syncRuins(gameView);
     this.syncSmallPlayerGlow(gameView);
     this.syncTerrainDeltas(gameView);
     this.syncNukeImpacts(gameView);
@@ -451,6 +456,22 @@ export class WebGLFrameBuilder {
     if (key === this.lastCapitalsKey) return;
     this.lastCapitalsKey = key;
     this.view.updateCapitals(capitals);
+  }
+
+  /**
+   * World features: a ruins icon on every unclaimed ruin, for everyone.
+   * Re-sent only when the list changes (placed, or one claimed).
+   */
+  private syncRuins(gameView: GameView): void {
+    const ruins = gameView.ruins();
+    if (ruins === this.lastRuins) return;
+    this.lastRuins = ruins;
+    this.view.updateRuins(
+      ruins.map((tile): RuinMarker => ({
+        x: gameView.x(tile),
+        y: gameView.y(tile),
+      })),
+    );
   }
 
   /**
