@@ -1117,6 +1117,8 @@
     "instant_build": "Instant build",
     "max_timer": "Game length (minutes)",
     "mins_placeholder": "Mins",
+    "mode_turned_off": "{other} is off: it can't be played with {mode}",
+    "modes_conflict": "{mode} and {other} can't be played together",
     "nations": "Nations: ",
     "options": "Options",
     "overtime": "Overtime after (minutes)",

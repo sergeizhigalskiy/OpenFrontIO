@@ -29,7 +29,12 @@ export type TeamPinError =
 export interface TeamPinLobby {
   config: Pick<
     GameConfig,
-    "gameType" | "gameMode" | "playerTeams" | "rankedType" | "bossRaid"
+    | "gameType"
+    | "gameMode"
+    | "playerTeams"
+    | "rankedType"
+    | "bossRaid"
+    | "hordeNight"
   >;
   // Seated players' clientIDs (spectators take no seat).
   players: readonly ClientID[];
@@ -45,7 +50,9 @@ export function hostTeamPickingAllowed(config: TeamPinLobby["config"]) {
     config.rankedType === undefined &&
     config.playerTeams !== undefined &&
     config.playerTeams !== HumansVsNations &&
-    !isBossRaid(config)
+    !isBossRaid(config) &&
+    // Horde Night puts every human and nation on one side.
+    config.hordeNight?.enabled !== true
   );
 }
 

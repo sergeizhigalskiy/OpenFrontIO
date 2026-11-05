@@ -7,6 +7,7 @@ import {
   ID,
   IntentSchema,
 } from "@openfront/engine-api/Schemas";
+import { exclusiveModeError } from "@openfront/engine-lib/game/ModeExclusions";
 import {
   type LobbyAccent,
   LobbyAccentSchema,
@@ -92,6 +93,11 @@ function parseCreateGameRequest(reqBody: unknown): ParsedCreateGame {
     return fail(400, { error: z.prettifyError(parsed.error) });
   }
   const config = parsed.data;
+  // Boss Raid, Horde Night and the plague each set the sides or the win rule.
+  const modeError = exclusiveModeError(config);
+  if (modeError !== null) {
+    return fail(400, { error: modeError });
+  }
   // Members name each other by id, and an id only exists once the server mints
   // it, so a caller can never supply a valid pool; create_pool builds one.
   if (config.pool !== undefined) {

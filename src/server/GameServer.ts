@@ -22,6 +22,7 @@ import {
   Winner,
 } from "@openfront/engine-api/Schemas";
 import { isBossRaid } from "@openfront/engine-lib/game/BossRaid";
+import { exclusiveModeError } from "@openfront/engine-lib/game/ModeExclusions";
 import {
   adjustForTeams,
   assignTeamsLobbyPreview,
@@ -68,7 +69,11 @@ import WebSocket from "ws";
 import { z } from "zod";
 import { archive, finalizeGameRecord } from "./Archive";
 import { Client } from "./Client";
-import { applyGameConfigPatch, hostCheatsEnabled } from "./ConfigPatch";
+import {
+  applyGameConfigPatch,
+  hostCheatsEnabled,
+  previewGameConfigPatch,
+} from "./ConfigPatch";
 import { LiveStatsVote, voteKey, WinnerVote } from "./Consensus";
 import { fetchCustomTribes } from "./CustomTribes";
 import { DesyncDetector } from "./DesyncDetector";
@@ -456,6 +461,14 @@ export class GameServer {
       }
 
       case "update_game_config": {
+        // Boss Raid, Horde Night and the plague each set the sides or the
+        // win rule, so a lobby may have at most one of them.
+        const modeError = exclusiveModeError(
+          previewGameConfigPatch(this.gameConfig, stamped.config),
+        );
+        if (modeError !== null) {
+          return finish({ status: 400, error: modeError });
+        }
         this.updateGameConfig(stamped.config);
         return finish({ status: 200 });
       }

@@ -4,6 +4,7 @@ import {
   isValidGameID,
   MAX_USERNAME_LENGTH,
 } from "@openfront/engine-api/Schemas";
+import { exclusiveModeError } from "@openfront/engine-lib/game/ModeExclusions";
 import { adjustForTeams } from "@openfront/engine-lib/game/TeamAssignment";
 import { CloseCode, CloseReason } from "@openfront/shared/CloseCodes";
 import { GameEnv } from "@openfront/shared/configuration/Env";
@@ -410,6 +411,12 @@ export async function startWorker() {
       return res
         .status(400)
         .json({ error: "Only private games can be created via this endpoint" });
+    }
+    // Boss Raid, Horde Night and the plague each set the sides or the win
+    // rule, so a lobby may have at most one of them.
+    const modeError = gc === undefined ? null : exclusiveModeError(gc);
+    if (modeError !== null) {
+      return res.status(400).json({ error: modeError });
     }
 
     // Reuse-lobby flow: ?previous=<gameID> marks this creation as the successor

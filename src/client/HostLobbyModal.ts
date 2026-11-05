@@ -21,6 +21,11 @@ import {
   HORDE_NIGHT_MAX_SURVIVAL_MINUTES,
   HORDE_NIGHT_MIN_SURVIVAL_MINUTES,
 } from "@openfront/engine-lib/game/HordeNight";
+import {
+  EXCLUSIVE_MODE_LABEL_KEYS,
+  ExclusiveMode,
+  exclusiveModesOn,
+} from "@openfront/engine-lib/game/ModeExclusions";
 import { GameEnv } from "@openfront/shared/configuration/Env";
 import { EventBus } from "@openfront/shared/EventBus";
 import {
@@ -920,7 +925,7 @@ export class HostLobbyModal extends BaseModal {
             }
             .nameReveals=${this.nameReveals}
             .anonymizeNames=${this.anonymizeNames}
-            .teamPicking=${true}
+            .teamPicking=${!this.hordeNight}
             .onAssignTeam=${(clientID: string, teamIndex: number | null) =>
               this.eventBus?.emit(new SendAssignTeamEvent(clientID, teamIndex))}
             .bossRaid=${this.bossRaidOn() ? { boss: this.bossRaidBoss } : null}
@@ -1284,6 +1289,7 @@ export class HostLobbyModal extends BaseModal {
   // at the Boss Raid default unless the host already set one.
   private handleBossRaidSelected = () => {
     this.bossRaid = true;
+    this.turnOffOtherExclusiveModes("bossRaid");
     this.maxTimer = true;
     this.maxTimerValue ??= BOSS_RAID_DEFAULT_TIMER_MINUTES;
     void this.handleGameModeSelection(GameMode.Team);
@@ -1307,6 +1313,51 @@ export class HostLobbyModal extends BaseModal {
 
   private bossRaidOn(): boolean {
     return this.bossRaid && this.gameMode === GameMode.Team;
+  }
+
+  /**
+   * Boss Raid, Horde Night and the plague can't be played together
+   * (engine-lib/game/ModeExclusions.ts): switching one on turns the others
+   * off, with a note naming each one turned off.
+   */
+  private turnOffOtherExclusiveModes(mode: ExclusiveMode): void {
+    const off: ExclusiveMode[] = [];
+    if (mode !== "bossRaid" && this.bossRaidOn()) {
+      this.bossRaid = false;
+      off.push("bossRaid");
+    }
+    if (mode !== "hordeNight" && this.hordeNight) {
+      this.hordeNight = false;
+      off.push("hordeNight");
+    }
+    if (mode !== "plague" && this.plague) {
+      this.plague = false;
+      off.push("plague");
+    }
+    for (const other of off) {
+      showToast(
+        translateText("game_settings.mode_turned_off", {
+          other: translateText(EXCLUSIVE_MODE_LABEL_KEYS[other]),
+          mode: translateText(EXCLUSIVE_MODE_LABEL_KEYS[mode]),
+        }),
+        "red",
+      );
+    }
+  }
+
+  // Why these settings can't start (two exclusive modes, e.g. from a preset).
+  private exclusiveModeError(): string | null {
+    const on = exclusiveModesOn({
+      gameMode: this.gameMode,
+      bossRaid: this.bossRaidOn() ? { boss: BOSS_RAID_NATION_BOSS } : null,
+      hordeNight: { enabled: this.hordeNight },
+      plague: this.plague,
+    });
+    if (on.length < 2) return null;
+    return translateText("game_settings.modes_conflict", {
+      mode: translateText(EXCLUSIVE_MODE_LABEL_KEYS[on[0]]),
+      other: translateText(EXCLUSIVE_MODE_LABEL_KEYS[on[1]]),
+    });
   }
 
   // Why this Boss Raid can't start yet, as a translation key.
@@ -1383,6 +1434,7 @@ export class HostLobbyModal extends BaseModal {
         break;
       case "game_settings.plague":
         this.plague = checked;
+        if (checked) this.turnOffOtherExclusiveModes("plague");
         void this.putGameConfig();
         break;
       case "game_settings.doomsday_clock":
@@ -1529,6 +1581,7 @@ export class HostLobbyModal extends BaseModal {
   ) => {
     this.hordeNight = checked;
     this.hordeNightSurvivalMinutes = toOptionalNumber(value);
+    if (checked) this.turnOffOtherExclusiveModes("hordeNight");
     void this.putGameConfig();
   };
 
@@ -2245,6 +2298,11 @@ export class HostLobbyModal extends BaseModal {
     const bossRaidError = this.bossRaidError();
     if (bossRaidError !== null && this.lobbyStartAt === null) {
       showToast(translateText(bossRaidError), "red");
+      return;
+    }
+    const modeError = this.exclusiveModeError();
+    if (modeError !== null && this.lobbyStartAt === null) {
+      showToast(modeError, "red");
       return;
     }
     await this.putGameConfig();

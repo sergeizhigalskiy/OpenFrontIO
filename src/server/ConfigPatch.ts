@@ -123,6 +123,17 @@ export function applyGameConfigPatch(
   target.hostCheats = patch.hostCheats;
 }
 
+// The config `patch` would leave, without changing `target`: what the
+// update_game_config guards (exclusiveModeError) check before applying it.
+export function previewGameConfigPatch(
+  target: GameConfig,
+  patch: GameConfigPatch,
+): GameConfig {
+  const preview = structuredClone(target);
+  applyGameConfigPatch(preview, patch);
+  return preview;
+}
+
 // Whether the host-only cheat block actually grants anything: mere presence
 // isn't enough, the client can send hostCheats with every field off.
 export function hostCheatsEnabled(hc: GameConfig["hostCheats"]): boolean {

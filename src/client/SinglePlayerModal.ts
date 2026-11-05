@@ -22,6 +22,11 @@ import {
   HORDE_NIGHT_MAX_SURVIVAL_MINUTES,
   HORDE_NIGHT_MIN_SURVIVAL_MINUTES,
 } from "@openfront/engine-lib/game/HordeNight";
+import {
+  EXCLUSIVE_MODE_LABEL_KEYS,
+  ExclusiveMode,
+  exclusiveModesOn,
+} from "@openfront/engine-lib/game/ModeExclusions";
 import { UserMeResponse } from "@openfront/shared/ApiSchemas";
 import { assetUrl } from "@openfront/shared/AssetUrls";
 import { generateID } from "@openfront/shared/SharedUtil";
@@ -1102,6 +1107,7 @@ export class SinglePlayerModal extends BaseModal {
   // unless one is already set.
   private handleBossRaidSelected = () => {
     this.bossRaid = true;
+    this.turnOffOtherExclusiveModes("bossRaid");
     this.maxTimer = true;
     this.maxTimerValue ??= BOSS_RAID_DEFAULT_TIMER_MINUTES;
     this.handleGameModeSelection(GameMode.Team);
@@ -1119,6 +1125,51 @@ export class SinglePlayerModal extends BaseModal {
 
   private bossRaidOn(): boolean {
     return this.bossRaid && this.gameMode === GameMode.Team;
+  }
+
+  /**
+   * Boss Raid, Horde Night and the plague can't be played together
+   * (engine-lib/game/ModeExclusions.ts): switching one on turns the others
+   * off, with a note naming each one turned off.
+   */
+  private turnOffOtherExclusiveModes(mode: ExclusiveMode): void {
+    const off: ExclusiveMode[] = [];
+    if (mode !== "bossRaid" && this.bossRaidOn()) {
+      this.bossRaid = false;
+      off.push("bossRaid");
+    }
+    if (mode !== "hordeNight" && this.hordeNight) {
+      this.hordeNight = false;
+      off.push("hordeNight");
+    }
+    if (mode !== "plague" && this.plague) {
+      this.plague = false;
+      off.push("plague");
+    }
+    for (const other of off) {
+      showToast(
+        translateText("game_settings.mode_turned_off", {
+          other: translateText(EXCLUSIVE_MODE_LABEL_KEYS[other]),
+          mode: translateText(EXCLUSIVE_MODE_LABEL_KEYS[mode]),
+        }),
+        "red",
+      );
+    }
+  }
+
+  // Why these settings can't start (two exclusive modes, e.g. from a preset).
+  private exclusiveModeError(): string | null {
+    const on = exclusiveModesOn({
+      gameMode: this.gameMode,
+      bossRaid: this.bossRaidOn() ? { boss: BOSS_RAID_NATION_BOSS } : null,
+      hordeNight: { enabled: this.hordeNight },
+      plague: this.plague,
+    });
+    if (on.length < 2) return null;
+    return translateText("game_settings.modes_conflict", {
+      mode: translateText(EXCLUSIVE_MODE_LABEL_KEYS[on[0]]),
+      other: translateText(EXCLUSIVE_MODE_LABEL_KEYS[on[1]]),
+    });
   }
 
   // Why this Boss Raid can't start, as a translation key: in singleplayer
@@ -1190,6 +1241,7 @@ export class SinglePlayerModal extends BaseModal {
         break;
       case "game_settings.plague":
         this.plague = checked;
+        if (checked) this.turnOffOtherExclusiveModes("plague");
         break;
       case "game_settings.doomsday_clock":
         this.doomsdayClock = checked;
@@ -1273,6 +1325,7 @@ export class SinglePlayerModal extends BaseModal {
   ) => {
     this.hordeNight = checked;
     this.hordeNightSurvivalMinutes = toOptionalNumber(value);
+    if (checked) this.turnOffOtherExclusiveModes("hordeNight");
   };
 
   private handleHordeNightMinutesKeyDown = (e: KeyboardEvent) => {
@@ -1475,6 +1528,11 @@ export class SinglePlayerModal extends BaseModal {
     const bossRaidError = this.bossRaidError();
     if (bossRaidError !== null) {
       showToast(translateText(bossRaidError), "red");
+      return;
+    }
+    const modeError = this.exclusiveModeError();
+    if (modeError !== null) {
+      showToast(modeError, "red");
       return;
     }
     // Validate and clamp maxTimer setting before starting
