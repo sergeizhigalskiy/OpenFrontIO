@@ -191,18 +191,22 @@ export abstract class AiAttackBehavior {
     return troops < 1 ? null : troops;
   }
 
+  // `focusTile` makes it a spearhead: the front pushes toward it first
   protected sendLandAttack(
     target: Player | TerraNullius,
     sendTroops = (reserveTroops: number) =>
       this.player.troops() - reserveTroops,
     opponent?: Player,
+    focusTile: TileRef | null = null,
   ): boolean {
     const troops = this.calculateAttackTroops(target, sendTroops, opponent);
     if (troops === null) {
       return false;
     }
 
-    const focus = target.isPlayer() ? null : this.expansionFocus();
+    // The caller's spearhead first, else free land's own focus.
+    const focus =
+      focusTile ?? (target.isPlayer() ? null : this.expansionFocus());
     this.game.addExecution(
       new AttackExecution(
         troops,

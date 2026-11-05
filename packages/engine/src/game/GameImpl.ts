@@ -95,7 +95,7 @@ import type {
 } from "../snapshot/SnapshotContext";
 import { AllianceImpl } from "./AllianceImpl";
 import { AllianceRequestImpl } from "./AllianceRequestImpl";
-import { onCapitalConquered } from "./Capital";
+import { onCapitalConquered, onCapitalRetaken } from "./Capital";
 import {
   Alliance,
   AllianceRequest,
@@ -1063,15 +1063,18 @@ export class GameImpl implements Game {
     this.updateBorders(tile);
     this._map.setFallout(tile, false);
     this.recordTileUpdate(tile);
-    // Conventional war: taking a capital costs its owner (Capital.ts). The
-    // tile compare comes first so the common case stays one comparison.
-    if (
-      previousOwner.isPlayer() &&
-      tile === (previousOwner._capitalTile ?? previousOwner.spawnTile()) &&
-      !this.inSpawnPhase() &&
-      previousOwner.capitalTile() === tile
-    ) {
-      onCapitalConquered(this, previousOwner, owner);
+    // Conventional war: taking a capital costs its owner, and taking your own
+    // back rallies you (Capital.ts). The capital is the spawn tile, and the
+    // tile compares come first so the common case stays two comparisons.
+    if (previousOwner.isPlayer() && !this.inSpawnPhase()) {
+      if (
+        tile === previousOwner.spawnTile() &&
+        previousOwner.capitalTile() === tile
+      ) {
+        onCapitalConquered(this, previousOwner, owner);
+      } else if (tile === owner.spawnTile() && owner.capitalTile() === tile) {
+        onCapitalRetaken(this, owner, previousOwner);
+      }
     }
     // Ruins: the first player to take a ruin's tile from unclaimed land
     // claims it. One size check while there are none.

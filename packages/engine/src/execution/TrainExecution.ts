@@ -236,6 +236,10 @@ export class TrainExecution implements Execution {
   private updateCarsPositions(newTile: TileRef) {
     if (this.cars.length > 0) {
       for (let i = this.cars.length - 1; i >= 0; --i) {
+        // A destroyed car (a nuke hit part of the train) stays where it
+        // was: moving it would put it back in the unit grid and report it
+        // every tick. The rest of the train goes on, as the view expects.
+        if (!this.cars[i].isActive()) continue;
         const carTileIndex = (i + 1) * this.spacing + 2;
         if (this.usedTiles.length > carTileIndex) {
           this.cars[i].move(this.usedTiles[carTileIndex]);

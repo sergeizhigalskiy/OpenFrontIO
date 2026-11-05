@@ -552,7 +552,12 @@ export class EngineConfig extends Config {
     return this.hasInfiniteTroopsForInfo(playerInfo) ? 1_000_000 : 25_000;
   }
 
-  goldAdditionRate(player: PlayerLike): Gold {
+  /**
+   * Passive gold per tick. `bonusPercent` is a whole-percent raise on top
+   * (conventional war: enemy capitals held, see Capital.ts), applied in
+   * integers so every client agrees.
+   */
+  goldAdditionRate(player: PlayerLike, bonusPercent = 0): Gold {
     const multiplier = this.goldMultiplierFor(player);
     let baseRate: bigint;
     if (player.type() === PlayerType.Bot) {
@@ -560,7 +565,9 @@ export class EngineConfig extends Config {
     } else {
       baseRate = 100n;
     }
-    return BigInt(Math.floor(Number(baseRate) * multiplier));
+    const rate = BigInt(Math.floor(Number(baseRate) * multiplier));
+    if (bonusPercent <= 0) return rate;
+    return (rate * BigInt(100 + Math.floor(bonusPercent))) / 100n;
   }
 
   nukeSpeed(unitType: UnitType): number {

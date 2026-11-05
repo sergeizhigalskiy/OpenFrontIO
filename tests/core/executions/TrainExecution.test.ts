@@ -76,6 +76,50 @@ async function currentSegmentFixture(
 }
 
 describe("TrainExecution", () => {
+  it("leaves a destroyed car where it was and keeps the rest moving", async () => {
+    const game = await setup("plains", { instantBuild: true }, [
+      new PlayerInfo("p1", PlayerType.Human, null, "p1"),
+    ]);
+    const player = game.player("p1")!;
+    // A straight rail along the top row.
+    const railTiles = Array.from({ length: 60 }, (_, x) => game.ref(x, 0));
+    railTiles.forEach((tile) => player.conquer(tile));
+    const [stationA, stationB] = [railTiles[0], railTiles[59]].map(
+      (t) => new TrainStation(game, player.buildUnit(UnitType.City, t, {})),
+    );
+    const stationManager = game.railNetwork().stationManager();
+    stationManager.addStation(stationA);
+    stationManager.addStation(stationB);
+    const railroad = new Railroad(stationA, stationB, railTiles, 1);
+    stationA.addRailroad(railroad);
+    stationB.addRailroad(railroad);
+
+    const exec = new TrainExecution(
+      game.railNetwork(),
+      player,
+      stationA,
+      stationB,
+      3,
+    );
+    exec.init(game, 0);
+    for (let t = 1; t <= 10; t++) exec.tick(t);
+
+    // Engine, tail engine, then the carriages; a nuke takes the middle one.
+    const [engine, ...cars] = player.units(UnitType.Train);
+    const destroyed = cars[2];
+    destroyed.delete(true);
+    const wreck = destroyed.tile();
+    const before = [engine, ...cars].map((u) => u.tile());
+
+    for (let t = 11; t <= 13; t++) exec.tick(t);
+    expect(exec.isActive()).toBe(true);
+    expect(destroyed.tile()).toBe(wreck);
+    const moved = [engine, ...cars].map((u, i) =>
+      u === destroyed ? false : u.tile() !== before[i],
+    );
+    expect(moved).toEqual([true, true, true, false, true]);
+  });
+
   it("visits and pays a station inserted ahead of the engine", async () => {
     const { exec, insertedStation, player, splitRail } =
       await currentSegmentFixture(4);

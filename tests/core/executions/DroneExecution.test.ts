@@ -4,8 +4,10 @@ import { BuildUnitIntentSchema } from "@openfront/engine-api/Schemas";
 import { WARSHIP_MAX_HEALTH } from "@openfront/engine-lib/configuration/Config";
 import {
   clampDroneSwarm,
+  DRONE_BLAST_RADIUS,
   DRONE_COST,
   DRONE_LAUNCH_INTERVAL_TICKS,
+  droneStructureDamage,
   droneWarshipDamage,
   WARSHIP_DRONE_HIT_PERCENT,
 } from "@openfront/engine-lib/game/ConventionalWar";
@@ -127,18 +129,108 @@ describe("drone swarms", () => {
     ).toBe(false);
   });
 
-  test("only flak guns and ships are targets, never SAMs", async () => {
+  test("every hostile structure but a SAM is a target, and ships", async () => {
     const { game, a, b } = await land();
     structure(game, a, UnitType.Airbase, game.ref(40, 100));
     const sam = structure(game, b, UnitType.SAMLauncher, game.ref(100, 100));
-    const city = structure(game, b, UnitType.City, game.ref(100, 140));
     expect(a.canBuild(UnitType.Drone, sam.tile())).toBe(false);
-    expect(a.canBuild(UnitType.Drone, city.tile())).toBe(false);
-    const gun = structure(game, b, UnitType.FlakGun, game.ref(100, 60));
-    expect(a.canBuild(UnitType.Drone, gun.tile())).not.toBe(false);
-    // Too far from every airbase (100 tiles).
+    // 10 tiles apart, so each click (8 tiles) can only pick its own.
+    for (const [type, y] of [
+      [UnitType.City, 60],
+      [UnitType.Port, 70],
+      [UnitType.Factory, 80],
+      [UnitType.DefensePost, 90],
+      [UnitType.MissileSilo, 110],
+      [UnitType.Airbase, 120],
+      [UnitType.FlakGun, 130],
+      [UnitType.CoastalBattery, 140],
+    ] as const) {
+      const target = b.buildUnit(type, game.ref(110, y), {});
+      expect(a.canBuild(UnitType.Drone, target.tile()), type).not.toBe(false);
+    }
+    // Never our own, and never too far from every airbase (100 tiles).
+    const own = structure(game, a, UnitType.City, game.ref(20, 20));
+    expect(a.canBuild(UnitType.Drone, own.tile())).toBe(false);
     const far = structure(game, b, UnitType.FlakGun, game.ref(190, 100));
     expect(a.canBuild(UnitType.Drone, far.tile())).toBe(false);
+  });
+});
+
+describe("drones against structures", () => {
+  test("a city survives 2 drone hits and dies to 3, whatever its level", async () => {
+    const { game, a, b } = await land();
+    structure(game, a, UnitType.Airbase, game.ref(40, 100));
+    const city = structure(game, b, UnitType.City, game.ref(100, 100), 4);
+    order(game, a, UnitType.Drone, city.tile(), { count: 2 });
+    executeTicks(game, 3);
+    settle(game);
+    expect(city.isActive()).toBe(true);
+    expect(city.droneHits()).toBe(2);
+    // Hits never downgrade.
+    expect(city.level()).toBe(4);
+    order(game, a, UnitType.Drone, city.tile(), { count: 1 });
+    executeTicks(game, 3);
+    settle(game);
+    expect(city.isActive()).toBe(false);
+  });
+
+  test("a coastal battery loses a third of its health per hit", async () => {
+    const { game, a, b } = await land();
+    structure(game, a, UnitType.Airbase, game.ref(40, 100));
+    const battery = b.buildUnit(
+      UnitType.CoastalBattery,
+      game.ref(100, 100),
+      {},
+    );
+    const max = battery.maxHealth();
+    order(game, a, UnitType.Drone, battery.tile(), { count: 2 });
+    executeTicks(game, 3);
+    settle(game);
+    expect(battery.health()).toBe(max - 2 * droneStructureDamage(max));
+    order(game, a, UnitType.Drone, battery.tile(), { count: 1 });
+    executeTicks(game, 3);
+    settle(game);
+    expect(battery.isActive()).toBe(false);
+  });
+
+  test("the 1-tile blast hits every valid target next to the target, never a SAM", async () => {
+    const { game, a, b } = await land();
+    structure(game, a, UnitType.Airbase, game.ref(40, 100));
+    const gun = b.buildUnit(UnitType.FlakGun, game.ref(100, 100), {});
+    // One tile away: hit. Two tiles away: spared.
+    const near = b.buildUnit(UnitType.FlakGun, game.ref(101, 100), {});
+    const city = b.buildUnit(UnitType.City, game.ref(100, 101), {});
+    const far = b.buildUnit(UnitType.FlakGun, game.ref(102, 100), {});
+    const sam = structure(game, b, UnitType.SAMLauncher, game.ref(99, 100));
+    // Our own structure in the blast is never hit.
+    const own = a.buildUnit(UnitType.City, game.ref(100, 99), {});
+    expect(DRONE_BLAST_RADIUS).toBe(1);
+    order(game, a, UnitType.Drone, gun.tile(), { count: 1 });
+    executeTicks(game, 3);
+    settle(game);
+    expect(gun.isActive()).toBe(false);
+    expect(near.isActive()).toBe(false);
+    expect(city.droneHits()).toBe(1);
+    expect(far.isActive()).toBe(true);
+    expect(sam.isActive()).toBe(true);
+    expect(sam.droneHits()).toBe(0);
+    expect(own.droneHits()).toBe(0);
+  });
+
+  test("the blast sinks ships next to the target too", async () => {
+    const { game, a, b } = await sea();
+    structure(game, a, UnitType.Airbase, game.ref(2, 8));
+    const ship = warship(game, b, game.ref(13, 8));
+    const boat = b.buildUnit(UnitType.TransportShip, game.ref(13, 9), {
+      troops: 1_000,
+    });
+    order(game, a, UnitType.Drone, ship.tile(), { count: 1 });
+    executeTicks(game, 3);
+    settle(game);
+    expect(boat.isActive()).toBe(false);
+    expect(ship.health()).toBe(
+      WARSHIP_MAX_HEALTH - droneWarshipDamage(WARSHIP_MAX_HEALTH),
+    );
   });
 });
 

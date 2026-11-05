@@ -101,6 +101,8 @@ describe("PlayerInfoOverlay attack forecast", () => {
     cosmetics: {},
     id: () => "bob",
     smallID: () => 2,
+    // No conventional war capital (the card's capital-lost badge reads it).
+    state: {},
   };
   const terraNullius = { isPlayer: () => false, smallID: () => 0 };
 

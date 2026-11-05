@@ -6,6 +6,7 @@ import {
   PlayerType,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
+import { DRONE_RANGE } from "@openfront/engine-lib/game/ConventionalWar";
 import {
   MINEFIELD_DEFAULT_DENSITY,
   MINEFIELD_RADIUS,
@@ -25,6 +26,7 @@ import type {
   SnapshotWriter,
 } from "../../snapshot/SnapshotContext";
 import { ConstructionExecution } from "../ConstructionExecution";
+import { orderDroneSwarm } from "./NationAirPlanning";
 import {
   EMOJI_WARSHIP_RETALIATION,
   NationEmojiBehavior,
@@ -111,6 +113,62 @@ export class NationWarshipBehavior {
         new ConstructionExecution(this.player, UnitType.Warship, targetTile),
       );
       return true;
+    }
+    return false;
+  }
+
+  /**
+   * Conventional war: a drone swarm at a hostile warship threatening us (one
+   * within NATION_MINEFIELD_THREAT_RANGE of a port of ours, or shelling one
+   * of our units), sized to sink it past its guns and any flak covering it
+   * (droneSwarmSize). Lowest id first. Not on Easy; Medium only half the
+   * time. Draws from the PRNG only once it has a target.
+   */
+  maybeSendDronesAtWarships(): boolean {
+    const game = this.game;
+    const config = game.config();
+    if (!config.conventionalWar() || config.isUnitDisabled(UnitType.Drone)) {
+      return false;
+    }
+    const { difficulty } = config.gameConfig();
+    if (difficulty === Difficulty.Easy) return false;
+    const player = this.player;
+    const bases = player
+      .units(UnitType.Airbase)
+      .filter((b) => !b.isUnderConstruction());
+    if (bases.length === 0) return false;
+    const ports = player.units(UnitType.Port);
+    const threatSquared =
+      NATION_MINEFIELD_THREAT_RANGE * NATION_MINEFIELD_THREAT_RANGE;
+    const seen = new Set<Unit>();
+    const threats: Unit[] = [];
+    for (const base of bases) {
+      for (const { unit } of game.nearbyUnits(
+        base.tile(),
+        DRONE_RANGE,
+        UnitType.Warship,
+      )) {
+        if (seen.has(unit)) continue;
+        seen.add(unit);
+        const owner = unit.owner();
+        if (owner === player || player.isFriendly(owner, true)) continue;
+        const threatening =
+          unit.targetUnit()?.owner() === player ||
+          ports.some(
+            (port) =>
+              game.euclideanDistSquared(port.tile(), unit.tile()) <=
+              threatSquared,
+          );
+        if (threatening) threats.push(unit);
+      }
+    }
+    if (threats.length === 0) return false;
+    threats.sort((a, b) => a.id() - b.id());
+    if (difficulty === Difficulty.Medium && !this.random.chance(2)) {
+      return false;
+    }
+    for (const ship of threats) {
+      if (orderDroneSwarm(game, player, ship)) return true;
     }
     return false;
   }

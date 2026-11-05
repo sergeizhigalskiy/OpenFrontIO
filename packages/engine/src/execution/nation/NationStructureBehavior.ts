@@ -8,6 +8,12 @@ import {
   Structures,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
+import {
+  AIRBASE_STRIKE_RANGE,
+  CRUISE_MISSILE_RANGE,
+  FLAK_GUN_RANGE,
+} from "@openfront/engine-lib/game/ConventionalWar";
+import { COASTAL_BATTERY_RANGE } from "@openfront/engine-lib/game/NavalDefense";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import {
   readVersioned,
@@ -51,18 +57,110 @@ const SAM_RATIO_BY_DIFFICULTY: Record<Difficulty, number> = {
 /** Port ratio per city in team games (not on Easy), where teammates are safe trade partners */
 const TEAM_PORT_RATIO = 1;
 
+/** Conventional war: airbase ratio per city, keyed by difficulty */
+const AIRBASE_RATIO_BY_DIFFICULTY: Record<Difficulty, number> = {
+  [Difficulty.Easy]: 0.1,
+  [Difficulty.Medium]: 0.15,
+  [Difficulty.Hard]: 0.2,
+  [Difficulty.Impossible]: 0.25,
+};
+
+/** Conventional war: ratio per city used for the first airbase, so air power comes early, keyed by difficulty */
+const FIRST_AIRBASE_RATIO: Record<Difficulty, number> = {
+  [Difficulty.Easy]: 0.2,
+  [Difficulty.Medium]: 0.34,
+  [Difficulty.Hard]: 0.4,
+  [Difficulty.Impossible]: 0.5,
+};
+
+/** Conventional war: most airbases a nation builds, keyed by difficulty */
+const MAX_AIRBASES: Record<Difficulty, number> = {
+  [Difficulty.Easy]: 1,
+  [Difficulty.Medium]: 2,
+  [Difficulty.Hard]: 3,
+  [Difficulty.Impossible]: 4,
+};
+
+/** Conventional war: flak gun ratio per city, keyed by difficulty */
+const FLAK_RATIO_BY_DIFFICULTY: Record<Difficulty, number> = {
+  [Difficulty.Easy]: 0.1,
+  [Difficulty.Medium]: 0.2,
+  [Difficulty.Hard]: 0.3,
+  [Difficulty.Impossible]: 0.4,
+};
+
+/** Most coastal batteries a nation builds on threatened coasts, keyed by difficulty */
+const MAX_COASTAL_BATTERIES: Record<Difficulty, number> = {
+  [Difficulty.Easy]: 0,
+  [Difficulty.Medium]: 1,
+  [Difficulty.Hard]: 2,
+  [Difficulty.Impossible]: 3,
+};
+
+/** A hostile warship this close to one of our ports makes its coast threatened */
+const COAST_THREAT_RANGE = 80;
+
+/** Conventional war: defense posts a nation keeps by its capital once it is threatened, keyed by difficulty */
+const CAPITAL_DEFENSE_POSTS: Record<Difficulty, number> = {
+  [Difficulty.Easy]: 0,
+  [Difficulty.Medium]: 1,
+  [Difficulty.Hard]: 1,
+  [Difficulty.Impossible]: 2,
+};
+
+/** Conventional war: enemy land this close (in tiles, either axis) to the capital threatens it */
+const CAPITAL_THREAT_RANGE = 50;
+
+/** Grid step of the capital threat scan, to keep it cheap */
+const CAPITAL_THREAT_SCAN_STEP = 3;
+
+/** Reactive structures try anchors on rings this many tiles apart around the spot (structureMinDist keeps them apart) */
+const REACTIVE_ANCHOR_STEP = 8;
+
+/** Conventional war: hostile flights at our land we answer with air defense */
+const AIR_THREAT_TYPES: readonly UnitType[] = [
+  UnitType.Airstrike,
+  UnitType.Airdrop,
+  UnitType.Drone,
+  UnitType.CruiseMissile,
+  UnitType.BallisticMissile,
+  UnitType.ClusterWarhead,
+];
+
+/** ...of which flak guns can't shoot these down, only SAMs */
+const SAM_ONLY_THREATS: readonly UnitType[] = [
+  UnitType.CruiseMissile,
+  UnitType.BallisticMissile,
+  UnitType.ClusterWarhead,
+];
+
 /**
  * Returns structure ratios relative to city count, adjusted by difficulty and game mode.
  * Cities are always prioritized and built first.
  * When cities are disabled, we use TILES_PER_CITY_EQUIVALENT. That's not ideal, nations won't properly upgrade structures, but it's better than nothing. Probably 99.9% of players won't disable cities anyway.
+ * Conventional war adds airbases and flak guns.
  */
 function getStructureRatios(
   difficulty: Difficulty,
   gameMode: GameMode,
+  conventionalWar = false,
 ): Partial<Record<UnitType, StructureRatioConfig>> {
   const teamPorts =
     gameMode === GameMode.Team && difficulty !== Difficulty.Easy;
+  const air: Partial<Record<UnitType, StructureRatioConfig>> = conventionalWar
+    ? {
+        [UnitType.Airbase]: {
+          ratioPerCity: AIRBASE_RATIO_BY_DIFFICULTY[difficulty],
+          perceivedCostIncreasePerOwned: 1,
+        },
+        [UnitType.FlakGun]: {
+          ratioPerCity: FLAK_RATIO_BY_DIFFICULTY[difficulty],
+          perceivedCostIncreasePerOwned: 0.3,
+        },
+      }
+    : {};
   return {
+    ...air,
     [UnitType.Port]: {
       ratioPerCity: teamPorts ? TEAM_PORT_RATIO : 0.75,
       perceivedCostIncreasePerOwned: 1,
@@ -296,6 +394,13 @@ export class NationStructureBehavior {
       }
     }
 
+    // Likewise outside the pacing: coastal batteries on threatened coasts,
+    // and in conventional war the capital's defenses and air defense where
+    // our land is being hit from the air.
+    if (this.placementsCount > 0 && this.tryBuildReactiveDefense()) {
+      return true;
+    }
+
     if (this.isOnStructureCooldown()) {
       return false;
     }
@@ -466,6 +571,299 @@ export class NationStructureBehavior {
       new ConstructionExecution(player, UnitType.DefensePost, tile),
     );
     return true;
+  }
+
+  /**
+   * Reactive defenses, one per call, like the reactive defense posts: a
+   * coastal battery on a threatened coast in every game, and in
+   * conventional war the capital's defenses and air defense where we are
+   * being hit from the air. Never on Easy. Each check is deterministic
+   * until it finds work, so the PRNG is only drawn from then (Medium's coin
+   * flip).
+   */
+  private tryBuildReactiveDefense(): boolean {
+    const config = this.game.config();
+    if (config.gameConfig().difficulty === Difficulty.Easy) return false;
+    if (this.maybeBuildCoastalBattery()) return true;
+    return (
+      config.conventionalWar() &&
+      (this.maybeFortifyCapitals() || this.maybeDefendAgainstAir())
+    );
+  }
+
+  /** Medium builds half the time when it should; Hard & Impossible always. */
+  private reacts(): boolean {
+    return (
+      this.game.config().gameConfig().difficulty !== Difficulty.Medium ||
+      this.random.chance(2)
+    );
+  }
+
+  /**
+   * A coastal battery by our busiest port with a hostile warship within
+   * COAST_THREAT_RANGE and no battery of ours near it yet, up to
+   * MAX_COASTAL_BATTERIES. The battery goes on a shore tile by the port.
+   */
+  private maybeBuildCoastalBattery(): boolean {
+    const game = this.game;
+    const config = game.config();
+    if (config.isUnitDisabled(UnitType.CoastalBattery)) return false;
+    const player = this.player;
+    const batteries = player.units(UnitType.CoastalBattery);
+    if (
+      batteries.length >= MAX_COASTAL_BATTERIES[config.gameConfig().difficulty]
+    ) {
+      return false;
+    }
+    if (player.gold() < this.cost(UnitType.CoastalBattery)) return false;
+    const coverSquared = (COASTAL_BATTERY_RANGE / 2) ** 2;
+    const ports = player
+      .units(UnitType.Port)
+      .filter((p) => !p.isUnderConstruction())
+      .sort((a, b) => b.level() - a.level() || a.id() - b.id());
+    for (const port of ports) {
+      const tile = port.tile();
+      if (
+        batteries.some(
+          (b) => game.euclideanDistSquared(b.tile(), tile) <= coverSquared,
+        )
+      ) {
+        continue;
+      }
+      const threatened = game.anyUnitNearby(
+        tile,
+        COAST_THREAT_RANGE,
+        [UnitType.Warship],
+        (u) => u.owner() !== player && !player.isFriendly(u.owner()),
+      );
+      if (!threatened) continue;
+      // On the shore by the port, in range of its approaches
+      if (
+        this.buildNear(UnitType.CoastalBattery, tile, COASTAL_BATTERY_RANGE / 2)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Conventional war: our capital, while we hold it, gets defense posts once
+   * enemy land comes within CAPITAL_THREAT_RANGE (CAPITAL_DEFENSE_POSTS of
+   * them), a flak gun once a hostile airbase can reach it, and on Hard and
+   * Impossible a SAM once a hostile silo can. Hard & Impossible also hold
+   * the enemy capitals they took with a defense post each.
+   */
+  private maybeFortifyCapitals(): boolean {
+    const game = this.game;
+    const config = game.config();
+    const player = this.player;
+    const { difficulty } = config.gameConfig();
+    const higher =
+      difficulty === Difficulty.Hard || difficulty === Difficulty.Impossible;
+    const capital = player.capitalTile();
+    if (capital !== undefined && game.owner(capital) === player) {
+      // Cheap checks first: the scans only run when we'd build.
+      const posts = CAPITAL_DEFENSE_POSTS[difficulty];
+      if (
+        this.affords(UnitType.DefensePost) &&
+        this.ownWithin(
+          UnitType.DefensePost,
+          capital,
+          config.defensePostRange(),
+        ) < posts &&
+        this.capitalThreatened(capital) &&
+        this.buildNear(UnitType.DefensePost, capital, config.defensePostRange())
+      ) {
+        return true;
+      }
+      if (
+        this.affords(UnitType.FlakGun) &&
+        this.ownWithin(UnitType.FlakGun, capital, FLAK_GUN_RANGE) === 0 &&
+        this.hostileWithin(UnitType.Airbase, capital, AIRBASE_STRIKE_RANGE) &&
+        this.buildNear(UnitType.FlakGun, capital, FLAK_GUN_RANGE)
+      ) {
+        return true;
+      }
+      if (
+        higher &&
+        this.affords(UnitType.SAMLauncher) &&
+        !this.samCovers(capital) &&
+        this.hostileWithin(
+          UnitType.MissileSilo,
+          capital,
+          CRUISE_MISSILE_RANGE,
+        ) &&
+        this.buildNear(UnitType.SAMLauncher, capital, config.samRange(1))
+      ) {
+        return true;
+      }
+    }
+    if (!higher) return false;
+    for (const other of game.players()) {
+      const held = other.capitalTile();
+      if (held === undefined || other === player) continue;
+      if (game.owner(held) !== player || player.isFriendly(other)) continue;
+      if (
+        this.ownWithin(
+          UnitType.DefensePost,
+          held,
+          config.defensePostRange(),
+        ) === 0 &&
+        this.buildNear(UnitType.DefensePost, held, config.defensePostRange())
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Conventional war: a flak gun where a hostile plane or drone is headed at
+   * our land, a SAM where a hostile missile is, unless one of ours already
+   * covers the spot. The lowest id threat first.
+   */
+  private maybeDefendAgainstAir(): boolean {
+    const game = this.game;
+    const player = this.player;
+    const threats = game
+      .units(AIR_THREAT_TYPES)
+      .filter((u) => u.owner() !== player && !player.isFriendly(u.owner()))
+      .sort((a, b) => a.id() - b.id());
+    for (const threat of threats) {
+      const tile =
+        threat.type() === UnitType.Drone
+          ? threat.targetUnit()?.tile()
+          : threat.targetTile();
+      if (tile === undefined || game.owner(tile) !== player) continue;
+      const missile = SAM_ONLY_THREATS.includes(threat.type());
+      if (missile) {
+        if (this.samCovers(tile)) continue;
+        if (
+          this.buildNear(UnitType.SAMLauncher, tile, game.config().samRange(1))
+        ) {
+          return true;
+        }
+      } else {
+        if (this.ownWithin(UnitType.FlakGun, tile, FLAK_GUN_RANGE) > 0) {
+          continue;
+        }
+        if (this.buildNear(UnitType.FlakGun, tile, FLAK_GUN_RANGE)) return true;
+      }
+    }
+    return false;
+  }
+
+  /** Whether `type` is enabled and we can pay for it. */
+  private affords(type: UnitType): boolean {
+    return (
+      !this.game.config().isUnitDisabled(type) &&
+      this.player.gold() >= this.cost(type)
+    );
+  }
+
+  /**
+   * Builds `type` within `maxDist` of `center`, if affordable. Structures
+   * keep structureMinDist apart, so a structure already on the spot blocks
+   * it: the order is placed from the first anchor that works, the center
+   * first, then rings of REACTIVE_ANCHOR_STEP tiles around it in a fixed
+   * order (no PRNG).
+   */
+  private buildNear(type: UnitType, center: TileRef, maxDist: number): boolean {
+    if (!this.affords(type)) return false;
+    const game = this.game;
+    const player = this.player;
+    const maxSquared = maxDist * maxDist;
+    const cx = game.x(center);
+    const cy = game.y(center);
+    const anchors: TileRef[] = [center];
+    for (let r = REACTIVE_ANCHOR_STEP; r < maxDist; r += REACTIVE_ANCHOR_STEP) {
+      const d = Math.floor((r * 7) / 10);
+      for (const [dx, dy] of [
+        [r, 0],
+        [-r, 0],
+        [0, r],
+        [0, -r],
+        [d, d],
+        [-d, d],
+        [d, -d],
+        [-d, -d],
+      ]) {
+        if (!game.isValidCoord(cx + dx, cy + dy)) continue;
+        anchors.push(game.ref(cx + dx, cy + dy));
+      }
+    }
+    for (const anchor of anchors) {
+      if (game.owner(anchor) !== player) continue;
+      const spawn = player.canBuild(type, anchor);
+      if (spawn === false) continue;
+      if (game.euclideanDistSquared(spawn, center) > maxSquared) continue;
+      // Not where a volcano is about to erupt or the tide is about to flood.
+      if (isCataclysmHazard(game, spawn)) continue;
+      if (!this.reacts()) return false;
+      game.addExecution(new ConstructionExecution(player, type, anchor));
+      return true;
+    }
+    return false;
+  }
+
+  /** Our own units of `type` within `range` of `tile`, built or not. */
+  private ownWithin(type: UnitType, tile: TileRef, range: number): number {
+    const rangeSquared = range * range;
+    let count = 0;
+    for (const unit of this.player.units(type)) {
+      if (this.game.euclideanDistSquared(unit.tile(), tile) <= rangeSquared) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  /** Whether a hostile built `type` lies within `range` of `tile`. */
+  private hostileWithin(type: UnitType, tile: TileRef, range: number): boolean {
+    const player = this.player;
+    return this.game.anyUnitNearby(
+      tile,
+      range,
+      [type],
+      (u) => u.owner() !== player && !player.isFriendly(u.owner()),
+    );
+  }
+
+  /** Whether one of our SAMs covers `tile`. */
+  private samCovers(tile: TileRef): boolean {
+    const config = this.game.config();
+    return this.player
+      .units(UnitType.SAMLauncher)
+      .some(
+        (sam) =>
+          this.game.euclideanDistSquared(sam.tile(), tile) <=
+          config.samRange(sam.level()) ** 2,
+      );
+  }
+
+  /** Whether a hostile player's land lies within CAPITAL_THREAT_RANGE of `capital`. */
+  private capitalThreatened(capital: TileRef): boolean {
+    const game = this.game;
+    const player = this.player;
+    const cx = game.x(capital);
+    const cy = game.y(capital);
+    const r = CAPITAL_THREAT_RANGE;
+    for (let dy = -r; dy <= r; dy += CAPITAL_THREAT_SCAN_STEP) {
+      for (let dx = -r; dx <= r; dx += CAPITAL_THREAT_SCAN_STEP) {
+        if (!game.isValidCoord(cx + dx, cy + dy)) continue;
+        const owner = game.owner(game.ref(cx + dx, cy + dy));
+        if (
+          owner.isPlayer() &&
+          owner !== player &&
+          owner.type() !== PlayerType.Bot &&
+          !player.isFriendly(owner)
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   private defensePostNeeded(): boolean {
@@ -665,7 +1063,8 @@ export class NationStructureBehavior {
       this.placementsCount === 0 &&
       (difficulty === Difficulty.Hard ||
         difficulty === Difficulty.Impossible) &&
-      !config.isUnitDisabled(UnitType.AtomBomb) &&
+      (!config.isUnitDisabled(UnitType.AtomBomb) ||
+        this.conventionalStrikesEnabled()) &&
       missileSilosEnabled &&
       !config.isUnitDisabled(UnitType.SAMLauncher) &&
       this.hasHighStartingGold() &&
@@ -702,18 +1101,24 @@ export class NationStructureBehavior {
       return true;
     }
 
-    // Build order for non-city structures (priority order)
+    // Build order for non-city structures (priority order). Conventional war
+    // adds airbases and flak guns after the silos.
     const buildOrder: UnitType[] = [
       UnitType.Port,
       UnitType.Factory,
       UnitType.SAMLauncher,
       UnitType.MissileSilo,
     ];
+    if (config.conventionalWar()) {
+      buildOrder.push(UnitType.Airbase, UnitType.FlakGun);
+    }
 
+    // Conventional war's missiles and planes need silos and SAMs as nukes do
     const nukesEnabled =
       !config.isUnitDisabled(UnitType.AtomBomb) ||
       !config.isUnitDisabled(UnitType.HydrogenBomb) ||
-      !config.isUnitDisabled(UnitType.MIRV);
+      !config.isUnitDisabled(UnitType.MIRV) ||
+      this.conventionalStrikesEnabled();
 
     for (const structureType of buildOrder) {
       // Skip disabled structure types
@@ -801,7 +1206,11 @@ export class NationStructureBehavior {
   ): number {
     const gameConfig = this.game.config();
     const { difficulty, gameMode } = gameConfig.gameConfig();
-    const ratios = getStructureRatios(difficulty, gameMode);
+    const ratios = getStructureRatios(
+      difficulty,
+      gameMode,
+      gameConfig.conventionalWar(),
+    );
     const config = ratios[type];
     if (config === undefined) {
       return 0;
@@ -827,6 +1236,15 @@ export class NationStructureBehavior {
       }
       // Hard cap on missile silos
       targetCount = Math.min(Math.floor(cityCount * ratio), MAX_MISSILE_SILOS);
+    } else if (type === UnitType.Airbase) {
+      // The first airbase comes early, as the first silo does
+      if (owned === 0) {
+        ratio = FIRST_AIRBASE_RATIO[difficulty];
+      }
+      targetCount = Math.min(
+        Math.floor(cityCount * ratio),
+        MAX_AIRBASES[difficulty],
+      );
     } else {
       targetCount = Math.floor(cityCount * ratio);
     }
@@ -915,7 +1333,11 @@ export class NationStructureBehavior {
     if (type === UnitType.City) {
       increasePerOwned = CITY_PERCEIVED_COST_INCREASE_PER_OWNED;
     } else {
-      const ratios = getStructureRatios(difficulty, gameMode);
+      const ratios = getStructureRatios(
+        difficulty,
+        gameMode,
+        this.game.config().conventionalWar(),
+      );
       const config = ratios[type];
       increasePerOwned = config?.perceivedCostIncreasePerOwned ?? 0.1;
     }
@@ -946,6 +1368,10 @@ export class NationStructureBehavior {
       return this.cost(UnitType.SAMLauncher);
     }
 
+    if (config.conventionalWar()) {
+      return this.conventionalSaveUpTarget();
+    }
+
     // Save up a limited amount in team games, synced with NationNukeBehavior
     // Saving up for a MIRV is not relevant
     if (this.game.config().gameConfig().gameMode === GameMode.Team) {
@@ -971,6 +1397,57 @@ export class NationStructureBehavior {
     }
     // No nukes enabled, just save up for SAMs
     return this.cost(UnitType.SAMLauncher);
+  }
+
+  /**
+   * Conventional war, by the same rungs: a cluster missile plus a ballistic
+   * missile (MIRV plus hydrogen bomb), else 5 ballistic missiles, else 20
+   * cruise missiles. Only Hard & Impossible fire the heavy missiles; Medium
+   * saves for a cruise volley against a level-3 SAM, Easy only for a SAM.
+   * Team games save for one ballistic missile, as for one hydrogen bomb.
+   */
+  private conventionalSaveUpTarget(): Gold {
+    const config = this.game.config();
+    const { difficulty, gameMode } = config.gameConfig();
+    const ballistic = !config.isUnitDisabled(UnitType.BallisticMissile);
+    const cruise = !config.isUnitDisabled(UnitType.CruiseMissile);
+    switch (difficulty) {
+      case Difficulty.Easy:
+        return this.cost(UnitType.SAMLauncher);
+      case Difficulty.Medium:
+        return cruise
+          ? this.cost(UnitType.CruiseMissile) * 4n
+          : this.cost(UnitType.SAMLauncher);
+      case Difficulty.Hard:
+      case Difficulty.Impossible:
+        break;
+      default:
+        assertNever(difficulty);
+    }
+    if (gameMode === GameMode.Team && ballistic) {
+      return this.cost(UnitType.BallisticMissile);
+    }
+    if (!config.isUnitDisabled(UnitType.ClusterMissile)) {
+      return (
+        this.cost(UnitType.ClusterMissile) +
+        this.cost(UnitType.BallisticMissile)
+      );
+    }
+    if (ballistic) return this.cost(UnitType.BallisticMissile) * 5n;
+    if (cruise) return this.cost(UnitType.CruiseMissile) * 20n;
+    return this.cost(UnitType.SAMLauncher);
+  }
+
+  /** Conventional war with missiles or planes that need silos and SAMs. */
+  private conventionalStrikesEnabled(): boolean {
+    const config = this.game.config();
+    return (
+      config.conventionalWar() &&
+      (!config.isUnitDisabled(UnitType.CruiseMissile) ||
+        !config.isUnitDisabled(UnitType.BallisticMissile) ||
+        !config.isUnitDisabled(UnitType.ClusterMissile) ||
+        !config.isUnitDisabled(UnitType.Airstrike))
+    );
   }
 
   private isMirvWorthSavingFor(): boolean {
