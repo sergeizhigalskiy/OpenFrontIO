@@ -6,10 +6,6 @@ import {
   PlayerType,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
-import {
-  MINEFIELD_DEFAULT_DENSITY,
-  MINEFIELD_RADIUS,
-} from "@openfront/engine-lib/game/NavalDefense";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import {
   readVersioned,
@@ -19,24 +15,16 @@ import {
 } from "@openfront/engine-lib/snapshot/SnapshotType";
 import { assertNever } from "@openfront/engine-lib/Util";
 import { z } from "zod";
-import { droneLaunchTile } from "../../game/AirOps";
 import { Game, Player, Unit } from "../../game/Game";
 import type {
   SnapshotReader,
   SnapshotWriter,
 } from "../../snapshot/SnapshotContext";
 import { ConstructionExecution } from "../ConstructionExecution";
-import { orderDroneSwarm } from "./NationAirPlanning";
-import { blockadedPortToMine } from "./NationBlockadeBehavior";
 import {
   EMOJI_WARSHIP_RETALIATION,
   NationEmojiBehavior,
 } from "./NationEmojiBehavior";
-
-/** A hostile warship this close to a nation's busiest port makes it lay mines. */
-const NATION_MINEFIELD_THREAT_RANGE = 80;
-/** How far out from the port a nation centers its minefield. */
-const NATION_MINEFIELD_PORT_OFFSET = 6;
 
 export class NationWarshipBehavior {
   // Track our transport ships we currently own
@@ -116,138 +104,6 @@ export class NationWarshipBehavior {
       return true;
     }
     return false;
-  }
-
-  /**
-   * Conventional war: a drone swarm at a hostile warship threatening us (one
-   * within NATION_MINEFIELD_THREAT_RANGE of a port of ours, or shelling one
-   * of our units) and within DRONE_RANGE of our land, where drones take off
-   * (no airbase needed), sized to sink it past its guns and any flak
-   * covering it (droneSwarmSize). Lowest id first. Not on Easy; Medium only
-   * half the time. Draws from the PRNG only once it has a target.
-   */
-  maybeSendDronesAtWarships(): boolean {
-    const game = this.game;
-    const config = game.config();
-    if (!config.conventionalWar() || config.isUnitDisabled(UnitType.Drone)) {
-      return false;
-    }
-    const { difficulty } = config.gameConfig();
-    if (difficulty === Difficulty.Easy) return false;
-    const player = this.player;
-    const ports = player.units(UnitType.Port);
-    const threatSquared =
-      NATION_MINEFIELD_THREAT_RANGE * NATION_MINEFIELD_THREAT_RANGE;
-    const threats = game.units(UnitType.Warship).filter((unit) => {
-      const owner = unit.owner();
-      if (owner === player || player.isFriendly(owner, true)) return false;
-      const threatening =
-        unit.targetUnit()?.owner() === player ||
-        ports.some(
-          (port) =>
-            game.euclideanDistSquared(port.tile(), unit.tile()) <=
-            threatSquared,
-        );
-      return threatening && droneLaunchTile(game, player, unit.tile()) !== null;
-    });
-    if (threats.length === 0) return false;
-    threats.sort((a, b) => a.id() - b.id());
-    if (difficulty === Difficulty.Medium && !this.random.chance(2)) {
-      return false;
-    }
-    for (const ship of threats) {
-      if (orderDroneSwarm(game, player, ship)) return true;
-    }
-    return false;
-  }
-
-  /**
-   * Lays a minefield at the default density off our busiest port (highest
-   * level) when a hostile warship is within NATION_MINEFIELD_THREAT_RANGE of
-   * it and none of our fields covers the port yet. Deterministic: it draws
-   * nothing from the PRNG.
-   */
-  maybeLayMinefield(): boolean {
-    const game = this.game;
-    if (game.config().isUnitDisabled(UnitType.Minefield)) return false;
-    let port: Unit | null = null;
-    for (const p of this.player.units(UnitType.Port)) {
-      if (p.isUnderConstruction()) continue;
-      if (
-        port === null ||
-        p.level() > port.level() ||
-        (p.level() === port.level() && p.id() < port.id())
-      ) {
-        port = p;
-      }
-    }
-    // A blockade is a threat at any port, not just the busiest one.
-    port = blockadedPortToMine(game, this.player) ?? port;
-    if (port === null) return false;
-
-    const portTile = port.tile();
-    const threatened = game.anyUnitNearby(
-      portTile,
-      NATION_MINEFIELD_THREAT_RANGE,
-      [UnitType.Warship],
-      (u) => u.owner() !== this.player && !this.player.isFriendly(u.owner()),
-    );
-    if (!threatened) return false;
-    const alreadyMined = game.anyUnitNearby(
-      portTile,
-      MINEFIELD_RADIUS,
-      [UnitType.Minefield],
-      (u) => u.owner() === this.player,
-    );
-    if (alreadyMined) return false;
-
-    const cost = game
-      .config()
-      .minefieldCost(game, this.player, MINEFIELD_DEFAULT_DENSITY);
-    if (this.spareGold() < cost) return false;
-
-    const tile = this.minefieldTileOff(portTile);
-    if (tile === null) return false;
-    if (this.player.canBuild(UnitType.Minefield, tile, null, cost) === false) {
-      return false;
-    }
-    game.addExecution(
-      new ConstructionExecution(
-        this.player,
-        UnitType.Minefield,
-        tile,
-        undefined,
-        undefined,
-        MINEFIELD_DEFAULT_DENSITY,
-      ),
-    );
-    return true;
-  }
-
-  /**
-   * The ocean tile at most NATION_MINEFIELD_PORT_OFFSET tiles from the port
-   * that lies furthest out, so the field covers the port's approaches. Ties
-   * go to the lowest tile ref.
-   */
-  private minefieldTileOff(portTile: TileRef): TileRef | null {
-    const game = this.game;
-    const r = NATION_MINEFIELD_PORT_OFFSET;
-    const px = game.x(portTile);
-    const py = game.y(portTile);
-    let best: TileRef | null = null;
-    let bestDist = -1;
-    for (let dy = -r; dy <= r; dy++) {
-      for (let dx = -r; dx <= r; dx++) {
-        const dist = dx * dx + dy * dy;
-        if (dist > r * r || dist <= bestDist) continue;
-        if (!game.isValidCoord(px + dx, py + dy)) continue;
-        const tile = game.ref(px + dx, py + dy);
-        if (!game.isOcean(tile)) continue;
-        best = tile;
-        bestDist = dist;
-      }
-    }
-    return best;
   }
 
   private warshipSpawnTile(portTile: TileRef, radius: number): TileRef | null {

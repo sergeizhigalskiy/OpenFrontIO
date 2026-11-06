@@ -35,11 +35,9 @@ import type {
 import { NationAllianceBehavior } from "./nation/NationAllianceBehavior";
 import { NationAttackBehavior } from "./nation/NationAttackBehavior";
 import { considerBlockade } from "./nation/NationBlockadeBehavior";
-import { considerCanal } from "./nation/NationCanalBehavior";
 import { NationEmojiBehavior } from "./nation/NationEmojiBehavior";
 import { NationMIRVBehavior } from "./nation/NationMIRVBehavior";
 import { NationNukeBehavior } from "./nation/NationNukeBehavior";
-import { considerSiegeCamp } from "./nation/NationSiegeBehavior";
 import { NationStructureBehavior } from "./nation/NationStructureBehavior";
 import { NationWarshipBehavior } from "./nation/NationWarshipBehavior";
 import { tutorialCollapse } from "./nation/TutorialCollapse";
@@ -269,20 +267,12 @@ export class NationExecution implements Execution {
     this.mirvBehavior.considerMIRV();
     this.structureBehavior.handleStructures();
     this.warshipBehavior.maybeSpawnWarship();
-    this.warshipBehavior.maybeLayMinefield();
     this.handleEmbargoesToHostileNations();
     this.attackBehavior.maybeAttack();
     this.warshipBehavior.counterWarshipInfestation();
     this.nukeBehavior.maybeSendNuke();
-    // Conventional war only: air support for our attacks, drones at warships.
-    this.attackBehavior.maybeSupportFromTheAir();
-    this.warshipBehavior.maybeSendDronesAtWarships();
-    // Stateless: only draws from this execution's PRNG.
-    considerSiegeCamp(this.mg, this.player, this.random);
-    // Hard and Impossible only; stateless too.
-    considerBlockade(this.mg, this.player);
     // Hard and Impossible only; stateless, so nothing to snapshot.
-    considerCanal(this.mg, this.player);
+    considerBlockade(this.mg, this.player);
   }
 
   private initializeBehaviors(): void {

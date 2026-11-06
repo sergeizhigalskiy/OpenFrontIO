@@ -5,10 +5,7 @@ import {
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
 import { BLOCKADE_RANGE } from "@openfront/engine-lib/game/TradeRoutes";
-import {
-  blockadedPortToMine,
-  considerBlockade,
-} from "@openfront/engine/execution/nation/NationBlockadeBehavior";
+import { considerBlockade } from "@openfront/engine/execution/nation/NationBlockadeBehavior";
 import { Game, Player, Unit } from "@openfront/engine/game/Game";
 import { describe, expect, it } from "vitest";
 import { setup } from "../../util/Setup";
@@ -103,25 +100,5 @@ describe("nation blockades", () => {
     const before = patrolTiles(fleet);
     considerBlockade(game, nation);
     expect(patrolTiles(fleet)).toEqual(before);
-  });
-
-  it("mines its own blockaded port first, unless it already did", async () => {
-    // Land is x 0-7 and ocean x 8-15 on this map.
-    const game = await setup("half_land_half_ocean", { instantBuild: true }, [
-      new PlayerInfo("nation", PlayerType.Nation, null, "nation"),
-      new PlayerInfo("enemy", PlayerType.Human, null, "enemy"),
-    ]);
-    const nation = game.player("nation");
-    const enemy = game.player("enemy");
-    nation.conquer(game.ref(7, 2));
-    enemy.conquer(game.ref(0, 12));
-    const port = nation.buildUnit(UnitType.Port, game.ref(7, 2), {});
-    expect(blockadedPortToMine(game, nation)).toBeNull();
-
-    warship(game, enemy, 12, 3);
-    expect(blockadedPortToMine(game, nation)).toBe(port);
-
-    nation.buildUnit(UnitType.Minefield, game.ref(9, 2), { density: 50 });
-    expect(blockadedPortToMine(game, nation)).toBeNull();
   });
 });
