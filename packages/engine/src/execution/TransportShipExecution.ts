@@ -199,6 +199,12 @@ export class TransportShipExecution implements Execution {
     this.mg.recordMotionPlan(motionPlan);
     this.motionPlanDst = this.dst;
 
+    // A boat attack on a player puts them at war (blockades, TradeRoutes);
+    // a boat to a friend carries troops, not an attack.
+    if (this.target.isPlayer() && !this.attacker.isFriendly(this.target)) {
+      this.attacker.recordHostileAct(this.target);
+    }
+
     // Notify the target player about the incoming naval invasion
     if (this.target.isPlayer()) {
       mg.displayIncomingUnit(

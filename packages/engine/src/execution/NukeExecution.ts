@@ -258,6 +258,8 @@ export class NukeExecution implements Execution {
         if (this.nukeType === UnitType.MIRV) {
           this.mg.recordMirvLaunch();
         }
+        // A nuke at a player puts them at war (blockades, TradeRoutes).
+        if (target.isPlayer()) this.player.recordHostileAct(target);
         // Record stats
         this.mg.stats().bombLaunch(this.player, target, this.nukeType);
       }

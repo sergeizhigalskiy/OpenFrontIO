@@ -6,8 +6,10 @@ import {
   WINTER_TICKS,
 } from "@openfront/engine-lib/game/Seasons";
 import {
+  atWarBy,
   BLOCKADE_CHECK_INTERVAL,
   findPortBlockader,
+  type WarFacts,
 } from "@openfront/engine-lib/game/TradeRoutes";
 import { assetUrl } from "@openfront/shared/AssetUrls";
 import {
@@ -57,16 +59,27 @@ import {
 } from "./render/types/UnitType";
 import type { GameView, PlayerView } from "./view";
 
+/** The blockades' war rule's facts as the view knows them. */
+const VIEW_WAR_FACTS: WarFacts<PlayerView> = {
+  friendly: (a, b) => a.isFriendly(b) || b.isFriendly(a),
+  attacking: (attacker, target) =>
+    attacker
+      .outgoingAttacks()
+      .some((attack) => attack.targetID === target.smallID()),
+  lastHostileAct: (attacker, target) => attacker.lastHostileActTick(target),
+};
+
 /**
- * The blockade's "at war" test (engine-lib TradeRoutes, engine
- * PortBlockade.atWar) on the view: one of the two is attacking the other,
- * and they aren't allied or teammates.
+ * The blockade's "at war" test on the view at tick `now`: the engine's rule
+ * (engine-lib TradeRoutes.atWarBy, engine PortBlockade.atWar) applied to the
+ * attacks and war record the view gets.
  */
-function atWarInView(a: PlayerView, b: PlayerView): boolean {
-  if (a === b || a.isFriendly(b) || b.isFriendly(a)) return false;
-  const attacks = (from: PlayerView, to: PlayerView) =>
-    from.outgoingAttacks().some((attack) => attack.targetID === to.smallID());
-  return attacks(a, b) || attacks(b, a);
+export function atWarInView(
+  a: PlayerView,
+  b: PlayerView,
+  now: number,
+): boolean {
+  return atWarBy(VIEW_WAR_FACTS, a, b, now);
 }
 
 // A human player counts as "small" (and glows) at or below this fraction of the
@@ -587,7 +600,7 @@ export class WebGLFrameBuilder {
         gameView,
         port.tile(),
         port.owner(),
-        atWarInView,
+        (a, b) => atWarInView(a, b, tick),
       );
       if (blockader === null) continue;
       key += `${port.id()},`;

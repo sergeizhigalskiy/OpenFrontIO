@@ -64,6 +64,7 @@ export function diffPlayerUpdate(
     prev.lastDeleteUnitTick === next.lastDeleteUnitTick &&
     prev.isLobbyCreator === next.isLobbyCreator &&
     prev.isCityState === next.isCityState &&
+    numberArrayEqual(prev.hostileActs, next.hostileActs) &&
     numberArrayEqual(prev.allies, next.allies) &&
     numberArrayEqual(prev.targets, next.targets) &&
     stringArrayEqual(
@@ -132,6 +133,10 @@ export function diffPlayerUpdate(
   );
   setIfDifferent("isLobbyCreator", prev.isLobbyCreator === next.isLobbyCreator);
   setIfDifferent("isCityState", prev.isCityState === next.isCityState);
+  setIfDifferent(
+    "hostileActs",
+    numberArrayEqual(prev.hostileActs, next.hostileActs),
+  );
   setIfDifferent("allies", numberArrayEqual(prev.allies, next.allies));
   setIfDifferent("targets", numberArrayEqual(prev.targets, next.targets));
   setIfDifferent(
