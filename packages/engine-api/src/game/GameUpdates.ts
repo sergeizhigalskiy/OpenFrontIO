@@ -338,6 +338,12 @@ export interface PlayerUpdate {
    * engine-lib/game/WorldFeatures.ts). Set when the player is created.
    */
   isCityState?: boolean;
+  /**
+   * The blockades' war record (engine-lib game/TradeRoutes): flat
+   * [targetSmallID, tick] pairs, the last tick this player launched a land
+   * attack, boat attack or nuke at each target, oldest first.
+   */
+  hostileActs?: number[];
 }
 
 export interface AllianceView {

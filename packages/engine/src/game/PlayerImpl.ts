@@ -36,6 +36,7 @@ import { ClientID } from "@openfront/engine-api/Schemas";
 import { andFN, manhattanDistFN } from "@openfront/engine-lib/game/GameMapImpl";
 import { terrainFeatureAllowsStructures } from "@openfront/engine-lib/game/TerrainFeatures";
 import { TileSet } from "@openfront/engine-lib/game/TileSet";
+import { hostileActIsRecent } from "@openfront/engine-lib/game/TradeRoutes";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import {
   snapshotType,
@@ -194,6 +195,11 @@ export class PlayerImpl implements Player {
   public _incomingAttacks: Attack[] = [];
   public _outgoingAttacks: Attack[] = [];
   public _outgoingLandAttacks: Attack[] = [];
+  // The blockades' war record (engine-lib TradeRoutes): the last tick this
+  // player launched a land attack, boat attack or nuke at each player, in
+  // the order they were last launched. Entries past WAR_MEMORY_TICKS are
+  // dropped as new ones come in.
+  private _hostileActs = new Map<Player, Tick>();
 
   public _alliances: MutableAlliance[] = [];
 
@@ -422,6 +428,10 @@ export class PlayerImpl implements Player {
       lastDeleteUnitTick: this.lastDeleteUnitTick,
       isLobbyCreator: this.isLobbyCreator(),
       isCityState: this._isCityState,
+      hostileActs:
+        this._hostileActs.size === 0
+          ? EMPTY_NUMBER_ARRAY
+          : [...this._hostileActs].flatMap(([p, tick]) => [p.smallID(), tick]),
     };
   }
 
@@ -1967,8 +1977,26 @@ export class PlayerImpl implements Player {
     this._outgoingAttacks.push(attack);
     if (target.isPlayer()) {
       (target as PlayerImpl)._incomingAttacks.push(attack);
+      this.recordHostileAct(target);
     }
     return attack;
+  }
+
+  recordHostileAct(target: Player): void {
+    if (target === this) return;
+    const now = this.mg.ticks();
+    // Moved to the end, so the map stays oldest first and the stale entries
+    // are the ones at the front.
+    this._hostileActs.delete(target);
+    for (const [player, tick] of this._hostileActs) {
+      if (hostileActIsRecent(tick, now)) break;
+      this._hostileActs.delete(player);
+    }
+    this._hostileActs.set(target, now);
+  }
+
+  lastHostileActTick(target: Player): Tick | undefined {
+    return this._hostileActs.get(target);
   }
   outgoingAttacks(): Attack[] {
     return this._outgoingAttacks;
@@ -2083,6 +2111,10 @@ export class PlayerImpl implements Player {
         tick: d.tick,
       })),
       relations: [...this.relations].map(([p, r]) => [w.player(p), r]),
+      hostileActs: [...this._hostileActs].map(([p, tick]) => [
+        w.player(p),
+        tick,
+      ]),
       lastDeleteUnitTick: this.lastDeleteUnitTick,
       lastEmbargoAllTick: this.lastEmbargoAllTick,
       incomingAttacks: this._incomingAttacks.map((a) => w.attack(a)),
@@ -2162,6 +2194,9 @@ export class PlayerImpl implements Player {
     this.relations = new Map(
       s.relations.map(([p, rel]) => [r.player(p), rel] as const),
     );
+    this._hostileActs = new Map(
+      s.hostileActs.map(([p, tick]) => [r.player(p), tick] as const),
+    );
     this.lastDeleteUnitTick = s.lastDeleteUnitTick;
     this.lastEmbargoAllTick = s.lastEmbargoAllTick;
     this._incomingAttacks = s.incomingAttacks.map((i) => r.attack(i));
@@ -2191,9 +2226,10 @@ export class PlayerImpl implements Player {
 export const PlayerSnapshot = snapshotType({
   name: "Player",
   // v2 added the conventional war capital fields, v3 the city-state flags
-  // (world features), v4 reworked the capital fields, and v5 dropped them
-  // with the removed capitals (zod strips them from older records).
-  version: 5,
+  // (world features), v4 reworked the capital fields, v5 dropped them with
+  // the removed capitals (zod strips them from older records), and v6 added
+  // hostileActs, the blockades' war record.
+  version: 6,
   migrations: {
     1: (d) => d,
     // Older builds had no city-states.
@@ -2213,6 +2249,8 @@ export const PlayerSnapshot = snapshotType({
       };
     },
     4: (d) => d,
+    // Older games start with no record of who attacked whom.
+    5: (d) => ({ ...(d as Record<string, unknown>), hostileActs: [] }),
   },
   schema: z.object({
     smallID: zInt(),
@@ -2256,6 +2294,7 @@ export const PlayerSnapshot = snapshotType({
     outgoingQuickChats: z.array(z.tuple([zInt(), zInt()])),
     sentDonations: z.array(z.object({ recipient: zPlayerRef(), tick: zInt() })),
     relations: z.array(z.tuple([zPlayerRef(), zNum()])),
+    hostileActs: z.array(z.tuple([zPlayerRef(), zInt()])),
     lastDeleteUnitTick: zInt(),
     lastEmbargoAllTick: zInt(),
     incomingAttacks: z.array(zRef()),

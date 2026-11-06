@@ -53,6 +53,12 @@ export class PlayerView implements PlayerLike {
   public static: PlayerStatic;
   /** The equipped cosmetics this client draws. */
   public cosmetics!: PlayerCosmetics;
+  /**
+   * The blockades' war record (PlayerUpdate.hostileActs): flat
+   * [targetSmallID, tick] pairs. Kept here, not in the renderer state,
+   * since replays don't carry it and draw no blockade rings.
+   */
+  private hostileActs: number[];
 
   // Assigned via computeColors() in the constructor; re-assignable on theme change.
   private _territoryColor!: Colord;
@@ -78,6 +84,7 @@ export class PlayerView implements PlayerLike {
     public readonly equippedCosmetics: PlayerCosmetics,
   ) {
     this.state = playerStateFromUpdate(data);
+    this.hostileActs = data.hostileActs?.slice() ?? [];
     // Respect the client-side "Disable emojis" setting: when off, never surface
     // emoji data to any renderer/overlay that reads this shared state (#4430).
     if (!userSettings.emojis()) {
@@ -215,6 +222,9 @@ export class PlayerView implements PlayerLike {
    */
   applyUpdate(pu: PlayerUpdate): void {
     applyStateUpdate(this.state, pu);
+    if (pu.hostileActs !== undefined) {
+      this.hostileActs = pu.hostileActs.slice();
+    }
     // applyStateUpdate refreshes outgoingEmojis every tick; re-apply the
     // "Disable emojis" setting so live emojis stay hidden when it's off (#4430).
     if (!userSettings.emojis()) {
@@ -625,6 +635,20 @@ export class PlayerView implements PlayerLike {
 
   lastDeleteUnitTick(): Tick {
     return this.state.lastDeleteUnitTick;
+  }
+
+  /**
+   * The tick this player last launched a land attack, boat attack or nuke
+   * at `other`, as the engine keeps it for blockades (engine-lib
+   * TradeRoutes), or undefined.
+   */
+  lastHostileActTick(other: PlayerView): Tick | undefined {
+    const acts = this.hostileActs;
+    const id = other.smallID();
+    for (let i = 0; i + 1 < acts.length; i += 2) {
+      if (acts[i] === id) return acts[i + 1];
+    }
+    return undefined;
   }
 
   deleteUnitCooldown(): number {

@@ -152,6 +152,7 @@ export function makePlayerUpdate(
     lastDeleteUnitTick: 0,
     isLobbyCreator: false,
     isCityState: false,
+    hostileActs: [],
     ...overrides,
   };
 }

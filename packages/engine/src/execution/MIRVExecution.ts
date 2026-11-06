@@ -120,6 +120,10 @@ export class MirvExecution implements Execution {
       });
       this.mg.recordMirvLaunch();
       this.mg.stats().bombLaunch(this.player, this.targetPlayer, UnitType.MIRV);
+      // A MIRV at a player puts them at war (blockades, TradeRoutes).
+      if (this.targetPlayer.isPlayer()) {
+        this.player.recordHostileAct(this.targetPlayer);
+      }
 
       // Betrayal on launch — only once the missile has actually spawned, so
       // a fizzled launch pays no diplomatic cost.

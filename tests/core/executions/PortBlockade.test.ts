@@ -4,19 +4,25 @@ import {
   PlayerType,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
+import { GameUpdateType } from "@openfront/engine-api/game/GameUpdates";
 import {
   BLOCKADE_CHECK_INTERVAL,
   BLOCKADE_RANGE,
   BLOCKADE_TRADE_SHIP_RATE_DIVISOR,
+  WAR_MEMORY_TICKS,
 } from "@openfront/engine-lib/game/TradeRoutes";
 import { readVersioned } from "@openfront/engine-lib/snapshot/SnapshotType";
+import { NukeExecution } from "@openfront/engine/execution/NukeExecution";
 import {
   PortExecution,
   PortExecutionSnapshot,
 } from "@openfront/engine/execution/PortExecution";
 import { TradeShipExecution } from "@openfront/engine/execution/TradeShipExecution";
+import { TransportShipExecution } from "@openfront/engine/execution/TransportShipExecution";
 import { Game, Player } from "@openfront/engine/game/Game";
+import { PlayerSnapshot } from "@openfront/engine/game/PlayerImpl";
 import { atWar, portBlockader } from "@openfront/engine/game/PortBlockade";
+import { snapshotGameData } from "@openfront/engine/snapshot/GameSnapshot";
 import { describe, expect, it, vi } from "vitest";
 import { setup } from "../../util/Setup";
 import { expectSnapshotRoundTrip } from "../../util/Snapshot";
@@ -69,7 +75,10 @@ function warship(game: Game, player: Player, x: number, y: number) {
   return player.buildUnit(UnitType.Warship, tile, { patrolTile: tile });
 }
 
-/** An active attack of `attacker` on `target` (no execution, never ends). */
+/**
+ * An active attack of `attacker` on `target`, launched this tick (no
+ * execution: it runs until deleted).
+ */
 function war(attacker: Player, target: Player) {
   return attacker.createAttack(target, 100, null, new Set());
 }
@@ -102,7 +111,7 @@ describe("naval blockades", () => {
     const messages = vi.spyOn(game, "displayMessage");
     warship(game, enemy, 12, 3);
     executeTicks(game, BLOCKADE_CHECK_INTERVAL * 2);
-    expect(atWar(enemy, owner)).toBe(false);
+    expect(atWar(game, enemy, owner)).toBe(false);
     expect(portBlockader(game, port)).toBeNull();
     expect(partnerExec.tradingPorts()).toContain(port);
     expect(
@@ -119,15 +128,15 @@ describe("naval blockades", () => {
     const ship = warship(game, enemy, 12, 3);
     // The port's owner attacked the warship's owner.
     war(owner, enemy);
-    expect(atWar(enemy, owner)).toBe(true);
-    expect(atWar(owner, enemy)).toBe(true);
+    expect(atWar(game, enemy, owner)).toBe(true);
+    expect(atWar(game, owner, enemy)).toBe(true);
 
     executeTicks(game, BLOCKADE_CHECK_INTERVAL * 3);
 
     expect(portBlockader(game, port)).toBe(ship);
     expect(partnerExec.tradingPorts()).not.toContain(port);
     // The partner isn't at war with anyone, so its port trades on.
-    expect(atWar(enemy, partner)).toBe(false);
+    expect(atWar(game, enemy, partner)).toBe(false);
     expect(portBlockader(game, partnerPort)).toBeNull();
     const notices = messages.mock.calls.filter(
       (call) => call[0] === "events_display.port_blockaded",
@@ -138,16 +147,152 @@ describe("naval blockades", () => {
     expect(notices[0][5]).toBe(port.id());
   });
 
-  it("an allied warship does not blockade", async () => {
+  it("allies are never at war, even right after an attack", async () => {
     const { game, owner, ally, port, partnerExec } = await portFixture();
+    // They fought, then made up.
+    const attack = war(ally, owner);
+    expect(atWar(game, ally, owner)).toBe(true);
+    attack.delete();
     owner.createAllianceRequest(ally)!.accept();
     warship(game, ally, 12, 3);
-    expect(atWar(ally, owner)).toBe(false);
+    expect(ally.lastHostileActTick(owner)).toBeDefined();
+    expect(atWar(game, ally, owner)).toBe(false);
+    // Allied while an attack still runs, too.
+    war(ally, owner);
+    expect(atWar(game, ally, owner)).toBe(false);
 
     executeTicks(game, BLOCKADE_CHECK_INTERVAL * 2);
 
     expect(portBlockader(game, port)).toBeNull();
     expect(partnerExec.tradingPorts()).toContain(port);
+  });
+
+  it("a blockade holds 1199 ticks after the last attack and lifts at 1200", async () => {
+    expect(WAR_MEMORY_TICKS).toBe(1200);
+    const { game, owner, enemy, port, portExec } = await portFixture();
+    const ship = warship(game, enemy, 12, 3);
+    const launched = game.ticks();
+    // A short attack: launched and over in the same tick.
+    war(enemy, owner).delete();
+    expect(enemy.outgoingAttacks()).toHaveLength(0);
+    expect(enemy.lastHostileActTick(owner)).toBe(launched);
+
+    while (game.ticks() < launched + WAR_MEMORY_TICKS - 1) {
+      game.executeNextTick();
+    }
+    expect(game.ticks()).toBe(launched + 1199);
+    expect(atWar(game, enemy, owner)).toBe(true);
+    expect(portBlockader(game, port)).toBe(ship);
+    expect((portExec as unknown as { blockaded: boolean }).blockaded).toBe(
+      true,
+    );
+
+    game.executeNextTick();
+    expect(game.ticks()).toBe(launched + 1200);
+    expect(atWar(game, enemy, owner)).toBe(false);
+    expect(portBlockader(game, port)).toBeNull();
+    // The port's own check catches up within a check interval.
+    executeTicks(game, BLOCKADE_CHECK_INTERVAL);
+    expect((portExec as unknown as { blockaded: boolean }).blockaded).toBe(
+      false,
+    );
+  });
+
+  it("an attack still running keeps them at war past 1200 ticks", async () => {
+    const { game, owner, enemy, port } = await portFixture();
+    const ship = warship(game, enemy, 12, 3);
+    // The port's owner attacked, and its attack is still going.
+    war(owner, enemy);
+    executeTicks(game, WAR_MEMORY_TICKS + 50);
+    expect(atWar(game, enemy, owner)).toBe(true);
+    expect(portBlockader(game, port)).toBe(ship);
+  });
+
+  it("a newer attack from either side restarts the 2 minutes", async () => {
+    const { game, owner, enemy } = await portFixture();
+    war(enemy, owner).delete();
+    executeTicks(game, 1000);
+    // The other side answers.
+    war(owner, enemy).delete();
+    executeTicks(game, 1000);
+    expect(atWar(game, enemy, owner)).toBe(true);
+    executeTicks(game, 200);
+    expect(atWar(game, enemy, owner)).toBe(false);
+  });
+
+  it("sends the war record to the view with the attacker's player update", async () => {
+    const { game, owner, enemy } = await portFixture();
+    game.executeNextTick();
+    const launched = game.ticks();
+    war(enemy, owner).delete();
+    const updates = game.executeNextTick()[GameUpdateType.Player];
+    const fromEnemy = updates.find((u) => u.id === enemy.id());
+    expect(fromEnemy?.hostileActs).toEqual([owner.smallID(), launched]);
+  });
+
+  it("a nuke at the port's owner counts as an attack", async () => {
+    const game = await setup(
+      "plains",
+      { infiniteGold: true, instantBuild: true },
+      [
+        new PlayerInfo("owner", PlayerType.Human, null, "owner"),
+        new PlayerInfo("enemy", PlayerType.Human, null, "enemy"),
+      ],
+    );
+    const owner = game.player("owner");
+    const enemy = game.player("enemy");
+    owner.conquer(game.ref(10, 10));
+    owner.conquer(game.ref(60, 60));
+    enemy.conquer(game.ref(90, 90));
+    const port = owner.buildUnit(UnitType.Port, game.ref(10, 10), {});
+    const ship = warship(game, enemy, 10, 30);
+    enemy.buildUnit(UnitType.MissileSilo, game.ref(90, 90), {});
+    expect(portBlockader(game, port)).toBeNull();
+
+    game.addExecution(
+      new NukeExecution(UnitType.AtomBomb, enemy, game.ref(60, 60), null),
+    );
+    executeTicks(game, 2);
+    expect(enemy.units(UnitType.AtomBomb)).toHaveLength(1);
+    expect(enemy.outgoingAttacks()).toHaveLength(0);
+    expect(enemy.lastHostileActTick(owner)).toBeDefined();
+    expect(atWar(game, enemy, owner)).toBe(true);
+    expect(portBlockader(game, port)).toBe(ship);
+  });
+
+  it("a boat attack at the port's owner counts too", async () => {
+    const { game, owner, enemy } = await portFixture();
+    enemy.conquer(game.ref(7, 7));
+    game.addExecution(new TransportShipExecution(enemy, game.ref(7, 2), 10));
+    game.executeNextTick();
+    expect(enemy.units(UnitType.TransportShip)).toHaveLength(1);
+    expect(enemy.outgoingAttacks()).toHaveLength(0);
+    expect(enemy.lastHostileActTick(owner)).toBeDefined();
+    expect(atWar(game, enemy, owner)).toBe(true);
+  });
+
+  it("keeps who attacked whom through a snapshot; older saves start with none", async () => {
+    const { game, owner, enemy } = await portFixture();
+    const launched = game.ticks();
+    war(enemy, owner).delete();
+    executeTicks(game, 3);
+    const restored = await expectSnapshotRoundTrip(
+      game,
+      MAP,
+      BLOCKADE_CHECK_INTERVAL,
+      (g) => {
+        g.config().tradeShipSpawnRate = () => 1;
+      },
+    );
+    expect(
+      restored.player("enemy").lastHostileActTick(restored.player("owner")),
+    ).toBe(launched);
+
+    const d = {
+      ...(snapshotGameData(game).players[0].d as Record<string, unknown>),
+    };
+    delete d.hostileActs;
+    expect(readVersioned(PlayerSnapshot, { v: 5, d }).hostileActs).toEqual([]);
   });
 
   it("a blockaded port sends trade ships at half rate", async () => {
@@ -185,9 +330,10 @@ describe("naval blockades", () => {
     executeTicks(game, BLOCKADE_CHECK_INTERVAL * 2);
     expect(portBlockader(game, port)).toBe(ship);
 
-    // The attack ends: no longer at war.
+    // The attack ends, and 2 minutes later so does the war.
     attack.delete();
-    expect(atWar(enemy, owner)).toBe(false);
+    executeTicks(game, WAR_MEMORY_TICKS);
+    expect(atWar(game, enemy, owner)).toBe(false);
     executeTicks(game, BLOCKADE_CHECK_INTERVAL * 2);
     expect(portBlockader(game, port)).toBeNull();
     expect(partnerExec.tradingPorts()).toContain(port);
