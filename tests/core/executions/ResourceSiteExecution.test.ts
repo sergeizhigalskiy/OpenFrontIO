@@ -47,12 +47,12 @@ let bob: Player;
  * A game of `humans` humans (alice, bob, then p2, p3...) with resource sites,
  * its spawn phase already over and the sites placed. "plains" and
  * "big_plains" are all land (mines and oil fields only); "world" has every
- * kind.
+ * kind. Eight players get every kind the map has (fewer get no oil).
  */
 async function start(
   config: Partial<GameConfig> = {},
   map: "plains" | "big_plains" | "world" = "plains",
-  humans = 2,
+  humans = 8,
 ): Promise<void> {
   const infos = [
     new PlayerInfo("alice", PlayerType.Human, "client_a", "alice"),
@@ -130,13 +130,20 @@ describe("placing the sites", () => {
     const placed = game.executeNextTick()[GameUpdateType.ResourceSites];
     expect(placed).toHaveLength(1);
     expect(unpackResourceSites(placed[0].sites)).toEqual(resourceSitesOf(game));
-    // Two humans on a map with no ocean: 2 mines plus one, an oil field.
-    expect(sitesOfKind(ResourceSiteKind.GoldMine)).toHaveLength(3);
-    expect(sitesOfKind(ResourceSiteKind.OilField)).toHaveLength(1);
+    // Two humans on a map with no ocean: 1 mine plus one, no oil field.
+    expect(sitesOfKind(ResourceSiteKind.GoldMine)).toHaveLength(2);
+    expect(sitesOfKind(ResourceSiteKind.OilField)).toEqual([]);
     expect(sitesOfKind(ResourceSiteKind.FishingGrounds)).toEqual([]);
     for (const s of resourceSitesOf(game)) {
       expect(game.isLand(s.tile)).toBe(true);
     }
+  });
+
+  test("a duel on a map with ocean gets one mine and nothing else", async () => {
+    await start({}, "world", 2);
+    expect(resourceSitesOf(game).map((s) => s.kind)).toEqual([
+      ResourceSiteKind.GoldMine,
+    ]);
   });
 
   test("the count follows the humans and nations, not the map", async () => {

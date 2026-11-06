@@ -82,16 +82,20 @@ export const RESOURCE_SITES_PAID_PER_PLAYER = 3;
 
 /** Gold mines: one per this many players (humans and nations)... */
 export const PLAYERS_PER_GOLD_MINE = 4;
-/** ...clamped to this range. */
-export const MIN_GOLD_MINES = 2;
+/**
+ * ...clamped to this range. The counts follow the players all the way down,
+ * so a duel gets one mine and nothing else (with ocean); 7 players or more
+ * get at least 2 mines and an oil field from the rounding alone.
+ */
+export const MIN_GOLD_MINES = 1;
 export const MAX_GOLD_MINES = 10;
 /**
  * Oil fields, and fishing grounds on a map with ocean: one of each per this
  * many players...
  */
 export const PLAYERS_PER_RARE_SITE = 12;
-/** ...clamped to this range. */
-export const MIN_RARE_SITES = 1;
+/** ...clamped to this range: none below 6 players. */
+export const MIN_RARE_SITES = 0;
 export const MAX_RARE_SITES = 3;
 /** A map with no ocean gets this many more gold mines instead of fishing. */
 export const EXTRA_GOLD_MINES_WITHOUT_OCEAN = 1;
@@ -146,8 +150,8 @@ export interface ResourceSite {
 
 /**
  * How many sites of `kind` a game with `players` humans and nations gets:
- * gold mines one per PLAYERS_PER_GOLD_MINE (2 to 10), oil fields one per
- * PLAYERS_PER_RARE_SITE (1 to 3), fishing grounds as many as oil fields when
+ * gold mines one per PLAYERS_PER_GOLD_MINE (1 to 10), oil fields one per
+ * PLAYERS_PER_RARE_SITE (0 to 3), fishing grounds as many as oil fields when
  * the map has ocean, otherwise EXTRA_GOLD_MINES_WITHOUT_OCEAN more mines.
  */
 export function resourceSiteCount(
