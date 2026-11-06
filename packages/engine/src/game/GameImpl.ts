@@ -46,7 +46,7 @@ import {
   BOSS_RAID_BOSS_TEAM,
   BOSS_RAID_RAIDER_TEAM,
   bossRaidOf,
-  countBossRaidRaiders,
+  bossRaidRaiderWeight,
 } from "@openfront/engine-lib/game/BossRaid";
 import { GameMapImpl } from "@openfront/engine-lib/game/GameMapImpl";
 import { HORDE_DEFENDERS_TEAM } from "@openfront/engine-lib/game/HordeNight";
@@ -54,6 +54,7 @@ import {
   MotionPlanRecord,
   packMotionPlans,
 } from "@openfront/engine-lib/game/MotionPlans";
+import { isInfected } from "@openfront/engine-lib/game/Plague";
 import {
   assignTeams,
   resolveTeamsList,
@@ -107,6 +108,7 @@ import {
   Player,
   Unit,
 } from "./Game";
+import { reportInfectedConquered } from "./PlagueCure";
 import { PlayerImpl } from "./PlayerImpl";
 import { RailNetwork } from "./RailNetwork";
 import {
@@ -285,7 +287,12 @@ export class GameImpl implements Game {
         this._nations.map((n) => n.playerInfo),
       );
       for (const [playerInfo, team] of teams) this.addPlayer(playerInfo, team);
-      this._config.setBossRaidRaiders(countBossRaidRaiders(this.allPlayers()));
+      this._config.setBossRaidRaiderWeight(
+        bossRaidRaiderWeight(
+          this.allPlayers(),
+          this._config.gameConfig().difficulty,
+        ),
+      );
       return;
     }
 
@@ -1895,6 +1902,8 @@ export class GameImpl implements Game {
   }
 
   conquerPlayer(conqueror: Player, conquered: Player) {
+    // The plague pays whoever finishes The Infected off (PlagueCure.ts).
+    if (isInfected(conquered)) reportInfectedConquered(this, conqueror);
     if (conquered.isDisconnected() && conqueror.isOnSameTeam(conquered)) {
       const ships = conquered
         .units()

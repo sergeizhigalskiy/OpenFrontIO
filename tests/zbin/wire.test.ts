@@ -193,7 +193,7 @@ const SERVER_MESSAGES: ServerMessage[] = [
         gameMode: GameMode.Team,
         playerTeams: 2,
         maxTimerValue: 25,
-        bossRaid: { boss: P1, raiders: 3 },
+        bossRaid: { boss: P1, raiderWeight: 300 },
       },
       clients: [
         { clientID: P1, username: "alpha", clanTag: null },

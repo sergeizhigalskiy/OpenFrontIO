@@ -32,7 +32,7 @@ describe("Boss Raid lobby config", () => {
   it("takes the host's Boss pick and nothing the engine fills in", () => {
     const config = testGameConfig({ gameMode: GameMode.Team });
     applyGameConfigPatch(config, {
-      bossRaid: { boss: "aB3dEf7h", raiders: 99 },
+      bossRaid: { boss: "aB3dEf7h", raiderWeight: 99 },
     });
     expect(config.bossRaid).toEqual({ boss: "aB3dEf7h" });
     applyGameConfigPatch(config, { bots: 3 });

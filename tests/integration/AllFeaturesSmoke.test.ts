@@ -104,7 +104,7 @@ const MODES: Mode[] = [
     },
     ticks: BASE_TICKS,
     check: (game) => {
-      expect(game.config().bossRaidRaiders()).toBeGreaterThan(0);
+      expect(game.config().bossRaidRaiderWeight()).toBeGreaterThan(0);
     },
   },
   {

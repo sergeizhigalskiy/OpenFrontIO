@@ -320,7 +320,9 @@ export class EngineConfig extends Config {
       hc?.goldMultiplier && player.isLobbyCreator() ? hc.goldMultiplier : base;
     // Boss Raid: only the Boss's income scales, so no one else's changes.
     if (isBossRaidBoss(this._gameConfig, player)) {
-      return (multiplier * bossGoldIncomePercent(this.bossRaidRaiders())) / 100;
+      return (
+        (multiplier * bossGoldIncomePercent(this.bossRaidRaiderWeight())) / 100
+      );
     }
     return multiplier;
   }

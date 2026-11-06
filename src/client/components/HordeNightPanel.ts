@@ -46,6 +46,15 @@ export class HordeNightPanel extends LitElement {
       Math.ceil(hordeTicksUntilNextWave(ticks) / 10),
     );
 
+    // The land the viewer held when the first wave landed: overrun under 25%.
+    const me = this.game.myPlayer();
+    const start =
+      me === null ? null : this.game.cataclysm().hordeStartTiles(me.smallID());
+    const held =
+      me !== null && start !== null && start > 0
+        ? Math.round((me.numTilesOwned() * 100) / start)
+        : null;
+
     const panel =
       "w-fit flex flex-col gap-1 py-2 px-4 bg-gray-800/92 backdrop-blur-sm shadow-xs rounded-l-lg text-white text-sm";
 
@@ -69,6 +78,15 @@ export class HordeNightPanel extends LitElement {
             { time: countdown },
           )}
         </div>
+        ${
+          held !== null
+            ? html`<div
+                class="text-xs ${held < 50 ? "text-red-300" : "text-gray-300"}"
+              >
+                ${translateText("horde_night.land_held", { pct: held })}
+              </div>`
+            : ""
+        }
       </div>
     `;
   }

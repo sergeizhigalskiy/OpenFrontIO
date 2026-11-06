@@ -16,6 +16,7 @@ import {
   RISING_TIDE_WARNING_TICKS,
   RISING_TIDE_WAVE_INTERVAL_TICKS,
   RISING_TIDE_WAVE_PERCENT,
+  risingTideTroopsLost,
   risingTideWaveBudget,
   risingTideWaveTiles,
 } from "@openfront/engine-lib/game/RisingTide";
@@ -79,6 +80,14 @@ describe("risingTideWaveTiles", () => {
     ]);
     const map = new GameMapImpl(w, 3, terrain, 6);
     expect(risingTideWaveTiles(map, 10)).toEqual([]);
+  });
+
+  test("flooded troops fall back to the land left, up to its cap", () => {
+    // 1,000 on the flooded tiles of 10,000; the land left holds 9,500.
+    expect(risingTideTroopsLost(10_000, 1_000, 9_500)).toBe(500);
+    expect(risingTideTroopsLost(10_000, 1_000, 20_000)).toBe(0);
+    // Never more than stood on the flooded land.
+    expect(risingTideTroopsLost(10_000, 1_000, 2_000)).toBe(1_000);
   });
 
   test("the per-wave budget: 4% of the original land, capped, down to 40%", () => {
@@ -189,9 +198,26 @@ describe("RisingTideExecution", () => {
     expect(safe.isActive()).toBe(true);
     expect(convoy.isActive()).toBe(false);
     expect(ship.isActive()).toBe(true);
-    // Troops per tile times the tiles lost.
-    expect(owner.troops()).toBe(
-      troopsBefore - Math.floor((troopsBefore * expected.length) / tilesBefore),
+    // The troops on the flooded tiles fall back: the land left still holds
+    // them all under its cap.
+    expect(troopsBefore).toBeLessThan(game.config().maxTroops(owner));
+    expect(owner.troops()).toBe(troopsBefore);
+  });
+
+  test("troops fall back only up to the cap of the land left", () => {
+    owner.setTroops(game.config().maxTroops(owner));
+    runTo(game, RISING_TIDE_FIRST_WAVE_TICKS);
+    const tilesBefore = owner.numTilesOwned();
+    const troopsBefore = owner.troops();
+    step(game);
+    const flooded = tilesBefore - owner.numTilesOwned();
+    expect(flooded).toBeGreaterThan(0);
+    const cap = game.config().maxTroops(owner);
+    // What the land left cannot hold is lost, far less than the old
+    // troops-per-tile share of the flooded land.
+    expect(Math.abs(owner.troops() - cap)).toBeLessThan(1);
+    expect(troopsBefore - owner.troops()).toBeLessThan(
+      (troopsBefore * flooded) / tilesBefore / 2,
     );
   });
 

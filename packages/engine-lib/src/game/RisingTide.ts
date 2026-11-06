@@ -37,6 +37,19 @@ export const RISING_TIDE_MAX_TILES_PER_WAVE = 50_000;
 export const RISING_TIDE_STOP_PERCENT = 40;
 
 /**
+ * Troops a player loses to a flood: the `onFlooded` of its `troops` that
+ * stood on the flooded tiles fall back to its remaining land, and only what
+ * would leave it above `maxTroops` (its cap on the land left) is lost.
+ */
+export function risingTideTroopsLost(
+  troops: number,
+  onFlooded: number,
+  maxTroops: number,
+): number {
+  return Math.max(0, Math.min(onFlooded, troops - maxTroops));
+}
+
+/**
  * Tiles the next wave may flood: RISING_TIDE_WAVE_PERCENT of the original land
  * (at least one tile), capped by RISING_TIDE_MAX_TILES_PER_WAVE and by what is
  * left above the RISING_TIDE_STOP_PERCENT floor. 0 means the tide is done.

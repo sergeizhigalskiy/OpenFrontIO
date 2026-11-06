@@ -24,7 +24,10 @@ import {
 } from "../game/BossRaid";
 import { DEFENSE_POST_MAX_LEVEL, defensePostRange } from "../game/DefensePosts";
 import { DoomsdayClockSpeed } from "../game/DoomsdayClock";
-import { HORDE_NIGHT_DEFAULT_SURVIVAL_MINUTES } from "../game/HordeNight";
+import {
+  HORDE_NIGHT_DEFAULT_SURVIVAL_MINUTES,
+  isHordeBand,
+} from "../game/HordeNight";
 import { isInfected } from "../game/Plague";
 import { isWinterAt, seasonTroopGrowthMultiplier } from "../game/Seasons";
 import {
@@ -543,29 +546,34 @@ export class Config implements AttackRules {
     return team !== null && stacked.includes(team);
   }
 
-  /** N, the raiders a Boss Raid started with (0 outside one). */
-  bossRaidRaiders(): number {
-    return this._gameConfig.bossRaid?.raiders ?? 0;
+  /**
+   * W, the weighted raiders a Boss Raid started with, in hundredths (0
+   * outside one; see game/BossRaid.ts bossRaidRaiderWeight).
+   */
+  bossRaidRaiderWeight(): number {
+    return this._gameConfig.bossRaid?.raiderWeight ?? 0;
   }
 
   /**
-   * Records N. The engine sets it when it creates the game (it is then part
+   * Records W. The engine sets it when it creates the game (it is then part
    * of the stored config); the client's view sets it once it sees the teams.
    */
-  setBossRaidRaiders(raiders: number): void {
+  setBossRaidRaiderWeight(raiderWeight: number): void {
     const bossRaid = this._gameConfig.bossRaid;
     if (bossRaid === undefined || bossRaid === null) return;
-    if (bossRaid.raiders === raiders) return;
+    if (bossRaid.raiderWeight === raiderWeight) return;
     this._gameConfig = {
       ...this._gameConfig,
-      bossRaid: { ...bossRaid, raiders },
+      bossRaid: { ...bossRaid, raiderWeight },
     };
   }
 
   // Only the Boss changes, so every other player's cap stays bit-identical.
   private bossRaidTroopCap(player: PlayerLike, maxTroops: number): number {
     if (!isBossRaidBoss(this._gameConfig, player)) return maxTroops;
-    return (maxTroops * bossMaxTroopsPercent(this.bossRaidRaiders())) / 100;
+    return (
+      (maxTroops * bossMaxTroopsPercent(this.bossRaidRaiderWeight())) / 100
+    );
   }
 
   /**
@@ -575,6 +583,9 @@ export class Config implements AttackRules {
   troopIncreaseRate(player: PlayerLike, ticksSinceStart?: Tick): number {
     // The plague's Infected never regrows: it only grows by infecting.
     if (this.plague() && isInfected(player)) return 0;
+    // Horde Night bands keep the troops they land with: no growth, and no
+    // snap down to a tribe's cap (game/HordeNight.ts).
+    if (this.hordeNightConfig().enabled && isHordeBand(player)) return 0;
     const max = this.maxTroops(player);
 
     // Troops on the road in the player's convoys still count as theirs, so
@@ -623,7 +634,8 @@ export class Config implements AttackRules {
     }
 
     if (isBossRaidBoss(this._gameConfig, player)) {
-      toAdd = (toAdd * bossTroopGrowthPercent(this.bossRaidRaiders())) / 100;
+      toAdd =
+        (toAdd * bossTroopGrowthPercent(this.bossRaidRaiderWeight())) / 100;
     }
     // weather-seasons hook: winter slows troop growth (game/Seasons.ts).
     toAdd *= seasonTroopGrowthMultiplier(

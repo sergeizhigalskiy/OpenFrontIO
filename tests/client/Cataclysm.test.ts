@@ -72,6 +72,35 @@ describe("CataclysmView", () => {
     expect(view.eruptedSites).toEqual([]);
   });
 
+  test("keeps the Horde Night land record and outcome, apart from the tide", () => {
+    const view = new CataclysmView();
+    expect(view.horde).toBeNull();
+    expect(view.hordeStartTiles(3)).toBeNull();
+    view.apply([
+      tide(),
+      {
+        type: GameUpdateType.Cataclysm,
+        kind: "horde",
+        startLand: [3, 400, 5, 120],
+        outcome: null,
+      },
+    ]);
+    expect(view.tide?.nextWaveTick).toBe(4800);
+    expect(view.hordeStartTiles(3)).toBe(400);
+    expect(view.hordeStartTiles(5)).toBe(120);
+    expect(view.hordeStartTiles(4)).toBeNull();
+    view.apply([
+      {
+        type: GameUpdateType.Cataclysm,
+        kind: "horde",
+        startLand: [3, 400, 5, 120],
+        outcome: "narrow",
+      },
+    ]);
+    expect(view.horde?.outcome).toBe("narrow");
+    expect(view.tide?.nextWaveTick).toBe(4800);
+  });
+
   test("a rumbling site draws as a hostile telegraph; an eruption as a nuke blast", () => {
     const view = new CataclysmView();
     view.apply([volcano()]);

@@ -7,7 +7,9 @@ import { ADMIN_BOT_CLIENT_ID } from "@openfront/engine-api/Schemas";
 import {
   exclusiveModeError,
   exclusiveModesOn,
+  modeWinRuleKey,
 } from "@openfront/engine-lib/game/ModeExclusions";
+import { readFileSync } from "fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAdminBotRoutes } from "../src/server/AdminBotRoutes";
 import { previewGameConfigPatch } from "../src/server/ConfigPatch";
@@ -19,6 +21,33 @@ import { testGameConfig } from "./util/Wire";
 const BOSS = { boss: "nation" };
 
 describe("exclusive lobby modes", () => {
+  it("each states its win rule in one line", () => {
+    expect(modeWinRuleKey({})).toBeNull();
+    expect(modeWinRuleKey({ gameMode: GameMode.Team, bossRaid: BOSS })).toBe(
+      "boss_raid.rules",
+    );
+    expect(modeWinRuleKey({ hordeNight: { enabled: true } })).toBe(
+      "horde_night.rules",
+    );
+    expect(modeWinRuleKey({ plague: true })).toBe("plague.rules");
+    const en = JSON.parse(
+      readFileSync(
+        new URL("../resources/lang/en.json", import.meta.url),
+        "utf8",
+      ),
+    );
+    for (const key of [
+      "boss_raid.rules",
+      "horde_night.rules",
+      "plague.rules",
+    ]) {
+      const [group, name] = key.split(".");
+      const line: string = en[group][name];
+      expect(line.length).toBeGreaterThan(0);
+      expect(line).not.toContain("\n");
+    }
+  });
+
   it("lists Boss Raid (Team games only), Horde Night and the plague", () => {
     expect(exclusiveModesOn({})).toEqual([]);
     expect(

@@ -9,6 +9,7 @@ import {
   RISING_TIDE_FIRST_WAVE_TICKS,
   RISING_TIDE_WARNING_TICKS,
   RISING_TIDE_WAVE_INTERVAL_TICKS,
+  risingTideTroopsLost,
   risingTideWaveBudget,
   risingTideWaveTiles,
 } from "@openfront/engine-lib/game/RisingTide";
@@ -37,9 +38,10 @@ export function isNextToFlood(game: Game, tile: TileRef): boolean {
  * After the spawn phase plus RISING_TIDE_FIRST_WAVE_TICKS, a wave floods every
  * RISING_TIDE_WAVE_INTERVAL_TICKS. RISING_TIDE_WARNING_TICKS before each wave
  * the tiles it will flood are picked (the lowest land next to the ocean, see
- * risingTideWaveTiles) and shown. When it floods, their owners lose them
- * (their troops per tile times the tiles lost), the structures, convoys and
- * train engines on them are destroyed, and they turn to water through the same
+ * risingTideWaveTiles) and shown. When it floods, their owners lose them; the
+ * troops on them fall back to the owner's remaining land, as far as its troop
+ * cap allows (risingTideTroopsLost). The structures, convoys and train
+ * engines on them are destroyed, and they turn to water through the same
  * queue water nukes use. The tide stops once the land left is
  * RISING_TIDE_STOP_PERCENT of the original.
  *
@@ -149,7 +151,11 @@ export class RisingTideExecution implements Execution {
     }
     for (const [player, lost] of tilesLost) {
       player.removeTroops(
-        troopsLostWithLand(player.troops(), tilesBefore.get(player)!, lost),
+        risingTideTroopsLost(
+          player.troops(),
+          troopsLostWithLand(player.troops(), tilesBefore.get(player)!, lost),
+          mg.config().maxTroops(player),
+        ),
       );
     }
     for (const tile of flooded) mg.queueWaterConversion(tile, true, true);
