@@ -33,6 +33,7 @@ import type {
   SnapshotWriter,
 } from "../snapshot/SnapshotContext";
 import { isConvoyHostile } from "./ConvoyExecution";
+import { isHordeBoat, mayShootAtHordeBoat } from "./HordeBoats";
 import { ShellExecution } from "./ShellExecution";
 
 export class WarshipExecution implements Execution {
@@ -323,6 +324,12 @@ export class WarshipExecution implements Execution {
         type === UnitType.Convoy &&
         (!mg.isWater(unit.tile()) || !isConvoyHostile(unit, owner))
       ) {
+        continue;
+      }
+
+      // Horde boats: only the warships of the player one sails at, and
+      // between humans each other's (HordeBoats.ts).
+      if (isHordeBoat(unit) && !mayShootAtHordeBoat(owner, unit)) {
         continue;
       }
 
@@ -680,10 +687,14 @@ export class WarshipExecution implements Execution {
     this.warship.updateWarshipState({ isInCombat: true });
     const shellAttackRate = this.mg.config().warshipShellAttackRate();
     if (this.mg.ticks() - this.lastShellAttack > shellAttackRate) {
-      const targetType = this.warship.targetUnit()?.type();
+      const target = this.warship.targetUnit()!;
+      const targetType = target.type();
+      // A horde boat takes many hits: one shell per reload, as a warship.
+      const hordeBoat = isHordeBoat(target);
       if (
-        targetType !== UnitType.TransportShip &&
-        targetType !== UnitType.Convoy
+        hordeBoat ||
+        (targetType !== UnitType.TransportShip &&
+          targetType !== UnitType.Convoy)
       ) {
         // Warships don't need to reload when attacking transport ships or
         // troop convoys.
@@ -697,7 +708,7 @@ export class WarshipExecution implements Execution {
           this.warship.targetUnit()!,
         ),
       );
-      if (!this.warship.targetUnit()!.hasHealth()) {
+      if (!hordeBoat && !target.hasHealth()) {
         // Don't send multiple shells to target that can be oneshotted
         this.alreadySentShell.add(this.warship.targetUnit()!);
         this.warship.setTargetUnit(undefined);
