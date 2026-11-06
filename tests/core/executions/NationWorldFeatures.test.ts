@@ -17,7 +17,7 @@ import {
 } from "@openfront/engine/execution/nation/NationWorldFeatures";
 import { TribeAttackBehavior } from "@openfront/engine/execution/TribeAttackBehavior";
 import { Game, Player } from "@openfront/engine/game/Game";
-import { conquerRect } from "../../util/ConventionalWar";
+import { conquerRect } from "../../util/GameHelpers";
 import { setup } from "../../util/Setup";
 import { executeTicks } from "../../util/utils";
 

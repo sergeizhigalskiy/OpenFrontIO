@@ -138,13 +138,8 @@ export class WarshipExecution implements Execution {
       return;
     }
 
-    // Priority 2: Fight enemy warship, then shell a hostile coastal battery,
-    // then a hostile drone (conventional war), if in range
-    if (
-      targetType === UnitType.Warship ||
-      targetType === UnitType.CoastalBattery ||
-      targetType === UnitType.Drone
-    ) {
+    // Priority 2: Fight enemy warship if in range
+    if (targetType === UnitType.Warship) {
       this.shootTarget();
       this.patrol();
       return;
@@ -260,7 +255,6 @@ export class WarshipExecution implements Execution {
       UnitType.TransportShip,
       UnitType.Convoy,
       UnitType.Warship,
-      UnitType.CoastalBattery,
     ]);
   }
 
@@ -270,8 +264,6 @@ export class WarshipExecution implements Execution {
         UnitType.TransportShip,
         UnitType.Convoy,
         UnitType.Warship,
-        UnitType.CoastalBattery,
-        UnitType.Drone,
         UnitType.TradeShip,
       ],
       true,
@@ -367,11 +359,7 @@ export class WarshipExecution implements Execution {
           ? 0
           : type === UnitType.Warship
             ? 1
-            : type === UnitType.CoastalBattery
-              ? 2
-              : type === UnitType.Drone
-                ? 3
-                : 4;
+            : 2;
 
       if (
         bestUnit === undefined ||
@@ -704,12 +692,7 @@ export class WarshipExecution implements Execution {
           this.warship.targetUnit()!,
         ),
       );
-      // A drone may survive its shell (ShellExecution), so it can be shot
-      // at again after the reload.
-      if (
-        !this.warship.targetUnit()!.hasHealth() &&
-        targetType !== UnitType.Drone
-      ) {
+      if (!this.warship.targetUnit()!.hasHealth()) {
         // Don't send multiple shells to target that can be oneshotted
         this.alreadySentShell.add(this.warship.targetUnit()!);
         this.warship.setTargetUnit(undefined);

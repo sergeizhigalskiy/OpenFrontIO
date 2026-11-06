@@ -1,5 +1,5 @@
 import { UnitType } from "@openfront/engine-api/game/GameTypes";
-import { defensePostRange } from "@openfront/engine-lib/game/Siege";
+import { defensePostRange } from "@openfront/engine-lib/game/DefensePosts";
 import { EventBus } from "@openfront/shared/EventBus";
 import { describe, expect, test } from "vitest";
 import { BuildPreviewController } from "../../../src/client/controllers/BuildPreviewController";

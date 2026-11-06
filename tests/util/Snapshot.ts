@@ -159,7 +159,7 @@ const DERIVED_FIELDS = new Set<string>([
   // SharedWaterCache
   "playerWater",
   // WaterManager: magnitude BFS scratch for water conversions (water nukes,
-  // canals, the rising tide). Visits are stamped, so a fresh buffer gives
+  // the rising tide). Visits are stamped, so a fresh buffer gives
   // the same results as a used one.
   "_waterDistArr",
   "_waterStampArr",

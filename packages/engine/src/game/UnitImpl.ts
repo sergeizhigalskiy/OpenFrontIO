@@ -14,7 +14,6 @@ import {
   GameUpdateType,
   UnitUpdate,
 } from "@openfront/engine-api/game/GameUpdates";
-import { clampMinefieldDensity } from "@openfront/engine-lib/game/NavalDefense";
 import { maxHealthWithVeterancy } from "@openfront/engine-lib/game/Veterancy";
 import {
   snapshotType,
@@ -55,11 +54,6 @@ export class UnitImpl implements Unit {
   private _troops: number;
   // Number of missiles in cooldown, if empty all missiles are ready.
   private _missileTimerQueue: number[] = [];
-  // Retired: airbases launched drones before they took off from land. Always
-  // null now; kept in the snapshot so older records load without a migration.
-  private _lastDroneLaunch: number | null = null;
-  // Structures without health: drone hits taken (see DroneExecution).
-  private _droneHits = 0;
   private _hasTrainStation: boolean = false;
   private _level: number = 1;
   private _targetable: boolean = true;
@@ -79,10 +73,6 @@ export class UnitImpl implements Unit {
   ) {
     this._lastTile = _tile;
     this._health = toInt(this.mg.unitInfo(_type).maxHealth ?? 1);
-    if (_type === UnitType.Minefield && "density" in params) {
-      // A minefield's health is its density (see Config.unitInfo).
-      this._health = toInt(clampMinefieldDensity(params.density));
-    }
     this._targetTile =
       "targetTile" in params ? (params.targetTile ?? undefined) : undefined;
     this._targetPlayer =
@@ -597,14 +587,6 @@ export class UnitImpl implements Unit {
     this.mg.addUpdate(this.toUpdate());
   }
 
-  droneHits(): number {
-    return this._droneHits;
-  }
-
-  addDroneHit(): number {
-    return ++this._droneHits;
-  }
-
   setTargetTile(targetTile: TileRef | undefined) {
     this._targetTile = targetTile;
   }
@@ -863,8 +845,6 @@ export class UnitImpl implements Unit {
       lastOwner: w.playerOrNull(this._lastOwner),
       troops: this._troops,
       missileTimerQueue: [...this._missileTimerQueue],
-      lastDroneLaunch: this._lastDroneLaunch,
-      droneHits: this._droneHits,
       hasTrainStation: this._hasTrainStation,
       level: this._level,
       targetable: this._targetable,
@@ -917,8 +897,6 @@ export class UnitImpl implements Unit {
     this._lastOwner = r.playerOrNull(s.lastOwner) as PlayerImpl | null;
     this._troops = s.troops;
     this._missileTimerQueue = [...s.missileTimerQueue];
-    this._lastDroneLaunch = s.lastDroneLaunch;
-    this._droneHits = s.droneHits;
     this._hasTrainStation = s.hasTrainStation;
     this._level = s.level;
     this._targetable = s.targetable;
@@ -933,14 +911,11 @@ export class UnitImpl implements Unit {
 
 export const UnitSnapshot = snapshotType({
   name: "Unit",
-  // v2 added lastDroneLaunch (airbases launching drones), v3 droneHits
-  // (drones hitting structures).
-  version: 3,
-  migrations: {
-    1: (d) => ({ ...(d as Record<string, unknown>), lastDroneLaunch: null }),
-    // Drones could only hit flak guns (one hit kills) and ships before.
-    2: (d) => ({ ...(d as Record<string, unknown>), droneHits: 0 }),
-  },
+  // v2 added a drone launch tick and v3 a structure's drone hit count; v4
+  // dropped both with the removed drones (zod strips them from older
+  // records), so v4 is v1's layout.
+  version: 4,
+  migrations: { 1: (d) => d, 2: (d) => d, 3: (d) => d },
   schema: z.object({
     id: zInt(),
     type: UnitTypeSchema,
@@ -982,8 +957,6 @@ export const UnitSnapshot = snapshotType({
     lastOwner: zPlayerRef().nullable(),
     troops: zNum(),
     missileTimerQueue: z.array(zInt()),
-    lastDroneLaunch: zInt().nullable(),
-    droneHits: zInt(),
     hasTrainStation: z.boolean(),
     level: zInt(),
     targetable: z.boolean(),

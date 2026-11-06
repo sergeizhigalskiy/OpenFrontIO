@@ -1,4 +1,5 @@
 import {
+  BuildMenus,
   PlayerBuildableUnitType,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
@@ -11,25 +12,6 @@ import {
   ToggleStructureEvent,
   TouchGhostPlacementSelectEvent,
 } from "../../src/client/InputHandler";
-
-/**
- * The units the bar draws. Unit cut bridge: until the engine drops the
- * removed units, BuildMenus still lists them, so the mocked config treats
- * every other type as disabled. Once BuildMenus is upstream's list again this
- * is all of it, and the file can go back to upstream (BuildMenus.types).
- */
-const BAR_UNITS: readonly UnitType[] = [
-  UnitType.City,
-  UnitType.Factory,
-  UnitType.Port,
-  UnitType.DefensePost,
-  UnitType.MissileSilo,
-  UnitType.SAMLauncher,
-  UnitType.Warship,
-  UnitType.AtomBomb,
-  UnitType.HydrogenBomb,
-  UnitType.MIRV,
-];
 
 function makeDisplay(
   ghostStructure: UnitType | null = null,
@@ -57,8 +39,7 @@ function makeDisplay(
     myPlayer: () => player,
     inSpawnPhase: () => false,
     config: () => ({
-      isUnitDisabled: (unitType: UnitType) =>
-        disabledUnits.includes(unitType) || !BAR_UNITS.includes(unitType),
+      isUnitDisabled: (unitType: UnitType) => disabledUnits.includes(unitType),
       gameConfig: () => ({ tutorial }),
     }),
   } as any;
@@ -138,9 +119,9 @@ describe("mobile UnitDisplay layout", () => {
       await display.updateComplete;
 
       const grid = display.querySelector<HTMLElement>(".unit-display-grid");
-      expect(grid?.children).toHaveLength(BAR_UNITS.length - 1);
+      expect(grid?.children).toHaveLength(BuildMenus.types.length - 1);
       expect(grid?.style.getPropertyValue("--unit-display-columns")).toBe(
-        String(BAR_UNITS.length - 1),
+        String(BuildMenus.types.length - 1),
       );
       expect(grid?.classList.contains("lg:grid-cols-none")).toBe(true);
       expect(grid?.classList.contains("lg:auto-cols-max")).toBe(true);

@@ -9,7 +9,6 @@ import {
   GameMode,
   GameType,
   Gold,
-  LaunchBlock,
   MAX_UPGRADE_AMOUNT,
   PlayerBuildable,
   PlayerBuildableUnitType,
@@ -35,11 +34,6 @@ import {
 import { ReadonlyTileSet } from "@openfront/engine-api/game/ReadViews";
 import { ClientID } from "@openfront/engine-api/Schemas";
 import { andFN, manhattanDistFN } from "@openfront/engine-lib/game/GameMapImpl";
-import {
-  MINEFIELD_MIN_DENSITY,
-  MINEFIELD_PLACEMENT_RANGE,
-} from "@openfront/engine-lib/game/NavalDefense";
-import { SIEGE_CAMP_BORDER_RANGE } from "@openfront/engine-lib/game/Siege";
 import { terrainFeatureAllowsStructures } from "@openfront/engine-lib/game/TerrainFeatures";
 import { TileSet } from "@openfront/engine-lib/game/TileSet";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
@@ -72,14 +66,7 @@ import type {
   SnapshotReader,
   SnapshotWriter,
 } from "../snapshot/SnapshotContext";
-import {
-  airLaunch,
-  airLaunchBlockAnywhere,
-  isAirOrderType,
-  launchTile,
-} from "./AirOps";
 import { AttackImpl } from "./AttackImpl";
-import { canalMenuPrice, canalPrice, canalSpawn } from "./Canal";
 import {
   Alliance,
   AllianceRequest,
@@ -211,10 +198,6 @@ export class PlayerImpl implements Player {
   public _alliances: MutableAlliance[] = [];
 
   private _spawnTile: TileRef | undefined;
-  // Conventional war capitals (see Capital.ts): the capital is the spawn tile.
-  // The tick its loss penalty last hit, and whether the rally is spent.
-  private _capitalPenaltyTick: Tick | null = null;
-  private _capitalRallyUsed = false;
   // World features (WorldFeatures.ts): a neutral city-state, and whether its
   // conquest bounty was paid.
   private _isCityState = false;
@@ -438,7 +421,6 @@ export class PlayerImpl implements Player {
       betrayals: this._betrayalCount,
       lastDeleteUnitTick: this.lastDeleteUnitTick,
       isLobbyCreator: this.isLobbyCreator(),
-      capitalTile: this.capitalTile(),
       isCityState: this._isCityState,
     };
   }
@@ -775,29 +757,6 @@ export class PlayerImpl implements Player {
 
   spawnTile(): TileRef | undefined {
     return this._spawnTile;
-  }
-
-  capitalTile(): TileRef | undefined {
-    if (!this.mg.config().conventionalWar() || this.type() === PlayerType.Bot) {
-      return undefined;
-    }
-    return this._spawnTile;
-  }
-
-  capitalPenaltyTick(): Tick | null {
-    return this._capitalPenaltyTick;
-  }
-
-  recordCapitalPenalty(tick: Tick): void {
-    this._capitalPenaltyTick = tick;
-  }
-
-  capitalRallyUsed(): boolean {
-    return this._capitalRallyUsed;
-  }
-
-  useCapitalRally(): void {
-    this._capitalRallyUsed = true;
   }
 
   isCityState(): boolean {
@@ -1479,14 +1438,7 @@ export class PlayerImpl implements Player {
       );
     }
 
-    // A minefield is priced by the density it is laid with, a canal by
-    // its length.
-    const cost =
-      type === UnitType.Minefield && "density" in params
-        ? this.mg.config().minefieldCost(this.mg, this, params.density)
-        : type === UnitType.Canal && "length" in params
-          ? canalPrice(this.mg, this, params.length)
-          : this.mg.unitInfo(type).cost(this.mg, this);
+    const cost = this.mg.unitInfo(type).cost(this.mg, this);
     const b = new UnitImpl(
       type,
       this.mg,
@@ -1640,29 +1592,14 @@ export class PlayerImpl implements Player {
     for (let i = 0; i < len; i++) {
       const u = units[i];
 
-      // A canal is priced by the length of the path through the tile.
-      const cost =
-        u === UnitType.Canal && tile !== null
-          ? canalMenuPrice(mg, this, tile)
-          : config.unitInfo(u).cost(mg, this);
+      const cost = config.unitInfo(u).cost(mg, this);
       let canUpgrade: number | false = false;
       // Levels the upgradable unit can still gain (a cap like a defense
       // post's shortens the bulk-upgrade totals below).
       let levelsLeft = MAX_UPGRADE_AMOUNT;
       let canBuild: TileRef | false = false;
-      // `cost` is a minefield's price at the default density; the player
-      // picks the density, so it is buildable as soon as the thinnest field
-      // is affordable. The client prices the chosen density itself.
-      const affordCost =
-        u === UnitType.Minefield
-          ? config.minefieldCost(mg, this, MINEFIELD_MIN_DENSITY)
-          : cost;
 
-      // Air orders: why one can't go (shown in the build menu and bar).
-      let blocked: LaunchBlock | undefined;
-      const affordable = this.canBuildUnitType(u, affordCost);
-
-      if (tile !== null && affordable && !inSpawnPhase) {
+      if (tile !== null && this.canBuildUnitType(u, cost) && !inSpawnPhase) {
         if (this.canUpgradeUnitType(u)) {
           const existingUnit = this.findExistingUnitToUpgrade(u, tile);
           if (
@@ -1676,25 +1613,7 @@ export class PlayerImpl implements Player {
             );
           }
         }
-        if (isAirOrderType(u)) {
-          // The call canSpawnUnitType makes, kept for its reason.
-          const launch = airLaunch(mg, this, u, tile);
-          canBuild = launchTile(launch);
-          if (typeof launch === "string") blocked = launch;
-        } else {
-          canBuild = this.canSpawnUnitType(u, tile, validTiles);
-        }
-      } else if (
-        isAirOrderType(u) &&
-        !config.isUnitDisabled(u) &&
-        this.isAlive()
-      ) {
-        // canBuildUnitType only fails on the gold here.
-        blocked = !affordable
-          ? "gold"
-          : inSpawnPhase
-            ? "spawn_protection"
-            : (airLaunchBlockAnywhere(mg, this, u) ?? undefined);
+        canBuild = this.canSpawnUnitType(u, tile, validTiles);
       }
 
       // A hold-to-build preview may need the new placement's rails even
@@ -1727,7 +1646,6 @@ export class PlayerImpl implements Player {
         ghostRailPaths: buildNew
           ? rail.computeGhostRailPaths(u, canBuild as TileRef)
           : [],
-        ...(blocked !== undefined ? { blocked } : {}),
       };
     }
 
@@ -1738,9 +1656,8 @@ export class PlayerImpl implements Player {
     unitType: UnitType,
     targetTile: TileRef,
     validTiles: TileRef[] | null = null,
-    knownCost: Gold | null = null,
   ): TileRef | false {
-    if (!this.canBuildUnitType(unitType, knownCost)) {
+    if (!this.canBuildUnitType(unitType)) {
       return false;
     }
 
@@ -1779,27 +1696,6 @@ export class PlayerImpl implements Player {
       case UnitType.Convoy:
         // Only troop donations create convoys (DonateTroopsExecution).
         return false;
-      case UnitType.Minefield:
-        return this.minefieldSpawn(targetTile);
-      case UnitType.CoastalBattery:
-        return this.coastalBatterySpawn(targetTile, validTiles);
-      case UnitType.SiegeCamp:
-        return this.siegeCampSpawn(targetTile, validTiles);
-      case UnitType.Airstrike:
-      case UnitType.Airdrop:
-      case UnitType.CruiseMissile:
-      case UnitType.Drone:
-      case UnitType.BallisticMissile:
-      case UnitType.ClusterMissile:
-        // The build menu's reason comes from the same call (buildableUnits).
-        return launchTile(airLaunch(this.mg, this, unitType, targetTile));
-      case UnitType.ClusterWarhead:
-        // Only a cluster missile splitting creates them.
-        return targetTile;
-      case UnitType.Canal:
-        return canalSpawn(this.mg, this, targetTile);
-      case UnitType.Airbase:
-      case UnitType.FlakGun:
       case UnitType.MissileSilo:
       case UnitType.DefensePost:
       case UnitType.SAMLauncher:
@@ -1868,97 +1764,6 @@ export class PlayerImpl implements Player {
     for (const t of tiles) {
       if (this.mg.isShore(t)) {
         return t;
-      }
-    }
-    return false;
-  }
-
-  /**
-   * A minefield is laid on the ocean tile clicked, when a tile this player
-   * owns is within MINEFIELD_PLACEMENT_RANGE of it.
-   */
-  minefieldSpawn(tile: TileRef): TileRef | false {
-    const map = this.mg.map();
-    if (!map.isValidRef(tile) || !map.isOcean(tile)) {
-      return false;
-    }
-    const range = MINEFIELD_PLACEMENT_RANGE;
-    const rangeSquared = range * range;
-    const cx = map.x(tile);
-    const cy = map.y(tile);
-    const smallID = this.smallID();
-    for (let dy = -range; dy <= range; dy++) {
-      const y = cy + dy;
-      if (y < 0 || y >= map.height()) continue;
-      for (let dx = -range; dx <= range; dx++) {
-        if (dx * dx + dy * dy > rangeSquared) continue;
-        const x = cx + dx;
-        if (x < 0 || x >= map.width()) continue;
-        if (map.ownerID(map.ref(x, y)) === smallID) return tile;
-      }
-    }
-    return false;
-  }
-
-  /** A coastal battery goes on one of this player's land tiles next to ocean. */
-  coastalBatterySpawn(
-    tile: TileRef,
-    validTiles: TileRef[] | null,
-  ): TileRef | false {
-    const tiles = validTiles ?? this.validStructureSpawnTiles(tile);
-    for (const t of tiles) {
-      if (this.mg.map().isOceanShore(t)) {
-        return t;
-      }
-    }
-    return false;
-  }
-
-  /**
-   * A siege camp goes on one of this player's land tiles within
-   * SIEGE_CAMP_BORDER_RANGE of a hostile player's land (a player that is
-   * neither this one nor friendly to it).
-   */
-  siegeCampSpawn(tile: TileRef, validTiles: TileRef[] | null): TileRef | false {
-    const map = this.mg.map();
-    if (!map.isValidRef(tile)) return false;
-    // Candidates lie within 15 tiles of the click: with no hostile land
-    // within 15 + SIEGE_CAMP_BORDER_RANGE of it, none can qualify.
-    if (!this.hostileLandWithin(tile, 15 + SIEGE_CAMP_BORDER_RANGE)) {
-      return false;
-    }
-    const tiles = validTiles ?? this.validStructureSpawnTiles(tile);
-    for (const t of tiles) {
-      if (this.hostileLandWithin(t, SIEGE_CAMP_BORDER_RANGE)) return t;
-    }
-    return false;
-  }
-
-  /** True when a hostile player owns a tile within `range` (euclidean) of `tile`. */
-  private hostileLandWithin(tile: TileRef, range: number): boolean {
-    const map = this.mg.map();
-    const rangeSquared = range * range;
-    const cx = map.x(tile);
-    const cy = map.y(tile);
-    const mine = this.smallID();
-    // Owners seen so far are mostly the same few: remember the last verdict.
-    let lastOwner = -1;
-    let lastHostile = false;
-    for (let dy = -range; dy <= range; dy++) {
-      const y = cy + dy;
-      if (y < 0 || y >= map.height()) continue;
-      for (let dx = -range; dx <= range; dx++) {
-        if (dx * dx + dy * dy > rangeSquared) continue;
-        const x = cx + dx;
-        if (x < 0 || x >= map.width()) continue;
-        const owner = map.ownerID(map.ref(x, y));
-        if (owner === 0 || owner === mine) continue;
-        if (owner !== lastOwner) {
-          lastOwner = owner;
-          const other = this.mg.playerBySmallID(owner);
-          lastHostile = other.isPlayer() && !this.isFriendly(other);
-        }
-        if (lastHostile) return true;
       }
     }
     return false;
@@ -2285,8 +2090,6 @@ export class PlayerImpl implements Player {
       outgoingLandAttacks: this._outgoingLandAttacks.map((a) => w.attack(a)),
       alliances: this._alliances.map((a) => w.alliance(a)),
       spawnTile: this._spawnTile ?? null,
-      capitalPenaltyTick: this._capitalPenaltyTick,
-      capitalRallyUsed: this._capitalRallyUsed,
       isCityState: this._isCityState,
       cityStateBountyTaken: this._cityStateBountyTaken,
       isDisconnected: this._isDisconnected,
@@ -2366,8 +2169,6 @@ export class PlayerImpl implements Player {
     this._outgoingLandAttacks = s.outgoingLandAttacks.map((i) => r.attack(i));
     this._alliances = s.alliances.map((i) => r.alliance(i));
     this._spawnTile = s.spawnTile ?? undefined;
-    this._capitalPenaltyTick = s.capitalPenaltyTick;
-    this._capitalRallyUsed = s.capitalRallyUsed;
     this._isCityState = s.isCityState;
     this._cityStateBountyTaken = s.cityStateBountyTaken;
     this._isDisconnected = s.isDisconnected;
@@ -2389,18 +2190,12 @@ export class PlayerImpl implements Player {
 
 export const PlayerSnapshot = snapshotType({
   name: "Player",
-  // v2 added the conventional war capital (capitalTile, capitalMovedTick),
-  // v3 the city-state flags (world features). v4 fixed the capital at the
-  // spawn tile: capitalTile is gone, the move window became the penalty
-  // window (capitalPenaltyTick), and the once-per-game rally was added
-  // (capitalRallyUsed).
-  version: 4,
+  // v2 added the conventional war capital fields, v3 the city-state flags
+  // (world features), v4 reworked the capital fields, and v5 dropped them
+  // with the removed capitals (zod strips them from older records).
+  version: 5,
   migrations: {
-    1: (d) => ({
-      ...(d as Record<string, unknown>),
-      capitalTile: null,
-      capitalMovedTick: null,
-    }),
+    1: (d) => d,
     // Older builds had no city-states.
     2: (d) => ({
       ...(d as Record<string, unknown>),
@@ -2408,22 +2203,16 @@ export const PlayerSnapshot = snapshotType({
       cityStateBountyTaken: false,
     }),
     // Also takes the v3 the gameplay-updates branch wrote on its own (the
-    // capital fields below, no city-state flags), since both bumped v2 to v3.
+    // capital fields, no city-state flags), since both bumped v2 to v3.
     3: (d) => {
-      const rest = { ...(d as Record<string, unknown>) };
-      const moved = rest.capitalPenaltyTick ?? rest.capitalMovedTick ?? null;
-      // The capital no longer moves: it is the spawn tile again.
-      delete rest.capitalTile;
-      delete rest.capitalMovedTick;
+      const rest = d as Record<string, unknown>;
       return {
         ...rest,
-        // A move followed a penalty, so its window still guards the next one.
-        capitalPenaltyTick: moved,
-        capitalRallyUsed: rest.capitalRallyUsed ?? false,
         isCityState: rest.isCityState ?? false,
         cityStateBountyTaken: rest.cityStateBountyTaken ?? false,
       };
     },
+    4: (d) => d,
   },
   schema: z.object({
     smallID: zInt(),
@@ -2474,8 +2263,6 @@ export const PlayerSnapshot = snapshotType({
     outgoingLandAttacks: z.array(zRef()),
     alliances: z.array(zRef()),
     spawnTile: zTile().nullable(),
-    capitalPenaltyTick: zInt().nullable(),
-    capitalRallyUsed: z.boolean(),
     isCityState: z.boolean(),
     cityStateBountyTaken: z.boolean(),
     isDisconnected: z.boolean(),

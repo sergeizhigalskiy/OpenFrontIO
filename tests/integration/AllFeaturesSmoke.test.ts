@@ -1,11 +1,10 @@
 /**
  * Smoke run of the merged game: every default-on feature at once (ruins,
- * city-states, seasons, weather, gold mines, siege camps, defense post
- * levels, rail cuts and blockades, canals dug by nations), plus each lobby
- * mode in turn: Boss Raid, Horde Night, the plague, volcanoes, the rising
- * tide and conventional war. Each game runs through GameRunner with the real
- * production rules and nations on the world test map, long enough for its
- * mode to act, and must never throw.
+ * city-states, seasons, weather, gold mines, defense post levels, rail cuts
+ * and blockades), plus each lobby mode in turn: Boss Raid, Horde Night, the
+ * plague, volcanoes and the rising tide. Each game runs through GameRunner
+ * with the real production rules and nations on the world test map, long
+ * enough for its mode to act, and must never throw.
  *
  * Not a balance test: it only checks that the features run together.
  */
@@ -16,7 +15,6 @@ import {
   Nation,
   PlayerInfo,
   PlayerType,
-  UnitType,
 } from "@openfront/engine-api/game/GameTypes";
 import {
   CataclysmUpdate,
@@ -34,12 +32,9 @@ import {
 import { RISING_TIDE_FIRST_WAVE_TICKS } from "@openfront/engine-lib/game/RisingTide";
 import { VOLCANO_FIRST_RUMBLE_TICKS } from "@openfront/engine-lib/game/Volcanoes";
 import { EngineConfig } from "@openfront/engine/configuration/EngineConfig";
-import { CanalExecution } from "@openfront/engine/execution/CanalExecution";
-import { ConstructionExecution } from "@openfront/engine/execution/ConstructionExecution";
 import { Executor } from "@openfront/engine/execution/ExecutionManager";
 import { resourceSitesOf } from "@openfront/engine/execution/ResourceSiteExecution";
 import { SpawnExecution } from "@openfront/engine/execution/SpawnExecution";
-import { canalPlan, canalPrice } from "@openfront/engine/game/Canal";
 import { Game } from "@openfront/engine/game/Game";
 import { GameRunner } from "@openfront/engine/GameRunner";
 import fs from "fs";
@@ -75,29 +70,12 @@ function worldNations(): Nation[] {
 }
 
 // Every default-on feature is on when absent; gold mines are turned on by
-// the lobbies and GameManager, so here too. Hard nations dig canals, build
-// siege camps and upgrade posts.
+// the lobbies and GameManager, so here too. Hard nations upgrade posts.
 const DEFAULTS: Partial<GameConfig> = {
   difficulty: Difficulty.Hard,
   resourceSites: true,
   bots: 40,
 };
-
-/** Units added by this fork that the lobby can switch off. */
-const NEW_UNITS: UnitType[] = [
-  UnitType.CoastalBattery,
-  UnitType.Minefield,
-  UnitType.SiegeCamp,
-  UnitType.Canal,
-  UnitType.Airbase,
-  UnitType.FlakGun,
-  UnitType.Airstrike,
-  UnitType.Airdrop,
-  UnitType.CruiseMissile,
-  UnitType.Drone,
-  UnitType.BallisticMissile,
-  UnitType.ClusterMissile,
-];
 
 /** What a run saw on the update stream. */
 interface Seen {
@@ -158,49 +136,7 @@ const MODES: Mode[] = [
     ticks: RISING_TIDE_FIRST_WAVE_TICKS + 50,
     check: (_, seen) => expect(seen.tideWaves).toBeGreaterThan(0),
   },
-  {
-    name: "conventional war",
-    config: { conventionalWar: true },
-    ticks: BASE_TICKS,
-    check: (game) =>
-      expect(game.allPlayers().some((p) => p.capitalTile() !== undefined)).toBe(
-        true,
-      ),
-  },
-  {
-    // The lobby's Disable units list offers every buildable unit: nations
-    // must cope with any of them switched off.
-    name: "conventional war, every new unit disabled",
-    config: { conventionalWar: true, disabledUnits: NEW_UNITS },
-    ticks: BASE_TICKS,
-    check: (game) => {
-      for (const p of game.allPlayers()) {
-        for (const type of NEW_UNITS) expect(p.units(type)).toHaveLength(0);
-      }
-    },
-  },
 ];
-
-/**
- * Starts a canal for the first player found with a diggable neck on its
- * coast, paying for it, and returns true when one was started. Nations dig
- * their own too, when they find one and have the gold.
- */
-function digACanal(game: Game): boolean {
-  for (const p of game.players()) {
-    let tried = 0;
-    for (const tile of p.borderTiles()) {
-      if (!game.isShore(tile)) continue;
-      if (++tried > 400) break;
-      const plan = canalPlan(game, p, tile);
-      if (!plan.ok) continue;
-      p.addGold(canalPrice(game, p, plan.path.length));
-      game.addExecution(new ConstructionExecution(p, UnitType.Canal, tile));
-      return true;
-    }
-  }
-  return false;
-}
 
 async function run(mode: Mode): Promise<void> {
   const nations = worldNations();
@@ -247,16 +183,8 @@ async function run(mode: Mode): Promise<void> {
     ),
   );
   const total = SPAWN_TICKS + mode.ticks;
-  const canalsOn = !game.config().isUnitDisabled(UnitType.Canal);
-  let canalStarted = false;
-  let canalDug = false;
   for (let t = 0; t < total; t++) {
     if (t === SPAWN_TICKS) game.endSpawnPhase();
-    // Once players hold some coast: a canal, so digs run in every mode.
-    if (canalsOn && t > SPAWN_TICKS + 200 && !canalStarted && t % 50 === 0) {
-      canalStarted = digACanal(game);
-    }
-    canalDug ||= game.executions().some((e) => e instanceof CanalExecution);
     runner.addTurn({ turnNumber: t, intents: [] });
     runner.executeNextTick();
     if (error !== null) throw new Error(`${mode.name}, tick ${t}: ${error}`);
@@ -266,7 +194,6 @@ async function run(mode: Mode): Promise<void> {
     game.ruins().size + game.allPlayers().filter((p) => p.isCityState()).length,
   ).toBeGreaterThan(0);
   expect(resourceSitesOf(game).length).toBeGreaterThan(0);
-  expect(canalDug).toBe(canalsOn);
   expect(game.config().seasonsEnabled() && game.config().weatherEnabled()).toBe(
     true,
   );

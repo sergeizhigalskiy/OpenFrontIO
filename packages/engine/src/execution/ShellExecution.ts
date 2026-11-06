@@ -1,6 +1,5 @@
 import { TileRef } from "@openfront/engine-api/game/GameMap";
 import { UnitType } from "@openfront/engine-api/game/GameTypes";
-import { WARSHIP_DRONE_HIT_PERCENT } from "@openfront/engine-lib/game/ConventionalWar";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import {
   zInt,
@@ -79,11 +78,6 @@ export class ShellExecution implements Execution {
         if (targetType === UnitType.Convoy) {
           // Convoys have troops, not health: a hit kills a share of them.
           shellConvoy(this.target, this._owner);
-        } else if (targetType === UnitType.Drone) {
-          // Drones have no health: each shell downs one by a seeded roll.
-          if (this.random.nextInt(0, 100) < WARSHIP_DRONE_HIT_PERCENT) {
-            this.target.delete(true, this._owner);
-          }
         } else {
           this.target.modifyHealth(-this.effectOnTarget(), this._owner);
         }

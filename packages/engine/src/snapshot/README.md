@@ -48,6 +48,19 @@ Record type names (`name`) are stored in snapshots, so never rename or reuse
 one. To retire an execution class, keep a registry entry that restores its
 old records as whatever replaced it.
 
+One exception: the units this fork added and later removed (minefields,
+coastal batteries, siege camps, canals, the conventional war air units and
+capitals) were retired with no replacement, because their saves hold unit
+types that no longer exist and cannot load anyway. Their execution records
+`Airbase`, `AirMission`, `Canal`, `CoastalBattery`, `Drone`, `DroneSwarm`,
+`FlakGun` and `Minefield` are gone from the registry; never reuse those names.
+The records that had grown fields for them moved forward with identity
+migrations (zod strips the dropped keys), so upstream records still load:
+`Unit` v4 (no drone launch tick or hit count), `Construction` v4 (no
+`density`, `troops`, `count`), `Game` v4 (no `clusterMissilesLaunched`),
+`Player` v5 (no capital fields) and `NationNukeBehavior` v4 (no
+`ballisticPerceivedCost`, `ballisticLastLaunch`).
+
 The map file itself is not stored. A snapshot records a hash of the map's
 terrain, and a restore onto a different map file fails.
 

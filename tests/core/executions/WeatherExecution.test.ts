@@ -30,7 +30,7 @@ import { WarshipExecution } from "@openfront/engine/execution/WarshipExecution";
 import { WeatherExecution } from "@openfront/engine/execution/WeatherExecution";
 import { Game } from "@openfront/engine/game/Game";
 import { describe, expect, it } from "vitest";
-import { conquerRect } from "../../util/ConventionalWar";
+import { conquerRect } from "../../util/GameHelpers";
 import { setup } from "../../util/Setup";
 import { UseRealAttackLogic } from "../../util/TestConfig";
 import { executeTicks } from "../../util/utils";

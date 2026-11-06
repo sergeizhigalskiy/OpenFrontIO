@@ -123,7 +123,7 @@ describe("ResourceSiteExecution", () => {
     expect(goldOverOneTick(alice)).toBe(0n);
   });
 
-  test("a mine the rising tide floods stops paying, like one a canal digs out", async () => {
+  test("a mine the rising tide floods stops paying", async () => {
     await start();
     const [mine] = resourceSitesOf(game);
     alice.conquer(mine.tile);

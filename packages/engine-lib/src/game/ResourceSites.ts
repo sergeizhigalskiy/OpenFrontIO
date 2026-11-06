@@ -14,7 +14,7 @@ import { PseudoRandom } from "../PseudoRandom";
  *   added later never moves the ones before it.
  * - Land kinds (gold mines, oil fields) sit on passable land and are held by
  *   whoever owns their tile: taken by attacking like any land, with nothing
- *   to build. Dug out by a canal or a water nuke, they pay no one.
+ *   to build. Flooded by the rising tide or a water nuke, they pay no one.
  * - Fishing grounds sit on ocean FISHING_GROUNDS_MIN/MAX_SHORE_DISTANCE tiles
  *   off a coast and are held by whoever owns the nearest coast tile within
  *   FISHING_GROUNDS_COAST_RADIUS, worked out from the map every time (see
@@ -300,8 +300,8 @@ function nearestCoastTile(
  * hold it. A land kind: its own tile, while it is still land. Fishing
  * grounds: the nearest coast tile within FISHING_GROUNDS_COAST_RADIUS
  * (lowest TileRef on a tie). Worked out from the map each time, never
- * stored, so it follows canals and water nukes, and the engine and the
- * client agree. The site pays no one when this tile is unowned.
+ * stored, so it follows the rising tide and water nukes, and the engine
+ * and the client agree. The site pays no one when this tile is unowned.
  */
 export function resourceSiteHolderTile(
   map: GameMap,

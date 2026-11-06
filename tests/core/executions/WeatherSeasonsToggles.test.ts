@@ -8,7 +8,7 @@ import { SEASON_CYCLE_TICKS } from "@openfront/engine-lib/game/Seasons";
 import { AttackExecution } from "@openfront/engine/execution/AttackExecution";
 import { WeatherExecution } from "@openfront/engine/execution/WeatherExecution";
 import { describe, expect, it, vi } from "vitest";
-import { conquerRect } from "../../util/ConventionalWar";
+import { conquerRect } from "../../util/GameHelpers";
 import {
   createScriptedRunner,
   scriptedGameStart,

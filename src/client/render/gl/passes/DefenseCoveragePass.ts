@@ -2,7 +2,7 @@
  * DefenseCoveragePass — per-tile "is this tile defended by a same-owner Defense
  * Post?" flag, computed by stamping one instanced circle per post. Each post
  * stamps its own radius: a post's range grows with its level
- * (engine-lib/game/Siege.ts defensePostRange).
+ * (engine-lib/game/DefensePosts.ts defensePostRange).
  *
  * Replaces the old per-fragment scan (border-compute looped over a uniform array
  * of up to 64 posts for every border tile). Here we invert the loop: each post
@@ -31,7 +31,7 @@
  * viewport before screen draws.
  */
 
-import { defensePostRange } from "@openfront/engine-lib/game/Siege";
+import { defensePostRange } from "@openfront/engine-lib/game/DefensePosts";
 import { UT_DEFENSE_POST, type UnitState } from "../../types";
 import { DynamicInstanceBuffer } from "../DynamicBuffer";
 import coverageFragSrc from "../shaders/defense-coverage/defense-coverage.frag.glsl?raw";

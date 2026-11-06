@@ -21,7 +21,7 @@ import { TransportShipExecution } from "@openfront/engine/execution/TransportShi
 import { WeatherExecution } from "@openfront/engine/execution/WeatherExecution";
 import { Game, Player } from "@openfront/engine/game/Game";
 import { describe, expect, it, vi } from "vitest";
-import { conquerRect } from "../../util/ConventionalWar";
+import { conquerRect } from "../../util/GameHelpers";
 import { setup } from "../../util/Setup";
 import { createGame, L, W } from "../pathfinding/_fixtures";
 

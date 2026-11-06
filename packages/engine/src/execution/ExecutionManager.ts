@@ -125,9 +125,6 @@ export class Executor {
           intent.tile,
           intent.rocketDirectionUp,
           intent.amount,
-          intent.density,
-          intent.troops,
-          intent.count,
         );
       case "allianceExtension": {
         return new AllianceExtensionExecution(player, intent.recipient);

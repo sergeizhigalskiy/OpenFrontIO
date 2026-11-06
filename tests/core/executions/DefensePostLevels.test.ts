@@ -8,11 +8,9 @@ import {
   coveringDefensePostLevel,
   DEFENSE_POST_MAX_LEVEL,
   DEFENSE_POST_MAX_RANGE,
-  defensePostCoverage,
+  defensePostCovers,
   defensePostRange,
-  POST_COVERAGE_FULL,
-  POST_COVERAGE_NONE,
-} from "@openfront/engine-lib/game/Siege";
+} from "@openfront/engine-lib/game/DefensePosts";
 import { AttackExecution } from "@openfront/engine/execution/AttackExecution";
 import { ConstructionExecution } from "@openfront/engine/execution/ConstructionExecution";
 import { DefensePostExecution } from "@openfront/engine/execution/DefensePostExecution";
@@ -66,15 +64,8 @@ function postAt(game: Game, owner: Player, x: number, y: number, level = 1) {
   return post;
 }
 
-function coverage(game: Game, defender: Player, x: number, y: number) {
-  return defensePostCoverage(
-    game,
-    game,
-    game.ref(x, y),
-    defender.smallID(),
-    [],
-    0,
-  );
+function covered(game: Game, defender: Player, x: number, y: number) {
+  return defensePostCovers(game, game, game.ref(x, y), defender.smallID());
 }
 
 describe("defense post ranges by level", () => {
@@ -104,15 +95,15 @@ describe("defense post ranges by level", () => {
     const { game, defender } = await plainsGame();
     const post = postAt(game, defender, 90, 50);
     // 35 tiles away: level 2 and up.
-    expect(coverage(game, defender, 55, 50)).toBe(POST_COVERAGE_NONE);
+    expect(covered(game, defender, 55, 50)).toBe(false);
     post.increaseLevel();
-    expect(coverage(game, defender, 55, 50)).toBe(POST_COVERAGE_FULL);
+    expect(covered(game, defender, 55, 50)).toBe(true);
     // 44 tiles away: level 3 only.
-    expect(coverage(game, defender, 46, 50)).toBe(POST_COVERAGE_NONE);
+    expect(covered(game, defender, 46, 50)).toBe(false);
     post.increaseLevel();
-    expect(coverage(game, defender, 46, 50)).toBe(POST_COVERAGE_FULL);
+    expect(covered(game, defender, 46, 50)).toBe(true);
     // 46 tiles away: out of every level's reach.
-    expect(coverage(game, defender, 44, 50)).toBe(POST_COVERAGE_NONE);
+    expect(covered(game, defender, 44, 50)).toBe(false);
     expect(
       coveringDefensePostLevel(
         game,
@@ -166,13 +157,13 @@ describe("defense post ranges by level", () => {
           UnitType.DefensePost,
           defender.id(),
         );
-        expect(coverage(game, defender, x, y) !== POST_COVERAGE_NONE).toBe(old);
+        expect(covered(game, defender, x, y)).toBe(old);
       }
     }
     // The old query never found a post exactly 30 tiles away along +x when
     // it starts the next grid cell; the level filter keeps that.
-    expect(coverage(game, defender, 70, 50)).toBe(POST_COVERAGE_NONE);
-    expect(coverage(game, defender, 71, 50)).toBe(POST_COVERAGE_FULL);
+    expect(covered(game, defender, 70, 50)).toBe(false);
+    expect(covered(game, defender, 71, 50)).toBe(true);
   });
 });
 
@@ -253,7 +244,6 @@ describe("defense post range in combat", () => {
       const inputs = attackInputs(game, attacker, defender);
       expect(inputs.length).toBeGreaterThan(0);
       expect(inputs.some((i) => i.defenderHasDefensePost)).toBe(level === 3);
-      expect(inputs.every((i) => !i.siegeCampReducesDefensePost)).toBe(true);
     }
   });
 

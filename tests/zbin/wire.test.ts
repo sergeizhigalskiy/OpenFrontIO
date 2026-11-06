@@ -89,27 +89,6 @@ const SAMPLE_INTENTS: StampedIntent[] = [
     amount: 3,
   },
   {
-    type: "build_unit",
-    clientID: P1,
-    unit: UnitType.Minefield,
-    tile: 4242,
-    density: 35,
-  },
-  {
-    type: "build_unit",
-    clientID: P1,
-    unit: UnitType.Airdrop,
-    tile: 777,
-    troops: 12_345.5,
-  },
-  {
-    type: "build_unit",
-    clientID: P2,
-    unit: UnitType.Drone,
-    tile: 778,
-    count: 20,
-  },
-  {
     type: "upgrade_structure",
     clientID: P2,
     unit: UnitType.City,

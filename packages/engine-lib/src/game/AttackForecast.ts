@@ -8,16 +8,10 @@
  * against the simulation.
  */
 import { GameMap, TileRef } from "@openfront/engine-api/game/GameMap";
-import { PlayerType, UnitType } from "@openfront/engine-api/game/GameTypes";
+import { PlayerType } from "@openfront/engine-api/game/GameTypes";
 import { AttackLogicInput, AttackLogicResult } from "./AttackLogic";
+import { coveringDefensePostLevel, DefenseUnitQuery } from "./DefensePosts";
 import { winterAttackLossMultiplier } from "./Seasons";
-import {
-  coveringDefensePostLevel,
-  DefenseUnitQuery,
-  defensePostCoverage,
-  POST_COVERAGE_NONE,
-  POST_COVERAGE_REDUCED,
-} from "./Siege";
 import { withTerrainFeatureCost } from "./TerrainFeatures";
 
 /** Mean of the 0-4 tiles of jitter AttackExecution adds to its front each tick. */
@@ -32,15 +26,6 @@ export interface ForecastPlayer<P> {
   isTraitor(): boolean;
   isDisconnected(): boolean;
   isOnSameTeam(other: P): boolean;
-  isFriendly(other: P): boolean;
-}
-
-/** A siege camp as the forecast sees it. */
-export interface ForecastCamp<P> {
-  owner(): P;
-  tile(): TileRef;
-  isActive(): boolean;
-  isUnderConstruction(): boolean;
 }
 
 /** What the weather inputs of an attack read (Seasons.ts, Weather.ts). */
@@ -77,14 +62,13 @@ export function attackWeatherInput(
 }
 
 /** What the forecast reads about the game. */
-export interface ForecastGame<P>
+export interface ForecastGame
   extends GameMap, DefenseUnitQuery, AttackWeatherGame {
   config(): {
     attackLogic(input: AttackLogicInput): AttackLogicResult;
     msPerTick(): number;
     isWinter(ticksSinceStart: number): boolean;
   };
-  units(type: UnitType): readonly ForecastCamp<P>[];
 }
 
 export interface AttackForecast {
@@ -94,26 +78,6 @@ export interface AttackForecast {
   tilesPerSecond: number | null;
   /** Highest level of the defender's defense posts covering the tile; 0 if none. */
   defensePostLevel: number;
-  /** The covering posts are reduced by siege camps of the attacker's side. */
-  siegeReduced: boolean;
-}
-
-/**
- * Fills `out` with the tiles of the active (built) siege camps of `attacker`
- * and its friends, and returns how many there are.
- */
-export function siegeCampTiles<P>(
-  camps: readonly ForecastCamp<P>[],
-  isFriend: (owner: P) => boolean,
-  out: TileRef[],
-): number {
-  let count = 0;
-  for (const camp of camps) {
-    if (!camp.isActive() || camp.isUnderConstruction()) continue;
-    if (!isFriend(camp.owner())) continue;
-    out[count++] = camp.tile();
-  }
-  return count;
 }
 
 /**
@@ -147,39 +111,18 @@ export function attackFrontSizes(
  * (attackFrontSizes), or null if unknown. The tile must be passable land.
  */
 export function attackForecast<P extends ForecastPlayer<P>>(
-  game: ForecastGame<P>,
+  game: ForecastGame,
   attacker: P,
   defender: P | null,
   tile: TileRef,
   attackTroops: number,
   frontSize: number | null,
 ): AttackForecast {
-  let coverage: number = POST_COVERAGE_NONE;
-  let defensePostLevel = 0;
-  if (defender !== null) {
-    const camps: TileRef[] = [];
-    const campCount = siegeCampTiles(
-      game.units(UnitType.SiegeCamp),
-      (owner) => owner === attacker || attacker.isFriendly(owner),
-      camps,
-    );
-    coverage = defensePostCoverage(
-      game,
-      game,
-      tile,
-      defender.smallID(),
-      camps,
-      campCount,
-    );
-    if (coverage !== POST_COVERAGE_NONE) {
-      defensePostLevel = coveringDefensePostLevel(
-        game,
-        game,
-        tile,
-        defender.smallID(),
-      );
-    }
-  }
+  // One scan for both: a tile is covered exactly when some post's level is.
+  const defensePostLevel =
+    defender === null
+      ? 0
+      : coveringDefensePostLevel(game, game, tile, defender.smallID());
   const borderSize = Math.max(1, frontSize ?? 1) + ATTACK_FRONT_JITTER_MEAN;
   // attackLogic, then the forest, river and ford multipliers on top, as
   // AttackExecution applies them (winter and mud stack inside attackLogic).
@@ -199,8 +142,7 @@ export function attackForecast<P extends ForecastPlayer<P>>(
               isDisconnectedTeammate:
                 defender.isDisconnected() && attacker.isOnSameTeam(defender),
             },
-      defenderHasDefensePost: coverage !== POST_COVERAGE_NONE,
-      siegeCampReducesDefensePost: coverage === POST_COVERAGE_REDUCED,
+      defenderHasDefensePost: defensePostLevel > 0,
       falloutRatio: game.hasFallout(tile)
         ? game.numTilesWithFallout() / game.numLandTiles()
         : null,
@@ -219,6 +161,5 @@ export function attackForecast<P extends ForecastPlayer<P>>(
         ? null
         : ticksPerSecond / result.tickFraction,
     defensePostLevel,
-    siegeReduced: coverage === POST_COVERAGE_REDUCED,
   };
 }

@@ -30,7 +30,7 @@ import { TribeAttackBehavior } from "@openfront/engine/execution/TribeAttackBeha
 import { TribeExecution } from "@openfront/engine/execution/TribeExecution";
 import { Game, Player } from "@openfront/engine/game/Game";
 import { GameRunner } from "@openfront/engine/GameRunner";
-import { conquerRect, setGold } from "../../util/ConventionalWar";
+import { conquerRect, setGold } from "../../util/GameHelpers";
 import { setup } from "../../util/Setup";
 import { executeTicks } from "../../util/utils";
 

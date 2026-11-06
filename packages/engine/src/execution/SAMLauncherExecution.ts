@@ -1,6 +1,5 @@
 import { TileRef } from "@openfront/engine-api/game/GameMap";
 import { GameType, UnitType } from "@openfront/engine-api/game/GameTypes";
-import { SAM_TARGET_FLIGHT_TYPES } from "@openfront/engine-lib/game/ConventionalWar";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import {
   zInt,
@@ -19,18 +18,6 @@ import type {
   SnapshotWriter,
 } from "../snapshot/SnapshotContext";
 import { SAMMissileExecution } from "./SAMMissileExecution";
-
-/**
- * What a SAM shoots at: nukes, and in conventional war the airstrike and
- * airdrop planes and cruise missiles, which fly nuke-style trajectories and
- * cost SAM missiles and reload time exactly like nukes (ConventionalWar.ts).
- */
-const SAM_TARGET_TYPES: readonly UnitType[] = [
-  UnitType.AtomBomb,
-  UnitType.HydrogenBomb,
-  UnitType.MIRVWarhead,
-  ...SAM_TARGET_FLIGHT_TYPES,
-];
 
 type Target = {
   unit: Unit;
@@ -281,7 +268,7 @@ class SAMTargetingSystem {
     const nukes = this.mg.nearbyUnits(
       samTile,
       detectionRange,
-      SAM_TARGET_TYPES,
+      [UnitType.AtomBomb, UnitType.HydrogenBomb, UnitType.MIRVWarhead],
       this.isTargetableNearbyUnit,
     );
 
@@ -404,8 +391,11 @@ export class SAMLauncherExecution implements Execution {
     // them (unit ids are unique). unitCount(type) is memoised per unit-list version — one shared
     // walk a tick, not one a launcher — and unlike units(type) a hit allocates nothing. A nuke's
     // level is always 1, so a zero count is exactly an empty list.
-    // Conventional war flights (planes, cruise missiles) count the same way.
-    if (SAM_TARGET_TYPES.every((type) => this.mg.unitCount(type) === 0)) {
+    if (
+      this.mg.unitCount(UnitType.AtomBomb) === 0 &&
+      this.mg.unitCount(UnitType.HydrogenBomb) === 0 &&
+      this.mg.unitCount(UnitType.MIRVWarhead) === 0
+    ) {
       return;
     }
     // target is already filtered to exclude nukes targeted by other SAMs

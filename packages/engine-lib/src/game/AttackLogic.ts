@@ -10,10 +10,6 @@
 import { PlayerType, TerrainType } from "@openfront/engine-api/game/GameTypes";
 import { log } from "../DetMath";
 import { sigmoid, within } from "../Util";
-import {
-  SIEGE_CAMP_POST_DEFENSE_BONUS,
-  SIEGE_CAMP_POST_SPEED_BONUS,
-} from "./Siege";
 
 export interface AttackLogicInput {
   terrain: TerrainType;
@@ -30,12 +26,6 @@ export interface AttackLogicInput {
   } | null;
   /** A defense post owned by the defender is in range of the tile. */
   defenderHasDefensePost: boolean;
-  /**
-   * Every defense post covering the tile has a siege camp of the attacker or
-   * a friend of theirs in range (see Siege.ts), so the posts give the reduced
-   * bonus. Only read when defenderHasDefensePost.
-   */
-  siegeCampReducesDefensePost: boolean;
   /** Fraction of land tiles with fallout, or null if the tile has no fallout. */
   falloutRatio: number | null;
   /** Tiles on the attack front this tick (plus jitter); fixed for the tick. */
@@ -153,13 +143,8 @@ export function attackLogic(
   tileCost *= input.weatherTileCostMultiplier ?? 1;
 
   if (defender !== null && input.defenderHasDefensePost) {
-    if (input.siegeCampReducesDefensePost) {
-      mag *= SIEGE_CAMP_POST_DEFENSE_BONUS;
-      tileCost *= SIEGE_CAMP_POST_SPEED_BONUS;
-    } else {
-      mag *= rules.defensePostDefenseBonus();
-      tileCost *= rules.defensePostSpeedBonus();
-    }
+    mag *= rules.defensePostDefenseBonus();
+    tileCost *= rules.defensePostSpeedBonus();
   }
   if (input.falloutRatio !== null) {
     const fallout = rules.falloutDefenseModifier(input.falloutRatio);

@@ -15,7 +15,7 @@ import { TrainExecution } from "@openfront/engine/execution/TrainExecution";
 import { Game, Player, Unit } from "@openfront/engine/game/Game";
 import { Railroad } from "@openfront/engine/game/Railroad";
 import { TrainStation } from "@openfront/engine/game/TrainStation";
-import { conquerRect } from "../../../util/ConventionalWar";
+import { conquerRect } from "../../../util/GameHelpers";
 import { setup } from "../../../util/Setup";
 import { expectReplayMatches } from "../util/Expect";
 import { recordGame, TickScript } from "../util/RecordGame";

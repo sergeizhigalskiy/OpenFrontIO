@@ -118,60 +118,6 @@ export interface UnitParamsMap {
     targetPlayer: Player;
   };
 
-  // `density` is the integer percent it is laid with (see NavalDefense.ts).
-  [UnitType.Minefield]: {
-    density: number;
-  };
-
-  [UnitType.CoastalBattery]: Record<string, never>;
-
-  [UnitType.Airbase]: Record<string, never>;
-
-  [UnitType.FlakGun]: Record<string, never>;
-
-  [UnitType.SiegeCamp]: Record<string, never>;
-
-  // Conventional war flights (see AirMissionExecution). The trajectory is the
-  // flat flight path, kept like a nuke's so SAM missiles can chase it; an
-  // airdrop carries `troops`.
-  [UnitType.Airstrike]: {
-    targetTile: TileRef;
-    trajectory: TileRef[];
-  };
-
-  [UnitType.Airdrop]: {
-    targetTile: TileRef;
-    trajectory: TileRef[];
-    troops: number;
-  };
-
-  [UnitType.CruiseMissile]: {
-    targetTile: TileRef;
-    trajectory: TileRef[];
-  };
-
-  // A loitering munition homing on `targetUnit` (see DroneExecution).
-  [UnitType.Drone]: {
-    targetUnit: Unit;
-  };
-
-  [UnitType.BallisticMissile]: {
-    targetTile: TileRef;
-    trajectory: TileRef[];
-  };
-
-  // The carrier. SAMs never target it (only its warheads), but it keeps a
-  // trajectory like every flight.
-  [UnitType.ClusterMissile]: {
-    targetTile: TileRef;
-    trajectory: TileRef[];
-  };
-
-  [UnitType.ClusterWarhead]: {
-    targetTile: TileRef;
-    trajectory: TileRef[];
-  };
-
   [UnitType.MissileSilo]: Record<string, never>;
 
   [UnitType.DefensePost]: Record<string, never>;
@@ -179,13 +125,6 @@ export interface UnitParamsMap {
   [UnitType.SAMLauncher]: Record<string, never>;
 
   [UnitType.City]: Record<string, never>;
-
-  // A canal dig from its tile to `targetTile` (the path's two ends);
-  // `length` is the path's length in steps, which prices it.
-  [UnitType.Canal]: {
-    targetTile: TileRef;
-    length: number;
-  };
 }
 
 // Type helper to get params type for a specific unit type
@@ -356,13 +295,6 @@ export interface Unit extends UnitLike {
   // SAMs & Missile Silos
   launch(): void;
   reloadMissile(): void;
-  /**
-   * Structures without health: drone hits taken so far (see DroneExecution).
-   * Kept through captures and upgrades.
-   */
-  droneHits(): number;
-  /** Counts one more drone hit and returns the new total. */
-  addDroneHit(): number;
   isInCooldown(): boolean;
   missileTimerQueue(): number[];
   samLauncherState(): SamLauncherState | undefined;
@@ -439,19 +371,6 @@ export interface Player extends PlayerLike {
   spawnTile(): TileRef | undefined;
 
   /**
-   * Conventional war only (see Capital.ts): the capital tile, which is the
-   * spawn tile for the whole game, whoever holds it. Undefined outside
-   * conventional war, for tribes, and before spawning.
-   */
-  capitalTile(): TileRef | undefined;
-  /** The tick the capital loss penalty last hit, or null if it never has. */
-  capitalPenaltyTick(): Tick | null;
-  recordCapitalPenalty(tick: Tick): void;
-  /** Whether the once-per-game rally for retaking the capital is spent. */
-  capitalRallyUsed(): boolean;
-  useCapitalRally(): void;
-
-  /**
    * A neutral city-state (see engine-lib/game/WorldFeatures.ts): a tribe that
    * never expands or attacks, and can't ally, trade or be donated to.
    */
@@ -513,16 +432,10 @@ export interface Player extends PlayerLike {
     units?: readonly PlayerBuildableUnitType[],
     includeBuildPreview?: boolean,
   ): BuildableUnit[];
-  /**
-   * Where a `type` ordered at `targetTile` would spawn, or false. `knownCost`
-   * replaces the type's list price in the gold check (a minefield's price
-   * depends on its density).
-   */
   canBuild(
     type: UnitType,
     targetTile: TileRef,
     validTiles?: TileRef[] | null,
-    knownCost?: Gold | null,
   ): TileRef | false;
   buildUnit<T extends UnitType>(
     type: T,
@@ -815,9 +728,6 @@ export interface Game extends GameLike {
   /** MIRVs launched so far by anyone; each one raises the next one's price. */
   mirvsLaunched(): number;
   recordMirvLaunch(): void;
-  /** Cluster missiles launched so far by anyone (their price escalates). */
-  clusterMissilesLaunched(): number;
-  recordClusterMissileLaunch(): void;
   /**
    * Round-robin counter per ship kind, used to spread the ships' water
    * pathfinder rebuilds over WaterPathFinder.STAGGER_SPREAD ticks.
@@ -848,9 +758,9 @@ export interface Game extends GameLike {
   /**
    * Queue a land tile for conversion to water (batched every few ticks). Tile
    * must be unowned. Without water nukes the tile gets fallout instead, unless
-   * `evenWithoutWaterNukes` (canals and the rising tide make water in every
-   * game). `rebuildGraphNow` (rising tide) rebuilds the water graph in the
-   * same tick instead of on the throttle (see WaterManager.queueTile).
+   * `evenWithoutWaterNukes` (the rising tide makes water in every game).
+   * `rebuildGraphNow` (rising tide) rebuilds the water graph in the same tick
+   * instead of on the throttle (see WaterManager.queueTile).
    */
   queueWaterConversion(
     tile: TileRef,

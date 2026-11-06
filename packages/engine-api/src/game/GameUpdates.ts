@@ -334,11 +334,6 @@ export interface PlayerUpdate {
   lastDeleteUnitTick?: Tick;
   isLobbyCreator?: boolean;
   /**
-   * Conventional war only: the player's capital (their spawn tile until it
-   * moves). Undefined outside conventional war, for tribes, and before spawn.
-   */
-  capitalTile?: TileRef;
-  /**
    * A neutral city-state (a tribe that never expands or attacks, see
    * engine-lib/game/WorldFeatures.ts). Set when the player is created.
    */

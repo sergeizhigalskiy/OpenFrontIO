@@ -181,19 +181,6 @@ export interface PublicGameModifiers {
 // schemas' max). Also the length of BuildableUnit.upgradeCosts.
 export const MAX_UPGRADE_AMOUNT = 50;
 
-// Minefield density, an integer percent chosen when the field is laid and
-// carried on the build intent (BuildUnitIntentSchema.density). Lower density
-// is cheaper and less likely to hit; see engine-lib/game/NavalDefense.ts.
-export const MINEFIELD_MIN_DENSITY = 10;
-export const MINEFIELD_MAX_DENSITY = 100;
-export const MINEFIELD_DEFAULT_DENSITY = 50;
-
-// Drone swarm size, carried on the build intent (BuildUnitIntentSchema.count):
-// one order launches this many drones (see engine-lib/game/ConventionalWar.ts).
-export const DRONE_SWARM_MIN = 1;
-export const DRONE_SWARM_MAX = 20;
-export const DRONE_SWARM_DEFAULT = 5;
-
 export interface UnitInfo {
   maxHealth?: number;
   damage?: number;
@@ -231,36 +218,6 @@ export enum UnitType {
   Factory = "Factory",
   // Donated troops on their way to an ally (see ConvoyExecution).
   Convoy = "Convoy",
-  // Naval defense (see MinefieldExecution and CoastalBatteryExecution).
-  // A minefield sits on ocean water and is seen only by its owner and their
-  // friends; a coastal battery is a shore structure that shells ships.
-  Minefield = "Minefield",
-  CoastalBattery = "Coastal Battery",
-  // Conventional war (see engine-lib/game/ConventionalWar.ts): enabled only
-  // when GameConfig.conventionalWar is on, which also disables the nukes. An
-  // airbase is a land structure holding one sortie; airstrike, airdrop and
-  // cruise missile are both the build-menu action and the unit that flies
-  // it; a flak gun is a cheap land structure that shoots down planes; a drone
-  // is a cheap loitering munition that hunts flak guns and ships; ballistic
-  // and cluster missiles are the hydrogen bomb and MIRV rungs without fallout
-  // or land loss (a cluster missile splits into cluster warheads).
-  Airbase = "Airbase",
-  Airstrike = "Airstrike",
-  Airdrop = "Airdrop",
-  CruiseMissile = "Cruise Missile",
-  FlakGun = "Flak Gun",
-  Drone = "Drone",
-  BallisticMissile = "Ballistic Missile",
-  ClusterMissile = "Cluster Missile",
-  ClusterWarhead = "Cluster Warhead",
-  // A land structure built near a hostile border: while it stands, enemy
-  // defense posts near it give attacks by its owner and their friends a
-  // smaller bonus (see engine-lib/game/Siege.ts). In every game mode.
-  SiegeCamp = "Siege Camp",
-  // A canal under construction across a land neck (see CanalExecution and
-  // engine-lib/game/Canal.ts). Its tile and targetTile are the two ends of
-  // the path; the path turns into water when it is done.
-  Canal = "Canal",
 }
 
 export enum TrainType {
@@ -281,12 +238,6 @@ export const BuildableAttacks = unitTypeGroup([
   UnitType.HydrogenBomb,
   UnitType.MIRV,
   UnitType.Warship,
-  UnitType.Airstrike,
-  UnitType.Airdrop,
-  UnitType.CruiseMissile,
-  UnitType.Drone,
-  UnitType.BallisticMissile,
-  UnitType.ClusterMissile,
 ] as const);
 
 export const Structures = unitTypeGroup([
@@ -296,20 +247,11 @@ export const Structures = unitTypeGroup([
   UnitType.MissileSilo,
   UnitType.Port,
   UnitType.Factory,
-  UnitType.CoastalBattery,
-  UnitType.Airbase,
-  UnitType.FlakGun,
-  UnitType.SiegeCamp,
 ] as const);
 
 export const BuildMenus = unitTypeGroup([
   ...Structures.types,
-  // Not a structure: it sits on water, which nobody owns, so the structure
-  // rules (captured with the tile, removed off owned land) don't apply.
-  UnitType.Minefield,
   ...BuildableAttacks.types,
-  // Not a structure either: it digs water out of its builder's own land.
-  UnitType.Canal,
 ] as const);
 
 export const PlayerBuildable = unitTypeGroup([
@@ -424,36 +366,7 @@ export interface BuildableUnit {
   upgradeCosts?: Gold[];
   overlappingRailroads: TileRef[];
   ghostRailPaths: TileRef[][];
-  /**
-   * Air orders only (airstrike, airdrop, drones, the missiles): why one
-   * can't be launched at the tile (or at all, for a query without a tile).
-   * Unset when it can. A key under build_menu.blocked in en.json, decided
-   * by the same rules as canBuild (engine game/AirOps.ts, airLaunch).
-   */
-  blocked?: LaunchBlock;
 }
-
-/**
- * Why an air order can't be launched (see BuildableUnit.blocked): each is a
- * key under build_menu.blocked in resources/lang/en.json.
- */
-export const LAUNCH_BLOCKS = [
-  "gold",
-  "spawn_protection",
-  "enemy_land",
-  "airdrop_land",
-  "no_airbase",
-  "airbase_recharging",
-  "airbase_building",
-  "no_loaded_silo",
-  "silo_level_2",
-  "silo_level_3",
-  "silo_reloading",
-  "no_drone_target",
-  "drone_range",
-] as const;
-
-export type LaunchBlock = (typeof LAUNCH_BLOCKS)[number];
 
 // Total price of buying `amount` of a buildable in one intent. Upgrades use
 // the escalating totals from core; flat-cost units (nukes) scale linearly.

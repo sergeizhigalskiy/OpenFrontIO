@@ -23,7 +23,7 @@ import {
   RuinsExecution,
 } from "@openfront/engine/execution/RuinsExecution";
 import { Game, Player } from "@openfront/engine/game/Game";
-import { setGold, structure } from "../../util/ConventionalWar";
+import { setGold, structure } from "../../util/GameHelpers";
 import { setup } from "../../util/Setup";
 import { executeTicks } from "../../util/utils";
 

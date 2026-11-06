@@ -123,10 +123,10 @@ describe("rail cuts", () => {
     expect(cuts[0][4]).toEqual({ name: enemy.displayName() });
   });
 
-  it("a canal dug under the line doesn't cut it", async () => {
+  it("land flooded under the line doesn't cut it", async () => {
     const { game, bc } = await railFixture();
     game.addExecution(new RecomputeRailClusterExecution(game.railNetwork()));
-    // What CanalExecution does to each path tile: let it go, then dig it.
+    // What a flood does to a tile: let it go, then turn it to water.
     const tile = game.ref(30, Y);
     game.player("owner").relinquish(tile);
     game.queueWaterConversion(tile, true);

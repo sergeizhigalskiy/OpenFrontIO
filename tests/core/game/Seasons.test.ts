@@ -25,7 +25,7 @@ import { AttackExecution } from "@openfront/engine/execution/AttackExecution";
 import { PlayerExecution } from "@openfront/engine/execution/PlayerExecution";
 import { Game, Player } from "@openfront/engine/game/Game";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { conquerRect } from "../../util/ConventionalWar";
+import { conquerRect } from "../../util/GameHelpers";
 import { setup } from "../../util/Setup";
 import { UseRealAttackLogic } from "../../util/TestConfig";
 import { executeTicks } from "../../util/utils";
@@ -153,7 +153,6 @@ describe("winter rules", () => {
       isDisconnectedTeammate: false,
     },
     defenderHasDefensePost: false,
-    siegeCampReducesDefensePost: false,
     falloutRatio: null,
     borderSize: 50,
   };

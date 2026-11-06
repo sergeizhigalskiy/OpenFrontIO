@@ -5,12 +5,10 @@ import {
   Structures,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
-import { capitalHoldGoldBonusPct } from "@openfront/engine-lib/game/ConventionalWar";
 import { zInt, zPlayerRef } from "@openfront/engine-lib/snapshot/SnapshotType";
 import { getMode, simpleHash } from "@openfront/engine-lib/Util";
 import { z } from "zod";
 import { EngineConfig } from "../configuration/EngineConfig";
-import { heldEnemyCapitals } from "../game/Capital";
 import { Execution, Game, Player } from "../game/Game";
 import {
   bumpTraversalGeneration,
@@ -104,11 +102,7 @@ export class PlayerExecution implements Execution {
       this.mg.ticksSinceStart(),
     );
     this.player.addTroops(troopInc);
-    // Conventional war: enemy capitals held raise the income (Capital.ts).
-    const goldFromWorkers = this.config.goldAdditionRate(
-      this.player,
-      capitalHoldGoldBonusPct(heldEnemyCapitals(this.mg, this.player)),
-    );
+    const goldFromWorkers = this.config.goldAdditionRate(this.player);
     this.player.addGold(goldFromWorkers);
 
     // Record stats

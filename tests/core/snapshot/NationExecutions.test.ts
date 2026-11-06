@@ -6,7 +6,9 @@ import {
   PlayerType,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
+import { readVersioned } from "@openfront/engine-lib/snapshot/SnapshotType";
 import { EngineConfig } from "@openfront/engine/configuration/EngineConfig";
+import { NationNukeBehaviorSnapshot } from "@openfront/engine/execution/nation/NationNukeBehavior";
 import { NationExecution } from "@openfront/engine/execution/NationExecution";
 import { SpawnExecution } from "@openfront/engine/execution/SpawnExecution";
 import { Game } from "@openfront/engine/game/Game";
@@ -140,4 +142,28 @@ describe("nation and tribe snapshots", () => {
     expect(unitCount(game, UnitType.Warship)).toBeGreaterThan(0);
     expect(game.allPlayers().some((p) => !p.isAlive())).toBe(true);
   }, 300_000);
+});
+
+describe("nation nuke behavior records", () => {
+  test("a v3 record with the removed ballistic missile fields restores as v4", () => {
+    expect(NationNukeBehaviorSnapshot.version).toBe(4);
+    const v4 = {
+      recentlySentNukes: [[120, 4242, UnitType.AtomBomb]],
+      atomBombsLaunched: 2,
+      atomBombPerceivedCost: 1_500_000n,
+      atomBombLastLaunch: 300,
+      hydrogenBombsLaunched: 0,
+      hydrogenBombPerceivedCost: 5_000_000n,
+      hydrogenBombLastLaunch: null,
+      strikes: [{ target: 3, tile: 4242, tick: 120, nuke: null }],
+    };
+    const v3 = {
+      ...v4,
+      ballisticPerceivedCost: 5_000_000n,
+      ballisticLastLaunch: 250,
+    };
+    expect(readVersioned(NationNukeBehaviorSnapshot, { v: 3, d: v3 })).toEqual(
+      v4,
+    );
+  });
 });

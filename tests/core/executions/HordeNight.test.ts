@@ -30,7 +30,7 @@ import {
 } from "@openfront/engine/execution/nation/NationSurvivalBehavior";
 import { WinCheckExecution } from "@openfront/engine/execution/WinCheckExecution";
 import { Game, Player } from "@openfront/engine/game/Game";
-import { conquerRect } from "../../util/ConventionalWar";
+import { conquerRect } from "../../util/GameHelpers";
 import { setup } from "../../util/Setup";
 import { expectSnapshotRoundTrip } from "../../util/Snapshot";
 import { executeTicks } from "../../util/utils";

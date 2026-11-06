@@ -128,19 +128,7 @@ const VARIANTS: [string, Partial<GameConfig>][] = [
   // variants keep ruins and city-states on.
   ["water nukes", { waterNukes: true, ruins: false, cityStates: false }],
   ["teams", { gameMode: GameMode.Team, playerTeams: 2 }],
-  // Airbases, flak guns and every air weapon (no nukes in this mode).
-  ["conventional war", { conventionalWar: true }],
 ];
-
-// Executions that exist only in conventional war: the conventional variant
-// checks them instead of free for all.
-const CONVENTIONAL_WAR_EXECS = new Set([
-  "Airbase",
-  "AirMission",
-  "Drone",
-  "DroneSwarm",
-  "FlakGun",
-]);
 
 // Volcanoes and rising tide: lobby modes that stay quiet for this game's
 // 1500 ticks. CataclysmSnapshots.test.ts covers their snapshots.
@@ -218,13 +206,6 @@ describe.each(VARIANTS)("full game snapshots: %s", (_, overrides) => {
   test(
     "the game exercised every execution type",
     () => {
-      if (overrides.conventionalWar) {
-        const missing = [...CONVENTIONAL_WAR_EXECS].filter(
-          (name) => !reference.execTypes.has(name),
-        );
-        expect(missing).toEqual([]);
-        return;
-      }
       if (Object.keys(overrides).length > 0) return; // checked once, on FFA
       // Runs during the spawn phase and finishes inside init, so it is never
       // alive at a tick boundary. BasicExecutions.test.ts covers it directly.
@@ -233,7 +214,6 @@ describe.each(VARIANTS)("full game snapshots: %s", (_, overrides) => {
         (name) =>
           !reference.execTypes.has(name) &&
           !neverStored.has(name) &&
-          !CONVENTIONAL_WAR_EXECS.has(name) &&
           !CATACLYSM_EXECS.has(name) &&
           !SURVIVAL_MODE_EXECS.has(name),
       );

@@ -96,7 +96,6 @@ import type {
 } from "../snapshot/SnapshotContext";
 import { AllianceImpl } from "./AllianceImpl";
 import { AllianceRequestImpl } from "./AllianceRequestImpl";
-import { onCapitalConquered, onCapitalRetaken } from "./Capital";
 import {
   Alliance,
   AllianceRequest,
@@ -182,9 +181,6 @@ export class GameImpl implements Game {
   private nextAllianceID: number = 0;
 
   private _mirvsLaunched = 0;
-  // Conventional war: cluster missiles launched by anyone (their own price
-  // escalation, kept apart from MIRVs).
-  private _clusterMissilesLaunched = 0;
   private shipStaggers = { tradeShip: 0, transportShip: 0 };
   private _nationMirvTargets = new Map<PlayerID, Tick>();
   // Unclaimed ruins by tile, in placement order (WorldFeatures.ts).
@@ -1091,19 +1087,6 @@ export class GameImpl implements Game {
     this.updateBorders(tile);
     this._map.setFallout(tile, false);
     this.recordTileUpdate(tile);
-    // Conventional war: taking a capital costs its owner, and taking your own
-    // back rallies you (Capital.ts). The capital is the spawn tile, and the
-    // tile compares come first so the common case stays two comparisons.
-    if (previousOwner.isPlayer() && !this.inSpawnPhase()) {
-      if (
-        tile === previousOwner.spawnTile() &&
-        previousOwner.capitalTile() === tile
-      ) {
-        onCapitalConquered(this, previousOwner, owner);
-      } else if (tile === owner.spawnTile() && owner.capitalTile() === tile) {
-        onCapitalRetaken(this, owner, previousOwner);
-      }
-    }
     // Ruins: the first player to take a ruin's tile from unclaimed land
     // claims it. One size check while there are none.
     if (this._ruins.size > 0 && !previousOwner.isPlayer()) {
@@ -1747,12 +1730,6 @@ export class GameImpl implements Game {
   recordMirvLaunch(): void {
     this._mirvsLaunched++;
   }
-  clusterMissilesLaunched(): number {
-    return this._clusterMissilesLaunched;
-  }
-  recordClusterMissileLaunch(): void {
-    this._clusterMissilesLaunched++;
-  }
   nextShipStagger(kind: "tradeShip" | "transportShip"): number {
     return this.shipStaggers[kind]++ % WaterPathFinder.STAGGER_SPREAD;
   }
@@ -1827,7 +1804,6 @@ export class GameImpl implements Game {
       shipStaggers: { ...this.shipStaggers },
       nationMirvTargets: [...this._nationMirvTargets],
       mirvsLaunched: this._mirvsLaunched,
-      clusterMissilesLaunched: this._clusterMissilesLaunched,
       ruins: [...this._ruins].map(([tile, reward]) => ({ tile, reward })),
       rail: w.versioned(
         RailNetworkSnapshot,
@@ -1893,7 +1869,6 @@ export class GameImpl implements Game {
     this.shipStaggers = { ...s.shipStaggers };
     this._nationMirvTargets = new Map(s.nationMirvTargets);
     this._mirvsLaunched = s.mirvsLaunched;
-    this._clusterMissilesLaunched = s.clusterMissilesLaunched;
     this._ruins = new Map(s.ruins.map((r) => [r.tile, r.reward]));
     (this._railNetwork as RailNetworkImpl).restoreSnapshot(
       readVersioned(RailNetworkSnapshot, s.rail),
@@ -2001,15 +1976,14 @@ export class GameImpl implements Game {
 export const GameSnapshot = snapshotType({
   name: "Game",
   // v2 added clusterMissilesLaunched (conventional war), v3 the unclaimed
-  // ruins (world features).
-  version: 3,
+  // ruins (world features), v4 dropped clusterMissilesLaunched again with the
+  // removed cluster missile (zod strips it from older records).
+  version: 4,
   migrations: {
-    1: (d) => ({
-      ...(d as Record<string, unknown>),
-      clusterMissilesLaunched: 0,
-    }),
+    1: (d) => d,
     // Older builds had no ruins.
     2: (d) => ({ ...(d as Record<string, unknown>), ruins: [] }),
+    3: (d) => d,
   },
   schema: z.object({
     ticks: zInt(),
@@ -2040,7 +2014,6 @@ export const GameSnapshot = snapshotType({
     shipStaggers: z.object({ tradeShip: zInt(), transportShip: zInt() }),
     nationMirvTargets: z.array(z.tuple([z.string(), zInt()])),
     mirvsLaunched: zInt(),
-    clusterMissilesLaunched: zInt(),
     ruins: z.array(z.object({ tile: zTile(), reward: z.enum(RuinReward) })),
     rail: VersionedSchema,
     water: VersionedSchema,

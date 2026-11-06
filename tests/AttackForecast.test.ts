@@ -4,7 +4,7 @@
  *  - the moved attackLogic is bit-identical to the old EngineConfig code
  *    (a verbatim copy lives below) over a wide spread of inputs;
  *  - the forecast the hover card shows is exactly what AttackExecution
- *    computes for the same tile, defense posts and siege camps included;
+ *    computes for the same tile, defense posts included;
  *  - the forecast's front size is the border an attack starts with.
  * AttackLogicGolden and AttackScenarios pin the engine's own numbers.
  */
@@ -31,10 +31,6 @@ import {
   WINTER_ATTACKER_LOSS_MULTIPLIER,
 } from "@openfront/engine-lib/game/Seasons";
 import {
-  SIEGE_CAMP_POST_DEFENSE_BONUS,
-  SIEGE_CAMP_POST_SPEED_BONUS,
-} from "@openfront/engine-lib/game/Siege";
-import {
   FOREST_DEFENDED_LOSS_MULTIPLIER,
   RIVER_TIME_MULTIPLIER,
   TerrainFeature,
@@ -55,8 +51,6 @@ import { UseRealAttackLogic } from "./util/TestConfig";
 // The pre-move EngineConfig.attackLogic, verbatim (tunables inlined).
 // ---------------------------------------------------------------------------
 
-type LegacyInput = Omit<AttackLogicInput, "siegeCampReducesDefensePost">;
-
 function legacyLargeTerritoryBonus(numTiles: number, depth: number): number {
   return 1 - depth * sigmoid(log(numTiles), 2.5, log(300_000));
 }
@@ -74,7 +68,7 @@ function legacyTerrainAttackBase(terrain: TerrainType) {
   }
 }
 
-function legacyAttackLogic(input: LegacyInput): AttackLogicResult {
+function legacyAttackLogic(input: AttackLogicInput): AttackLogicResult {
   const { attackTroops, attacker, defender } = input;
   let { mag, tileCost } = legacyTerrainAttackBase(input.terrain);
   if (defender !== null && input.defenderHasDefensePost) {
@@ -141,7 +135,7 @@ const TERRAINS = [
 ] as const;
 const TYPES = [PlayerType.Human, PlayerType.Bot, PlayerType.Nation] as const;
 
-function randomInput(r: PseudoRandom): LegacyInput {
+function randomInput(r: PseudoRandom): AttackLogicInput {
   const pick = <T>(xs: readonly T[]): T => xs[r.nextInt(0, xs.length)];
   const defender = r.chance(6)
     ? null
@@ -169,15 +163,12 @@ function randomInput(r: PseudoRandom): LegacyInput {
 describe("attackLogic moved to engine-lib", () => {
   const config = new EngineConfig({} as GameConfig, false);
 
-  test("is bit-identical to the old EngineConfig code without siege camps", () => {
+  test("is bit-identical to the old EngineConfig code", () => {
     const r = new PseudoRandom(20261104);
     for (let i = 0; i < 20_000; i++) {
       const input = randomInput(r);
       const expected = legacyAttackLogic(input);
-      const actual = config.attackLogic({
-        ...input,
-        siegeCampReducesDefensePost: false,
-      });
+      const actual = config.attackLogic(input);
       expect(
         Object.is(actual.attackerTroopLoss, expected.attackerTroopLoss),
       ).toBe(true);
@@ -186,47 +177,6 @@ describe("attackLogic moved to engine-lib", () => {
       ).toBe(true);
       expect(Object.is(actual.tickFraction, expected.tickFraction)).toBe(true);
     }
-  });
-
-  test("a siege camp swaps the post's 5x losses and 3x slowdown for 1.5x and 1.3x", () => {
-    const base: AttackLogicInput = {
-      terrain: TerrainType.Highland,
-      attackTroops: 100_000,
-      attacker: { type: PlayerType.Human, numTiles: 20_000 },
-      defender: {
-        type: PlayerType.Human,
-        numTiles: 20_000,
-        troops: 80_000,
-        isTraitor: false,
-        isDisconnectedTeammate: false,
-      },
-      defenderHasDefensePost: false,
-      siegeCampReducesDefensePost: false,
-      falloutRatio: null,
-      borderSize: 50,
-    };
-    const open = config.attackLogic(base);
-    const post = config.attackLogic({ ...base, defenderHasDefensePost: true });
-    const reduced = config.attackLogic({
-      ...base,
-      defenderHasDefensePost: true,
-      siegeCampReducesDefensePost: true,
-    });
-    // The flag alone (no post) changes nothing.
-    expect(
-      config.attackLogic({ ...base, siegeCampReducesDefensePost: true }),
-    ).toEqual(open);
-    expect(post.attackerTroopLoss / open.attackerTroopLoss).toBeCloseTo(5, 9);
-    expect(post.tickFraction / open.tickFraction).toBeCloseTo(3, 9);
-    expect(reduced.attackerTroopLoss / open.attackerTroopLoss).toBeCloseTo(
-      SIEGE_CAMP_POST_DEFENSE_BONUS,
-      9,
-    );
-    expect(reduced.tickFraction / open.tickFraction).toBeCloseTo(
-      SIEGE_CAMP_POST_SPEED_BONUS,
-      9,
-    );
-    expect(reduced.defenderTroopLoss).toBe(post.defenderTroopLoss);
   });
 });
 
@@ -342,7 +292,6 @@ function expectForecastMatches(checks: Check[]) {
     expect(forecast.lossPerTile).toBe(engine.attackerTroopLoss);
     expect(forecast.tilesPerSecond).toBe(10 / engine.tickFraction);
     expect(forecast.defensePostLevel > 0).toBe(input.defenderHasDefensePost);
-    expect(forecast.siegeReduced).toBe(input.siegeCampReducesDefensePost);
   }
 }
 
@@ -365,22 +314,6 @@ describe("attack forecast matches the engine", () => {
     expect(covered.length).toBeGreaterThan(0);
     expect(covered.every((c) => c.forecast.defensePostLevel === 2)).toBe(true);
     expect(checks.some((c) => !c.input.defenderHasDefensePost)).toBe(true);
-  });
-
-  test("into a post reduced by an ally's siege camp", async () => {
-    const { game, attacker, defender, ally } = await plainsGame(true);
-    attacker.createAllianceRequest(ally)!.accept();
-    // Covers x = 50 for y 33-77, all of it on the attack front.
-    defender.buildUnit(UnitType.DefensePost, game.ref(70, 55), {});
-    // About 41 tiles from the post, on the ally's land.
-    ally.buildUnit(UnitType.SiegeCamp, game.ref(49, 90), {});
-    const checks = recordAttack(game, attacker, defender, 60_000, 20);
-    expectForecastMatches(checks);
-    const covered = checks.filter((c) => c.input.defenderHasDefensePost);
-    expect(covered.length).toBeGreaterThan(0);
-    expect(covered.every((c) => c.input.siegeCampReducesDefensePost)).toBe(
-      true,
-    );
   });
 
   test("in winter and mud, with the same multipliers as the attack", async () => {

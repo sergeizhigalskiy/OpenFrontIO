@@ -34,16 +34,6 @@ const tileRefCases = [
     build: (tile: number) => ({ type: "build_unit", unit: "City", tile }),
   },
   {
-    name: "build_unit (minefield with density)",
-    schema: BuildUnitIntentSchema,
-    build: (tile: number) => ({
-      type: "build_unit",
-      unit: "Minefield",
-      tile,
-      density: 50,
-    }),
-  },
-  {
     name: "move_warship",
     schema: MoveWarshipIntentSchema,
     build: (tile: number) => ({ type: "move_warship", unitIds: [1], tile }),
@@ -91,32 +81,6 @@ describe("intent schemas: unit ids are non-negative integers", () => {
     expect(DeleteUnitIntentSchema.safeParse(ok).success).toBe(true);
     const bad = { type: "delete_unit", unitId: 3.5 };
     expect(DeleteUnitIntentSchema.safeParse(bad).success).toBe(false);
-  });
-});
-
-// A minefield's density is an integer percent from 10 to 100. Fractions would
-// leak floats into the field's health, so the wire rejects them like tile refs.
-describe("intent schemas: minefield density is an integer percent", () => {
-  const minefield = { type: "build_unit", unit: "Minefield", tile: 10 };
-
-  it("accepts 10 to 100, and no density at all", () => {
-    for (const density of [10, 11, 50, 99, 100]) {
-      const intent = { ...minefield, density };
-      expect(BuildUnitIntentSchema.safeParse(intent).success).toBe(true);
-    }
-    expect(BuildUnitIntentSchema.safeParse(minefield).success).toBe(true);
-  });
-
-  it("rejects out-of-range, fractional, negative and non-finite densities", () => {
-    for (const density of [0, 9, 101, 1000, 50.5, -10, NaN, Infinity]) {
-      const intent = { ...minefield, density };
-      expect(BuildUnitIntentSchema.safeParse(intent).success).toBe(false);
-    }
-  });
-
-  it("is a number, not a string", () => {
-    const intent = { ...minefield, density: "50" };
-    expect(BuildUnitIntentSchema.safeParse(intent).success).toBe(false);
   });
 });
 

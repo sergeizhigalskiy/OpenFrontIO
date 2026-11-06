@@ -1590,7 +1590,6 @@ export class NationAttackBehavior extends AiAttackBehavior {
             isDisconnectedTeammate: false,
           },
           defenderHasDefensePost: false,
-          siegeCampReducesDefensePost: false,
           falloutRatio: null,
           borderSize: 1,
         }).attackerTroopLoss * (featureLoss[i] ?? 1);
