@@ -166,6 +166,28 @@ describe("LobbyPresets logic and schema", () => {
     expect(parsed[0].name).toBe("Valid");
   });
 
+  it("loads a preset whose disabledUnits names a unit the game no longer has", () => {
+    const raw = JSON.stringify([
+      {
+        name: "Old preset",
+        createdAt: 200,
+        config: {
+          ...sampleConfig,
+          disabledUnits: [UnitType.AtomBomb, "Zeppelin", UnitType.Warship],
+        },
+      },
+    ]);
+    const parsed = parseLobbyPresetsJson(raw);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].name).toBe("Old preset");
+    expect(parsed[0].createdAt).toBe(200);
+    expect(parsed[0].config).toEqual(sampleConfig);
+    expect(parsed[0].config.disabledUnits).toEqual([
+      UnitType.AtomBomb,
+      UnitType.Warship,
+    ]);
+  });
+
   it("rejects invalid teamCount options in LobbyPresetConfigSchema", () => {
     const invalidTeam = {
       ...sampleConfig,

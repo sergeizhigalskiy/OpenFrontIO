@@ -127,11 +127,6 @@ export function notableLobbySettings(
       label: translateText("public_game_modifier.disable_alliances_label"),
       value: renderDuration(c.customAllianceDuration * 60),
     });
-  if (c.conventionalWar)
-    items.push({
-      label: translateText("game_settings.conventional_war"),
-      value: enabled,
-    });
   if (isTeam && c.bossRaid)
     items.push({
       label: translateText("game_mode.boss_raid"),

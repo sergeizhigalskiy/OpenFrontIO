@@ -164,7 +164,6 @@ const DEFAULT_OPTIONS = {
   customAlliances: false,
   customAllianceMinutes: undefined as number | undefined,
   waterNukes: false,
-  conventionalWar: false,
   bossRaid: false,
   // World features: both on by default.
   ruins: true,
@@ -266,7 +265,6 @@ export class SinglePlayerModal extends BaseModal {
   @state() private customAllianceMinutes: number | undefined =
     DEFAULT_OPTIONS.customAllianceMinutes;
   @state() private waterNukes: boolean = DEFAULT_OPTIONS.waterNukes;
-  @state() private conventionalWar: boolean = DEFAULT_OPTIONS.conventionalWar;
   // Boss Raid: you and the nations raid an Impossible nation Boss. A Team
   // game, timed by the max timer.
   @state() private bossRaid: boolean = DEFAULT_OPTIONS.bossRaid;
@@ -673,10 +671,6 @@ export class SinglePlayerModal extends BaseModal {
                     checked: this.waterNukes,
                   },
                   {
-                    labelKey: "game_settings.conventional_war",
-                    checked: this.conventionalWar,
-                  },
-                  {
                     labelKey: "game_settings.ruins",
                     checked: this.ruins,
                   },
@@ -782,7 +776,6 @@ export class SinglePlayerModal extends BaseModal {
       this.customAlliances !== DEFAULT_OPTIONS.customAlliances ||
       this.customAllianceMinutes !== DEFAULT_OPTIONS.customAllianceMinutes ||
       this.waterNukes !== DEFAULT_OPTIONS.waterNukes ||
-      this.conventionalWar !== DEFAULT_OPTIONS.conventionalWar ||
       this.bossRaid !== DEFAULT_OPTIONS.bossRaid ||
       this.ruins !== DEFAULT_OPTIONS.ruins ||
       this.cityStates !== DEFAULT_OPTIONS.cityStates ||
@@ -927,7 +920,6 @@ export class SinglePlayerModal extends BaseModal {
     this.customAlliances = DEFAULT_OPTIONS.customAlliances;
     this.customAllianceMinutes = DEFAULT_OPTIONS.customAllianceMinutes;
     this.waterNukes = DEFAULT_OPTIONS.waterNukes;
-    this.conventionalWar = DEFAULT_OPTIONS.conventionalWar;
     this.bossRaid = DEFAULT_OPTIONS.bossRaid;
     this.ruins = DEFAULT_OPTIONS.ruins;
     this.cityStates = DEFAULT_OPTIONS.cityStates;
@@ -985,7 +977,6 @@ export class SinglePlayerModal extends BaseModal {
       customAlliances: this.customAlliances,
       customAllianceMinutes: this.customAllianceMinutes,
       waterNukes: this.waterNukes,
-      conventionalWar: this.conventionalWar,
       ruins: this.ruins,
       cityStates: this.cityStates,
       volcanoes: this.volcanoes,
@@ -1025,7 +1016,6 @@ export class SinglePlayerModal extends BaseModal {
     this.customAlliances = config.customAlliances ?? false;
     this.customAllianceMinutes = config.customAllianceMinutes;
     this.waterNukes = config.waterNukes ?? false;
-    this.conventionalWar = config.conventionalWar ?? false;
     this.ruins = config.ruins ?? true;
     this.cityStates = config.cityStates ?? true;
     this.volcanoes = config.volcanoes ?? false;
@@ -1256,9 +1246,6 @@ export class SinglePlayerModal extends BaseModal {
         break;
       case "game_settings.water_nukes":
         this.waterNukes = checked;
-        break;
-      case "game_settings.conventional_war":
-        this.conventionalWar = checked;
         break;
       case "game_settings.ruins":
         this.ruins = checked;
@@ -1652,7 +1639,6 @@ export class SinglePlayerModal extends BaseModal {
               ? { customAllianceDuration: this.customAllianceMinutes ?? 0 }
               : {}),
             ...(this.waterNukes ? { waterNukes: true } : {}),
-            ...(this.conventionalWar ? { conventionalWar: true } : {}),
             ...(this.bossRaidOn()
               ? { bossRaid: { boss: BOSS_RAID_NATION_BOSS } }
               : {}),
