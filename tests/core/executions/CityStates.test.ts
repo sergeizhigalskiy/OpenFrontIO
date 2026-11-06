@@ -4,13 +4,20 @@ import {
   Difficulty,
   PlayerInfo,
   PlayerType,
+  TerrainType,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
 import { PlayerUpdate } from "@openfront/engine-api/game/GameUpdates";
 import { GameConfig } from "@openfront/engine-api/Schemas";
 import {
+  attackLogic,
+  AttackLogicInput,
+} from "@openfront/engine-lib/game/AttackLogic";
+import {
+  CITY_STATE_CAPTURED_CITY_LEVEL,
   CITY_STATE_CITY_LEVEL,
   CITY_STATE_CONQUEST_GOLD,
+  CITY_STATE_ELIMINATION_TILES,
   CITY_STATE_GARRISON_MULTIPLIER,
   CITY_STATE_MIN_DISTANCE,
   CITY_STATE_RADIUS,
@@ -21,7 +28,10 @@ import {
 } from "@openfront/engine-lib/game/WorldFeatures";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import { AttackExecution } from "@openfront/engine/execution/AttackExecution";
-import { CityStateExecution } from "@openfront/engine/execution/CityStateExecution";
+import {
+  CITY_STATE_DEFENSE_POST_OFFSET,
+  CityStateExecution,
+} from "@openfront/engine/execution/CityStateExecution";
 import { CityStateSpawner } from "@openfront/engine/execution/CityStateSpawner";
 import { Executor } from "@openfront/engine/execution/ExecutionManager";
 import { PlayerExecution } from "@openfront/engine/execution/PlayerExecution";
@@ -140,7 +150,7 @@ describe("city-states: placement", () => {
 });
 
 describe("city-states: founding", () => {
-  test("a disc of land, a level-2 city at the center and a defense post inside", async () => {
+  test("a disc of land, a level-2 city at the center and a defense post next to it", async () => {
     const { game, cs } = await founded();
     expect(cs.type()).toBe(PlayerType.Bot);
     expect(cs.isCityState()).toBe(true);
@@ -160,6 +170,11 @@ describe("city-states: founding", () => {
     expect(posts).toHaveLength(1);
     expect(game.owner(posts[0].tile())).toBe(cs);
     expect(posts[0].tile()).not.toBe(cities[0].tile());
+    // Next to the city, so a spearhead at the post crosses 6 tiles of cover.
+    expect(CITY_STATE_DEFENSE_POST_OFFSET).toBe(1);
+    expect(game.euclideanDistSquared(posts[0].tile(), cities[0].tile())).toBe(
+      1,
+    );
 
     // A tribe's PlayerExecution, never a TribeExecution.
     const execs = game.executions();
@@ -292,7 +307,7 @@ describe("city-states: founding", () => {
 });
 
 describe("city-states: conquest", () => {
-  test("eliminating it pays 300,000 gold once, and its city is captured, not destroyed", async () => {
+  test("eliminating it pays its bounty once, and its city is captured at level 1", async () => {
     const { game, a, cs } = await founded();
     // Next to its disc, and strong.
     conquerRect(game, a, 90, 108, 111, 130);
@@ -316,19 +331,110 @@ describe("city-states: conquest", () => {
     const cities = a.units(UnitType.City);
     expect(cities).toHaveLength(1);
     expect(cities[0].isActive()).toBe(true);
-    expect(cities[0].level()).toBe(CITY_STATE_CITY_LEVEL);
+    expect(CITY_STATE_CAPTURED_CITY_LEVEL).toBe(1);
+    expect(cities[0].level()).toBe(CITY_STATE_CAPTURED_CITY_LEVEL);
     expect(cities[0].tile()).toBe(game.ref(100, 100));
-    // Its troop bonus now counts for the conqueror.
+    // Its troop bonus now counts for the conqueror: +250k, not +500k.
     expect(
       game.config().maxTroops(a) - game.config().maxTroopsWithoutCities(a),
-    ).toBeCloseTo(
-      capBefore + CITY_STATE_CITY_LEVEL * game.config().cityTroopIncrease(),
-    );
+    ).toBeCloseTo(capBefore + game.config().cityTroopIncrease());
 
     // A repeat conquest record pays no second bounty.
     const gold = a.gold();
     game.conquerPlayer(a, cs);
     expect(a.gold()).toBe(gold);
+  });
+
+  /**
+   * Shrinks `target` to `tiles` tiles (taken by `a` from the south, next to
+   * a's land), then lets `a` take one tile a tick (the test config's flat
+   * attack cost) and returns the fewest tiles `target` held while alive.
+   */
+  function fewestTilesAlive(
+    game: Game,
+    a: Player,
+    target: Player,
+    tiles: number,
+  ): number {
+    const byRow = [...target.tiles()].sort((t, u) => game.y(u) - game.y(t));
+    for (const t of byRow.slice(0, target.numTilesOwned() - tiles)) {
+      a.conquer(t);
+    }
+    expect(target.numTilesOwned()).toBe(tiles);
+    a.setTroops(100_000);
+    game.addExecution(new AttackExecution(50_000, a, target.id()));
+    let fewest = tiles;
+    for (let i = 0; i < 200 && target.isAlive(); i++) {
+      game.executeNextTick();
+      if (target.isAlive()) {
+        fewest = Math.min(fewest, target.numTilesOwned());
+      }
+    }
+    expect(target.isAlive()).toBe(false);
+    expect(target.numTilesOwned()).toBe(0);
+    return fewest;
+  }
+
+  test("it falls only below 20 tiles: at 20 it stands, at 19 it is eliminated", async () => {
+    const { game, a, cs } = await founded();
+    conquerRect(game, a, 90, 108, 111, 130);
+    expect(CITY_STATE_ELIMINATION_TILES).toBe(20);
+    expect(fewestTilesAlive(game, a, cs, 22)).toBe(20);
+  });
+
+  test("a player still falls below 100 tiles", async () => {
+    const { game, a } = await founded();
+    const tribe = game.addPlayer(
+      new PlayerInfo("tribe", PlayerType.Bot, null, "tribe"),
+    );
+    conquerRect(game, tribe, 20, 20, 40, 30);
+    conquerRect(game, a, 20, 30, 40, 40);
+    expect(fewestTilesAlive(game, a, tribe, 102)).toBe(100);
+  });
+
+  test("attackers get no tribe discount against it", async () => {
+    const rules = {
+      defensePostDefenseBonus: () => 5,
+      defensePostSpeedBonus: () => 3,
+      falloutDefenseModifier: (r: number) => 5 - 2 * r,
+      traitorDefenseDebuff: () => 0.5,
+      traitorSpeedDebuff: () => 0.8,
+    };
+    const input = (isCityState: boolean): AttackLogicInput => ({
+      terrain: TerrainType.Plains,
+      attackTroops: 200_000,
+      attacker: { type: PlayerType.Human, numTiles: 3_000 },
+      defender: {
+        type: PlayerType.Bot,
+        numTiles: 149,
+        troops: 140_000,
+        isTraitor: false,
+        isDisconnectedTeammate: false,
+        isCityState,
+      },
+      defenderHasDefensePost: true,
+      falloutRatio: null,
+      borderSize: 20,
+    });
+    const tribe = attackLogic(input(false), rules).attackerTroopLoss;
+    const cityState = attackLogic(input(true), rules).attackerTroopLoss;
+    expect(cityState).toBeCloseTo(tribe / 0.7, 9);
+
+    // The engine tells attackLogic which defender is a city-state.
+    const { game, a, cs } = await founded();
+    conquerRect(game, a, 90, 108, 111, 130);
+    a.setTroops(1_000_000);
+    const inputs: AttackLogicInput[] = [];
+    const config = game.config();
+    const original = config.attackLogic.bind(config);
+    vi.spyOn(config, "attackLogic").mockImplementation((i) => {
+      inputs.push(i);
+      return original(i);
+    });
+    game.addExecution(new AttackExecution(500_000, a, cs.id()));
+    executeTicks(game, 3);
+    expect(inputs.length).toBeGreaterThan(0);
+    expect(inputs.every((i) => i.defender?.isCityState === true)).toBe(true);
   });
 
   test("a normal tribe pays no bounty", async () => {

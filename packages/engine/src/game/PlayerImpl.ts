@@ -1534,9 +1534,6 @@ export class PlayerImpl implements Player {
     if (unit.isUnderConstruction()) {
       return false;
     }
-    if (unit.level() >= this.maxUpgradeLevel(unit.type())) {
-      return false;
-    }
     if (unit.isMarkedForDeletion()) {
       return false;
     }
@@ -1544,11 +1541,6 @@ export class PlayerImpl implements Player {
       return false;
     }
     return true;
-  }
-
-  /** The highest level a unit of `type` can be upgraded to. */
-  private maxUpgradeLevel(type: UnitType): number {
-    return this.mg.config().unitInfo(type).maxLevel ?? Infinity;
   }
 
   public canUpgradeUnit(unit: Unit): boolean {
@@ -1594,9 +1586,6 @@ export class PlayerImpl implements Player {
 
       const cost = config.unitInfo(u).cost(mg, this);
       let canUpgrade: number | false = false;
-      // Levels the upgradable unit can still gain (a cap like a defense
-      // post's shortens the bulk-upgrade totals below).
-      let levelsLeft = MAX_UPGRADE_AMOUNT;
       let canBuild: TileRef | false = false;
 
       if (tile !== null && this.canBuildUnitType(u, cost) && !inSpawnPhase) {
@@ -1607,10 +1596,6 @@ export class PlayerImpl implements Player {
             this.isUnitValidToUpgrade(existingUnit)
           ) {
             canUpgrade = existingUnit.id();
-            levelsLeft = Math.min(
-              MAX_UPGRADE_AMOUNT,
-              this.maxUpgradeLevel(u) - existingUnit.level(),
-            );
           }
         }
         canBuild = this.canSpawnUnitType(u, tile, validTiles);
@@ -1626,9 +1611,9 @@ export class PlayerImpl implements Player {
       // already had n extra units — cost(mg, this, n).
       let upgradeCosts: Gold[] | undefined;
       if (canUpgrade !== false) {
-        upgradeCosts = new Array<Gold>(levelsLeft);
+        upgradeCosts = new Array<Gold>(MAX_UPGRADE_AMOUNT);
         let total = 0n;
-        for (let n = 0; n < levelsLeft; n++) {
+        for (let n = 0; n < MAX_UPGRADE_AMOUNT; n++) {
           total += config.unitInfo(u).cost(mg, this, n);
           upgradeCosts[n] = total;
         }

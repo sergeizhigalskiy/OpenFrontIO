@@ -23,18 +23,21 @@ export interface AttackLogicInput {
     isTraitor: boolean;
     /** Defender is disconnected and on the attacker's team. */
     isDisconnectedTeammate: boolean;
+    /**
+     * Defender is a city-state (WorldFeatures.ts): a bot that gets no
+     * tribe discount. Unset counts as false.
+     */
+    isCityState?: boolean;
   } | null;
   /** A defense post owned by the defender is in range of the tile. */
   defenderHasDefensePost: boolean;
   /** Fraction of land tiles with fallout, or null if the tile has no fallout. */
   falloutRatio: number | null;
-  /** Tiles on the attack front this tick (plus jitter); fixed for the tick. */
+  /**
+   * Tiles on the attack front this tick (plus jitter), capped for a
+   * spearhead (attackBudgetFront); fixed for the tick.
+   */
   borderSize: number;
-  // weather-seasons hooks (Seasons.ts, Weather.ts): 1 when absent.
-  /** Scales the attacker's troop loss (winter on snow land). */
-  weatherLossMultiplier?: number;
-  /** Scales the tile's tick cost (a mud front on enemy land). */
-  weatherTileCostMultiplier?: number;
 }
 
 export interface AttackLogicResult {
@@ -64,6 +67,7 @@ const LARGE_TERRITORY_STEEPNESS = 2.5;
 // deeper LARGE_ATTACKER_SPEED_DEPTH below), a huge defender's at 0.7x.
 const LARGE_ATTACKER_DEPTH = 0.7;
 const LARGE_DEFENDER_DEPTH = 0.3;
+// Tribes only: a city-state defends at the full rate.
 const BOT_DEFENDER_LOSS_MULT = 0.7;
 const TERRA_NULLIUS_COST_SCALE = 2000;
 const TERRA_NULLIUS_MIN_COST = 5;
@@ -86,6 +90,25 @@ const SPEED_COST_DIVISOR = 8.55;
 // sub-parity floor on the ratio curve, an overwhelming push lands ~18%
 // faster for a small attacker, ~20% at the 300k midpoint, ~25% for giants.
 const LARGE_ATTACKER_SPEED_DEPTH = 0.73;
+
+/**
+ * A spearhead (an attack with a focus tile) spends the tick budget of at most
+ * this many front tiles, however long its whole front is. A broad attack
+ * spends its whole front's.
+ */
+export const SPEAR_BUDGET_FRONT = 48;
+
+/**
+ * The front size an attack's tick budget comes from: its border, capped at
+ * SPEAR_BUDGET_FRONT for a spearhead. AttackExecution and the forecast both
+ * use it, before adding the tick's jitter.
+ */
+export function attackBudgetFront(
+  borderSize: number,
+  spearhead: boolean,
+): number {
+  return spearhead ? Math.min(borderSize, SPEAR_BUDGET_FRONT) : borderSize;
+}
 
 /**
  * Logistic in log(tiles): ~1 for small territories, easing down to
@@ -138,9 +161,6 @@ export function attackLogic(
 ): AttackLogicResult {
   const { attackTroops, attacker, defender } = input;
   let { mag, tileCost } = terrainAttackBase(input.terrain);
-  // weather-seasons hook: winter and mud (see AttackLogicInput).
-  mag *= input.weatherLossMultiplier ?? 1;
-  tileCost *= input.weatherTileCostMultiplier ?? 1;
 
   if (defender !== null && input.defenderHasDefensePost) {
     mag *= rules.defensePostDefenseBonus();
@@ -173,7 +193,8 @@ export function attackLogic(
   if (
     (attacker.type === PlayerType.Human ||
       attacker.type === PlayerType.Nation) &&
-    defender.type === PlayerType.Bot
+    defender.type === PlayerType.Bot &&
+    defender.isCityState !== true
   ) {
     mag *= BOT_DEFENDER_LOSS_MULT;
   }

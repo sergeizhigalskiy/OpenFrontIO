@@ -1,13 +1,12 @@
 import { UnitType } from "@openfront/engine-api/game/GameTypes";
-import { defensePostRange } from "@openfront/engine-lib/game/DefensePosts";
+import { DEFENSE_POST_RANGE } from "@openfront/engine-lib/game/DefensePosts";
 import { EventBus } from "@openfront/shared/EventBus";
 import { describe, expect, test } from "vitest";
 import { BuildPreviewController } from "../../../src/client/controllers/BuildPreviewController";
 
-/** A controller holding a ghost of `type`, upgrading a post of `level` if set. */
-function ghostFor(type: UnitType, upgradeLevel: number | null) {
+/** A controller holding a ghost of `type`. */
+function ghostFor(type: UnitType) {
   const width = 100;
-  const post = { tile: () => 4242, level: () => upgradeLevel ?? 1 };
   const game = {
     isImpassable: () => false,
     isValidCoord: () => true,
@@ -17,8 +16,8 @@ function ghostFor(type: UnitType, upgradeLevel: number | null) {
       smallID: () => 1,
       isAlive: () => true,
     }),
-    unit: (id: number) => (id === 7 ? post : undefined),
-    config: () => ({ defensePostRange: defensePostRange }),
+    unit: () => undefined,
+    config: () => ({ defensePostRange: () => DEFENSE_POST_RANGE }),
     x: (t: number) => t % width,
     y: (t: number) => Math.floor(t / width),
   };
@@ -37,10 +36,10 @@ function ghostFor(type: UnitType, upgradeLevel: number | null) {
   (controller as any).ghostUnit = {
     buildableUnit: {
       type,
-      canBuild: upgradeLevel === null ? 4343 : false,
-      canUpgrade: upgradeLevel === null ? false : 7,
+      canBuild: 4343,
+      canUpgrade: false,
       cost: 100_000n,
-      upgradeCosts: upgradeLevel === null ? undefined : [100_000n],
+      upgradeCosts: undefined,
       overlappingRailroads: [],
       ghostRailPaths: [],
     },
@@ -50,16 +49,8 @@ function ghostFor(type: UnitType, upgradeLevel: number | null) {
   return (controller as any).buildGhostPreviewData(4343, false);
 }
 
-describe("defense line build previews", () => {
-  test("a new defense post shows level 1's range", () => {
-    expect(ghostFor(UnitType.DefensePost, null).rangeRadius).toBe(30);
-  });
-
-  test("a defense post upgrade shows the range it grows to, around the post", () => {
-    const toTwo = ghostFor(UnitType.DefensePost, 1);
-    expect(toTwo.rangeRadius).toBe(38);
-    expect(toTwo.radiusTileX).toBe(42);
-    expect(toTwo.radiusTileY).toBe(42);
-    expect(ghostFor(UnitType.DefensePost, 2).rangeRadius).toBe(45);
+describe("defense post build preview", () => {
+  test("a new defense post shows the 30-tile range", () => {
+    expect(ghostFor(UnitType.DefensePost).rangeRadius).toBe(30);
   });
 });

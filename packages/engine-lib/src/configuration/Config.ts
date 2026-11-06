@@ -21,7 +21,7 @@ import {
   isBossRaidBoss,
   withBossRaidDefaults,
 } from "../game/BossRaid";
-import { DEFENSE_POST_MAX_LEVEL, defensePostRange } from "../game/DefensePosts";
+import { DEFENSE_POST_RANGE } from "../game/DefensePosts";
 import { DoomsdayClockSpeed } from "../game/DoomsdayClock";
 import { HORDE_NIGHT_DEFAULT_SURVIVAL_MINUTES } from "../game/HordeNight";
 import { isInfected } from "../game/Plague";
@@ -216,9 +216,9 @@ export class Config implements AttackRules {
     return 90;
   }
 
-  /** Tiles a defense post of `level` covers (see game/DefensePosts.ts). */
-  defensePostRange(level: number = 1): number {
-    return defensePostRange(level);
+  /** Tiles a defense post covers (see game/DefensePosts.ts). */
+  defensePostRange(): number {
+    return DEFENSE_POST_RANGE;
   }
 
   /**
@@ -333,11 +333,7 @@ export class Config implements AttackRules {
         };
         break;
       case UnitType.DefensePost:
-        info = {
-          constructionDuration: this.instantBuild() ? 0 : 5 * 10,
-          upgradable: true,
-          maxLevel: DEFENSE_POST_MAX_LEVEL,
-        };
+        info = { constructionDuration: this.instantBuild() ? 0 : 5 * 10 };
         break;
       case UnitType.SAMLauncher:
         info = {

@@ -17,13 +17,13 @@ describe("terrain feature hover text", () => {
   test("shows each feature's effect from the rule constants", () => {
     expect(terrainFeatureHoverText(TerrainFeature.None, true)).toBeNull();
     expect(terrainFeatureHoverText(TerrainFeature.Forest, true)).toBe(
-      'terrain_feature.forest_owned {"percent":30}',
+      'terrain_feature.forest_owned {"percent":20}',
     );
     expect(terrainFeatureHoverText(TerrainFeature.Forest, false)).toBe(
-      'terrain_feature.forest_unowned {"percent":30}',
+      'terrain_feature.forest_unowned {"percent":20}',
     );
     expect(terrainFeatureHoverText(TerrainFeature.River, true)).toBe(
-      'terrain_feature.river {"time":150,"loss":50}',
+      'terrain_feature.river {"time":100,"loss":25}',
     );
     expect(terrainFeatureHoverText(TerrainFeature.Ford, false)).toBe(
       "terrain_feature.ford",

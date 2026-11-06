@@ -29,7 +29,10 @@ describe("the Seasons lobby setting", () => {
     expect(off.config().isWinter(IN_WINTER)).toBe(false);
   });
 
-  /** a's losses attacking b in the snow, and a's troop growth, at `clock`. */
+  /**
+   * a's losses and tiles taken attacking b in the snow, and b's troop
+   * growth, at `clock`.
+   */
   async function winterEffects(config: Partial<GameConfig>, clock: number) {
     const game = await setup(
       "plains",
@@ -51,14 +54,19 @@ describe("the Seasons lobby setting", () => {
     const growth = game.config().troopIncreaseRate(b, game.ticksSinceStart());
     game.addExecution(new AttackExecution(100_000, a, b.id()));
     executeTicks(game, 6);
-    return { lost: 100_000 - a.outgoingAttacks()[0].troops(), growth };
+    return {
+      lost: 100_000 - a.outgoingAttacks()[0].troops(),
+      taken: a.numTilesOwned() - 50 * 20,
+      growth,
+    };
   }
 
-  it("when off, winter changes neither attack losses nor troop growth", async () => {
+  it("when off, winter changes neither attack speed nor troop growth", async () => {
     const fair = await winterEffects({}, FAIR);
     const winterOn = await winterEffects({}, IN_WINTER);
     const winterOff = await winterEffects({ seasons: false }, IN_WINTER);
-    expect(winterOn.lost).toBeGreaterThan(fair.lost);
+    // Winter slows attacks into snow; it costs no extra troops per tile.
+    expect(winterOn.taken).toBeLessThan(fair.taken);
     expect(winterOn.growth).toBeLessThan(fair.growth);
     expect(winterOff).toEqual(fair);
   });

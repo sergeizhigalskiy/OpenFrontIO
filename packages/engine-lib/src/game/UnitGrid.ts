@@ -2,50 +2,9 @@ import { GameMap, TileRef } from "@openfront/engine-api/game/GameMap";
 import { PlayerID, UnitType } from "@openfront/engine-api/game/GameTypes";
 import { UnitLike, UnitPredicate } from "@openfront/engine-api/game/ReadViews";
 
-/** Side of a UnitGrid cell, in tiles. */
-export const UNIT_GRID_CELL_SIZE = 100;
-
-/** First cell index a range query around coordinate `c` scans on one axis. */
-function firstCellInRange(c: number, range: number): number {
-  const cs = UNIT_GRID_CELL_SIZE;
-  return Math.floor(c / cs) - Math.ceil((range - (c % cs)) / cs);
-}
-
-/** Last cell index a range query around coordinate `c` scans on one axis. */
-function lastCellInRange(c: number, range: number): number {
-  const cs = UNIT_GRID_CELL_SIZE;
-  return Math.floor(c / cs) + Math.ceil((range - (cs - (c % cs))) / cs);
-}
-
-/**
- * Whether a query of `range` around `from` scans the cell holding `tile`.
- * The scanned cells stop short of a tile exactly `range` away along +x or +y
- * when it starts the next cell, so such a unit is never found. Rules that
- * filter a wider query by a smaller range use this to find exactly what a
- * query of that smaller range finds.
- */
-export function rangeQueryScans(
-  gm: GameMap,
-  from: TileRef,
-  range: number,
-  tile: TileRef,
-): boolean {
-  const cs = UNIT_GRID_CELL_SIZE;
-  const fx = gm.x(from);
-  const fy = gm.y(from);
-  const cx = Math.floor(gm.x(tile) / cs);
-  const cy = Math.floor(gm.y(tile) / cs);
-  return (
-    cx >= firstCellInRange(fx, range) &&
-    cx <= lastCellInRange(fx, range) &&
-    cy >= firstCellInRange(fy, range) &&
-    cy <= lastCellInRange(fy, range)
-  );
-}
-
 export class UnitGrid<U extends UnitLike = UnitLike> {
   private grid: Map<UnitType, Set<U>>[][];
-  private readonly cellSize = UNIT_GRID_CELL_SIZE;
+  private readonly cellSize = 100;
 
   constructor(private gm: GameMap) {
     this.grid = Array(Math.ceil(gm.height() / this.cellSize))
@@ -158,13 +117,24 @@ export class UnitGrid<U extends UnitLike = UnitLike> {
   private getCellsInRange(tile: TileRef, range: number) {
     const x = this.gm.x(tile);
     const y = this.gm.y(tile);
-    const startGridX = Math.max(0, firstCellInRange(x, range));
+    const cellSize = this.cellSize;
+    const [gridX, gridY] = this.getGridCoords(x, y);
+    const startGridX = Math.max(
+      0,
+      gridX - Math.ceil((range - (x % cellSize)) / cellSize),
+    );
     const endGridX = Math.min(
       this.grid[0].length - 1,
-      lastCellInRange(x, range),
+      gridX + Math.ceil((range - (cellSize - (x % cellSize))) / cellSize),
     );
-    const startGridY = Math.max(0, firstCellInRange(y, range));
-    const endGridY = Math.min(this.grid.length - 1, lastCellInRange(y, range));
+    const startGridY = Math.max(
+      0,
+      gridY - Math.ceil((range - (y % cellSize)) / cellSize),
+    );
+    const endGridY = Math.min(
+      this.grid.length - 1,
+      gridY + Math.ceil((range - (cellSize - (y % cellSize))) / cellSize),
+    );
 
     return { startGridX, endGridX, startGridY, endGridY };
   }

@@ -10,9 +10,11 @@
  *
  * A city-state is a tribe (PlayerType.Bot) that never expands, attacks,
  * allies, trades or takes donations. It starts with a disc of land around a
- * level-2 city and a defense post, and a dense garrison. Whoever eliminates
- * it gets a gold bounty on top of the normal conquest gold, and captures the
- * city, whose troop bonus then counts for them.
+ * level-2 city and a defense post next to the city, and a dense garrison.
+ * Attackers get no tribe discount against it, and it falls only below
+ * CITY_STATE_ELIMINATION_TILES. Whoever eliminates it gets a gold bounty on
+ * top of the normal conquest gold, and captures the city at
+ * CITY_STATE_CAPTURED_CITY_LEVEL, whose troop bonus then counts for them.
  *
  * Shared by the engine (placement, rewards, troop cap) and the client (hover
  * and labels), so every tunable number lives here. All math is integer, so
@@ -112,6 +114,15 @@ export const CITY_STATE_PLACEMENT_TRIES = 2_000;
 
 /** Level of the city at a city-state's center. */
 export const CITY_STATE_CITY_LEVEL = 2;
+
+/** Level its city drops to when a player captures it. */
+export const CITY_STATE_CAPTURED_CITY_LEVEL = 1;
+
+/**
+ * A city-state is eliminated once it holds fewer tiles than this (a player
+ * at 100, as upstream), so most of it has to be taken.
+ */
+export const CITY_STATE_ELIMINATION_TILES = 20;
 
 /**
  * A city-state's garrison, and its troop cap, is this many times the troop

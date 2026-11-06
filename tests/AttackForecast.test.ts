@@ -4,7 +4,8 @@
  *  - the moved attackLogic is bit-identical to the old EngineConfig code
  *    (a verbatim copy lives below) over a wide spread of inputs;
  *  - the forecast the hover card shows is exactly what AttackExecution
- *    computes for the same tile, defense posts included;
+ *    computes for the same tile: defense posts, the capped environment
+ *    (forest, river, ford, winter, mud) and a spearhead's budget cap;
  *  - the forecast's front size is the border an attack starts with.
  * AttackLogicGolden and AttackScenarios pin the engine's own numbers.
  */
@@ -17,6 +18,11 @@ import {
 import { GameConfig } from "@openfront/engine-api/Schemas";
 import { log } from "@openfront/engine-lib/DetMath";
 import {
+  attackEnvironment,
+  ENVIRONMENT_TIME_CAP,
+  withEnvironmentCost,
+} from "@openfront/engine-lib/game/AttackEnvironment";
+import {
   ATTACK_FRONT_JITTER_MEAN,
   AttackForecast,
   attackForecast,
@@ -25,16 +31,16 @@ import {
 import {
   AttackLogicInput,
   AttackLogicResult,
+  SPEAR_BUDGET_FRONT,
 } from "@openfront/engine-lib/game/AttackLogic";
 import {
   SEASON_CYCLE_TICKS,
-  WINTER_ATTACKER_LOSS_MULTIPLIER,
+  WINTER_ATTACK_TIME_MULTIPLIER,
 } from "@openfront/engine-lib/game/Seasons";
 import {
   FOREST_DEFENDED_LOSS_MULTIPLIER,
-  RIVER_TIME_MULTIPLIER,
+  FOREST_TIME_MULTIPLIER,
   TerrainFeature,
-  withTerrainFeatureCost,
 } from "@openfront/engine-lib/game/TerrainFeatures";
 import { MUD_TILE_COST_MULTIPLIER } from "@openfront/engine-lib/game/Weather";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
@@ -187,9 +193,11 @@ describe("attackLogic moved to engine-lib", () => {
 interface Check {
   input: AttackLogicInput;
   tile: number;
-  /** What AttackExecution charges: attackLogic, then the terrain feature. */
+  /** What AttackExecution charges: attackLogic, then the environment. */
   engine: AttackLogicResult;
   forecast: AttackForecast;
+  /** The front the forecast was given. */
+  front: number;
 }
 
 function conquerRect(
@@ -235,7 +243,7 @@ async function plainsGame(defenderTiles: boolean) {
 /**
  * Runs `ticks` of an attack and, for every tile the engine prices, the
  * forecast for that tile taken at the same moment, from the same troops and
- * border size.
+ * border size. With `focus` the attack is a spearhead at that tile.
  */
 function recordAttack(
   game: Game,
@@ -243,6 +251,7 @@ function recordAttack(
   target: Player | null,
   troops: number,
   ticks: number,
+  focus: number | null = null,
 ): Check[] {
   const proto = AttackExecution.prototype as unknown as {
     attackLogicInput: (...args: unknown[]) => AttackLogicInput;
@@ -254,21 +263,32 @@ function recordAttack(
     ...args: unknown[]
   ) {
     const [attackTroops, tile, borderSize] = args as [number, number, number];
+    // A broad attack's front is its border; a spearhead's forecast is
+    // given the whole border and caps it itself.
+    const front =
+      focus === null
+        ? borderSize - ATTACK_FRONT_JITTER_MEAN
+        : (this as { attack: { borderSize(): number } }).attack.borderSize();
     const forecast = attackForecast(
       game,
       attacker,
       target,
       tile,
       attackTroops,
-      borderSize - ATTACK_FRONT_JITTER_MEAN,
+      front,
+      focus !== null,
     );
     const input = original.apply(this, args);
-    const engine = withTerrainFeatureCost(
+    const engine = withEnvironmentCost(
       game.config().attackLogic(input),
-      game.terrainFeature(tile),
-      target !== null,
+      attackEnvironment(
+        game,
+        tile,
+        target !== null,
+        input.defenderHasDefensePost,
+      ),
     );
-    checks.push({ input, tile, engine, forecast });
+    checks.push({ input, tile, engine, forecast, front });
     return input;
   });
   try {
@@ -277,6 +297,9 @@ function recordAttack(
         troops,
         attacker,
         target === null ? game.terraNullius().id() : target.id(),
+        null,
+        true,
+        focus,
       ),
     );
     for (let i = 0; i < ticks; i++) game.executeNextTick();
@@ -288,10 +311,9 @@ function recordAttack(
 
 function expectForecastMatches(checks: Check[]) {
   expect(checks.length).toBeGreaterThan(20);
-  for (const { input, engine, forecast } of checks) {
+  for (const { engine, forecast } of checks) {
     expect(forecast.lossPerTile).toBe(engine.attackerTroopLoss);
     expect(forecast.tilesPerSecond).toBe(10 / engine.tickFraction);
-    expect(forecast.defensePostLevel > 0).toBe(input.defenderHasDefensePost);
   }
 }
 
@@ -303,16 +325,14 @@ describe("attack forecast matches the engine", () => {
     expect(checks.every((c) => !c.input.defenderHasDefensePost)).toBe(true);
   });
 
-  test("into a level-2 defense post's cover", async () => {
+  test("into a defense post's cover", async () => {
     const { game, attacker, defender } = await plainsGame(true);
-    const post = defender.buildUnit(UnitType.DefensePost, game.ref(85, 45), {});
-    post.increaseLevel();
+    // 28 tiles from the front at y = 45: it covers part of the front.
+    defender.buildUnit(UnitType.DefensePost, game.ref(78, 45), {});
     const checks = recordAttack(game, attacker, defender, 60_000, 20);
     expectForecastMatches(checks);
-    // (85,45) reaches x = 50 only at level 2's 38 tiles.
     const covered = checks.filter((c) => c.input.defenderHasDefensePost);
     expect(covered.length).toBeGreaterThan(0);
-    expect(covered.every((c) => c.forecast.defensePostLevel === 2)).toBe(true);
     expect(checks.some((c) => !c.input.defenderHasDefensePost)).toBe(true);
   });
 
@@ -332,11 +352,28 @@ describe("attack forecast matches the engine", () => {
     game.setWeather(mud);
     const checks = recordAttack(game, attacker, defender, 60_000, 20);
     expectForecastMatches(checks);
-    // Snow is the northern 30% of the plains: both sides of each rule show up.
-    const loss = new Set(checks.map((c) => c.input.weatherLossMultiplier));
-    const cost = new Set(checks.map((c) => c.input.weatherTileCostMultiplier));
-    expect([...loss].sort()).toEqual([1, WINTER_ATTACKER_LOSS_MULTIPLIER]);
-    expect([...cost].sort()).toEqual([1, MUD_TILE_COST_MULTIPLIER]);
+    // Snow is the northern 25% of the plains: both sides of each rule show up.
+    const envs = checks.map((c) =>
+      attackEnvironment(game, c.tile, true, c.input.defenderHasDefensePost),
+    );
+    expect(new Set(envs.map((e) => e.winterSnow))).toEqual(
+      new Set([true, false]),
+    );
+    expect(new Set(envs.map((e) => e.mud))).toEqual(new Set([true, false]));
+    // Winter and mud slow the attack and cost no extra troops.
+    const both = checks.find((_, i) => envs[i].winterSnow && envs[i].mud);
+    const bare = (c: Check) => game.config().attackLogic(c.input);
+    if (both !== undefined) {
+      expect(both.forecast.lossPerTile).toBe(bare(both).attackerTroopLoss);
+      expect(10 / both.forecast.tilesPerSecond!).toBeCloseTo(
+        bare(both).tickFraction *
+          Math.min(
+            WINTER_ATTACK_TIME_MULTIPLIER * MUD_TILE_COST_MULTIPLIER,
+            ENVIRONMENT_TIME_CAP,
+          ),
+        9,
+      );
+    }
   });
 
   test("over forest, river and ford, stacked with winter", async () => {
@@ -360,21 +397,62 @@ describe("attack forecast matches the engine", () => {
       checks.filter((c) => feature(c.tile) === f);
     expect(by(TerrainFeature.Forest).length).toBeGreaterThan(0);
     expect(by(TerrainFeature.River).length).toBeGreaterThan(0);
-    // The forest's 1.3x loss on top of winter's 1.5x on snow land.
-    const snowForest = by(TerrainFeature.Forest).find(
-      (c) => c.input.weatherLossMultiplier !== 1,
-    )!;
+    const snow = (c: Check) => game.y(c.tile) < 25;
+    // On snow, the forest's 1.2x loss alone (winter adds none), and its 1.2x
+    // time times winter's 1.25x.
+    const snowForest = by(TerrainFeature.Forest).find(snow)!;
     const bare = game.config().attackLogic(snowForest.input);
     expect(snowForest.forecast.lossPerTile).toBeCloseTo(
       bare.attackerTroopLoss * FOREST_DEFENDED_LOSS_MULTIPLIER,
       9,
     );
-    const river = by(TerrainFeature.River)[0];
-    expect(10 / river.forecast.tilesPerSecond!).toBeCloseTo(
-      game.config().attackLogic(river.input).tickFraction *
-        RIVER_TIME_MULTIPLIER,
+    expect(10 / snowForest.forecast.tilesPerSecond!).toBeCloseTo(
+      bare.tickFraction *
+        FOREST_TIME_MULTIPLIER *
+        WINTER_ATTACK_TIME_MULTIPLIER,
       9,
     );
+    // A river in winter: 2.0x times 1.25x, capped at 2.0x.
+    const river = by(TerrainFeature.River).find(snow)!;
+    expect(10 / river.forecast.tilesPerSecond!).toBeCloseTo(
+      game.config().attackLogic(river.input).tickFraction *
+        ENVIRONMENT_TIME_CAP,
+      9,
+    );
+  });
+
+  test("a spearhead, priced with its capped budget", async () => {
+    const { game, attacker, defender } = await plainsGame(true);
+    // A post in the way, so the cover and the cap both show up.
+    defender.buildUnit(UnitType.DefensePost, game.ref(80, 45), {});
+    const checks = recordAttack(
+      game,
+      attacker,
+      defender,
+      60_000,
+      20,
+      game.ref(85, 45),
+    );
+    expect(checks.length).toBeGreaterThan(20);
+    for (const c of checks) {
+      // The engine's front is the border capped at 48 tiles, plus 0-4 tiles
+      // of jitter; the forecast prices the cap plus the mean jitter.
+      const capped = Math.min(c.front, SPEAR_BUDGET_FRONT);
+      expect(c.input.borderSize).toBeGreaterThanOrEqual(capped);
+      expect(c.input.borderSize).toBeLessThanOrEqual(capped + 4);
+      expect(c.forecast.lossPerTile).toBe(c.engine.attackerTroopLoss);
+      const priced = withEnvironmentCost(
+        game.config().attackLogic({
+          ...c.input,
+          borderSize: capped + ATTACK_FRONT_JITTER_MEAN,
+        }),
+        attackEnvironment(game, c.tile, true, c.input.defenderHasDefensePost),
+      );
+      expect(c.forecast.tilesPerSecond).toBe(10 / priced.tickFraction);
+    }
+    // The border outgrew the cap.
+    expect(checks.some((c) => c.front > SPEAR_BUDGET_FRONT)).toBe(true);
+    expect(checks.some((c) => c.input.defenderHasDefensePost)).toBe(true);
   });
 
   test("into unclaimed land", async () => {
@@ -397,5 +475,17 @@ describe("attack forecast matches the engine", () => {
     // AttackExecution adds 0-4 tiles of jitter to its border each tick.
     expect(first.input.borderSize).toBeGreaterThanOrEqual(90);
     expect(first.input.borderSize).toBeLessThanOrEqual(94);
+    // A spearhead's budget front stops at 48 tiles.
+    const spear = await plainsGame(true);
+    const [tip] = recordAttack(
+      spear.game,
+      spear.attacker,
+      spear.defender,
+      60_000,
+      2,
+      spear.game.ref(80, 45),
+    );
+    expect(tip.input.borderSize).toBeGreaterThanOrEqual(SPEAR_BUDGET_FRONT);
+    expect(tip.input.borderSize).toBeLessThanOrEqual(SPEAR_BUDGET_FRONT + 4);
   });
 });

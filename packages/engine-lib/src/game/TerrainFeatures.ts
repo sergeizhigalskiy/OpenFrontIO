@@ -4,8 +4,9 @@
  *
  * Shared by the engine (attack cost, structure placement, nation AI) and the
  * client (tile hover, feature rendering), so every tunable number lives here.
- * The multipliers stack on top of the terrain cost (plains, highland,
- * mountain), defense posts and everything else attackLogic applies.
+ * The multipliers are environment factors: AttackEnvironment.ts caps them
+ * together with winter and mud, on top of the terrain cost (plains,
+ * highland, mountain), defense posts and everything else attackLogic applies.
  *
  * The feature layer is static map data: map files carry it, so it is never
  * part of a snapshot.
@@ -20,13 +21,13 @@ export { TerrainFeature };
 // ---------------------------------------------------------------------------
 
 /** Attacker troop loss on a forest tile a player owns. */
-export const FOREST_DEFENDED_LOSS_MULTIPLIER = 1.3;
+export const FOREST_DEFENDED_LOSS_MULTIPLIER = 1.2;
 /** Capture time on a forest tile, owned or not. */
-export const FOREST_TIME_MULTIPLIER = 1.3;
+export const FOREST_TIME_MULTIPLIER = 1.2;
 /** Attacker troop loss on a river tile, owned or not. */
-export const RIVER_LOSS_MULTIPLIER = 1.5;
+export const RIVER_LOSS_MULTIPLIER = 1.25;
 /** Capture time on a river tile, owned or not. */
-export const RIVER_TIME_MULTIPLIER = 2.5;
+export const RIVER_TIME_MULTIPLIER = 2;
 // A ford is a river tile captured at normal cost: no multiplier.
 
 // Indexed by TerrainFeature. The attack loop reads these for every tile it
@@ -60,32 +61,6 @@ export function terrainFeatureLossMultiplier(
 /** Capture time multiplier for a tile with this feature. */
 export function terrainFeatureTimeMultiplier(feature: TerrainFeature): number {
   return TIME[feature];
-}
-
-/** The two parts of attackLogic's result a terrain feature scales. */
-export interface TerrainFeatureCost {
-  attackerTroopLoss: number;
-  /** Share of the tick's conquest budget the tile consumes (capture time). */
-  tickFraction: number;
-}
-
-/**
- * Scales a tile's attack cost by its terrain feature, in place, and returns
- * it. AttackExecution wraps attackLogic's result with this.
- */
-export function withTerrainFeatureCost<T extends TerrainFeatureCost>(
-  cost: T,
-  feature: TerrainFeature,
-  defendedByPlayer: boolean,
-): T {
-  if (feature !== TerrainFeature.None) {
-    cost.attackerTroopLoss *= terrainFeatureLossMultiplier(
-      feature,
-      defendedByPlayer,
-    );
-    cost.tickFraction *= TIME[feature];
-  }
-  return cost;
 }
 
 // ---------------------------------------------------------------------------
