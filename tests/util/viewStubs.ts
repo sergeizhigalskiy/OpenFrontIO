@@ -62,6 +62,8 @@ export function stubConfig(overrides: Partial<Config> = {}): Config {
     nukeMagnitudes: () => ({ inner: 0, outer: 0 }),
     nukeAllianceBreakThreshold: () => 0,
     userSettings: () => ({}),
+    gameConfig: () => ({}),
+    setStackedTeams: () => {},
     ...overrides,
   } as unknown as Config;
   return cfg;

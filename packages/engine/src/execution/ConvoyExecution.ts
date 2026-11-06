@@ -1,6 +1,12 @@
 import { TileRef } from "@openfront/engine-api/game/GameMap";
 import { MessageType, PlayerType } from "@openfront/engine-api/game/GameTypes";
 import { renderTroops } from "@openfront/engine-lib/Format";
+import {
+  convoyAmbushDensityLoss,
+  convoyAmbushLoss,
+  convoyShellLoss,
+  isConvoyHostileTo,
+} from "@openfront/engine-lib/game/Convoys";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import {
   zInt,
@@ -12,8 +18,6 @@ import {
 } from "@openfront/engine-lib/snapshot/SnapshotType";
 import { z } from "zod";
 import { Execution, Game, Player, Unit } from "../game/Game";
-import { PathFinding } from "../pathfinding/PathFinder";
-import { SpatialQuery } from "../pathfinding/spatial/SpatialQuery";
 import { execSnapshotType } from "../snapshot/ExecutionSnapshot";
 import type {
   ExecRecord,
@@ -29,49 +33,45 @@ import {
 /**
  * Donated troops travel as a convoy instead of teleporting.
  *
- * The rules, kept small on purpose:
- * - The convoy leaves from the sender's border tile nearest the recipient and
- *   follows a fixed route: overland when one exists, else by sea from a
- *   sender shore to a recipient shore.
- * - Each land tile it enters that belongs to a hostile third player (not the
- *   sender, not the recipient, not friendly with the sender) costs it
- *   CONVOY_AMBUSH_DENSITY_MULTIPLIER times that player's troops per tile.
+ * The rules, kept small on purpose (the numbers live in engine-lib
+ * game/Convoys.ts, which the donate panel's forecast uses too):
+ * - The convoy follows the route planned when it left (ConvoyRoute.ts).
+ * - Each land tile it enters that belongs to a hostile player (friendly with
+ *   neither the sender nor the recipient, and not a city-state) costs it
+ *   CONVOY_AMBUSH_PERMILLE of its troops plus CONVOY_AMBUSH_DENSITY_MULTIPLIER
+ *   times that player's troops per tile.
  * - A shell from a hostile defense post or warship kills
- *   CONVOY_SHELL_LOSS_PERCENT of its troops.
+ *   CONVOY_SHELL_LOSS_PERCENT of its troops; each shells it once.
  * - At 0 troops it is destroyed.
  * - It delivers on reaching the recipient's land, up to the recipient's
- *   troop cap; what does not fit goes back to the sender.
+ *   troop cap. What does not fit goes back to the sender, up to the sender's
+ *   own cap; the rest is lost, and the sender is told.
  * - If the recipient dies or stops being friendly with the sender, it
- *   disbands and the sender gets the rest back.
+ *   disbands and the sender gets the rest back, up to the same cap.
+ * - While it travels its troops still count as the sender's for troop growth
+ *   (Config.troopIncreaseRate).
  */
 
 /** Tiles a convoy moves per tick, on land and at sea. */
 export const CONVOY_TILES_PER_TICK = 1;
 
 /**
- * Troops a convoy loses per hostile land tile it enters, as a multiple of
- * that tile owner's troop density (troops / tiles owned).
- */
-export const CONVOY_AMBUSH_DENSITY_MULTIPLIER = 20;
-
-/** Share of its current troops a convoy loses to one shell hit, in percent. */
-export const CONVOY_SHELL_LOSS_PERCENT = 50;
-
-/**
- * True when `player` attacks `convoy` on sight: anyone but the sender, the
- * recipient, and the sender's allies and teammates. A disconnected ally
- * still counts as friendly.
+ * True when `player` attacks `convoy` on sight: anyone friendly with neither
+ * its sender nor its recipient, except city-states (isConvoyHostileTo). A
+ * disconnected friend still counts as friendly.
  */
 export function isConvoyHostile(convoy: Unit, player: Player): boolean {
-  const sender = convoy.owner();
-  if (player === sender || player === convoy.targetPlayer()) return false;
-  return !sender.isFriendly(player, true);
+  const recipient = convoy.targetPlayer();
+  return isConvoyHostileTo(
+    convoy.owner(),
+    recipient !== undefined && recipient.isPlayer() ? recipient : null,
+    player,
+  );
 }
 
 /** A shell from `attacker` hit `convoy`. */
 export function shellConvoy(convoy: Unit, attacker: Player): void {
-  const loss = Math.ceil((convoy.troops() * CONVOY_SHELL_LOSS_PERCENT) / 100);
-  damageConvoy(convoy, loss, attacker);
+  damageConvoy(convoy, convoyShellLoss(convoy.troops()), attacker);
 }
 
 function damageConvoy(convoy: Unit, loss: number, attacker: Player): void {
@@ -80,111 +80,6 @@ function damageConvoy(convoy: Unit, loss: number, attacker: Player): void {
   if (convoy.troops() <= 0) {
     convoy.delete(true, attacker);
   }
-}
-
-/**
- * The route a troop convoy from `sender` to `recipient` takes, first tile to
- * last, or null when neither a land nor a sea route reaches the recipient
- * (say, an overseas ally with no shore on a sea the sender touches).
- */
-export function planConvoyRoute(
-  game: Game,
-  sender: Player,
-  recipient: Player,
-): TileRef[] | null {
-  const anchor = anchorTile(game, recipient);
-  if (anchor === null) return null;
-  const isLandTile = (t: TileRef) => game.isLand(t) && !game.isImpassable(t);
-  const start = nearestTile(game, sender.borderTiles(), anchor, isLandTile);
-  if (start === null) return null;
-  const end = nearestTile(game, recipient.borderTiles(), start, isLandTile);
-  if (end === null) return null;
-
-  // The rail pathfinder walks land, preferring straight lines, and bridges
-  // water only where a rail could (rivers and straits up to about six tiles
-  // wide). It searches the half-resolution minimap, so a route can clip a
-  // coastal water tile; ambushes only happen on land.
-  const land = PathFinding.Rail(game).findPath(start, end);
-  if (land !== null && land.length > 0) {
-    return withEndpoints(land, start, end);
-  }
-  return seaRoute(game, sender, recipient, start);
-}
-
-/** By sea, like a transport ship: from a sender shore to a recipient shore. */
-function seaRoute(
-  game: Game,
-  sender: Player,
-  recipient: Player,
-  from: TileRef,
-): TileRef[] | null {
-  const seas = new Set<number>();
-  sender.borderTiles().forEach((t) => {
-    if (!game.isShore(t) || !game.isLand(t)) return;
-    const component = game.getWaterComponent(t);
-    if (component !== null) seas.add(component);
-  });
-  if (seas.size === 0) return null;
-
-  const landing = nearestTile(game, recipient.borderTiles(), from, (t) => {
-    if (!game.isShore(t) || !game.isLand(t)) return false;
-    const component = game.getWaterComponent(t);
-    return component !== null && seas.has(component);
-  });
-  if (landing === null) return null;
-
-  const launch = new SpatialQuery(game).closestShoreByWater(sender, landing);
-  if (launch === null) return null;
-
-  const path = PathFinding.Water(game).findPath(launch, landing);
-  if (path === null || path.length === 0) return null;
-  return withEndpoints(path, launch, landing);
-}
-
-function withEndpoints(
-  path: TileRef[],
-  start: TileRef,
-  end: TileRef,
-): TileRef[] {
-  const route = path[0] === start ? [...path] : [start, ...path];
-  if (route[route.length - 1] !== end) route.push(end);
-  return route;
-}
-
-/** A tile in the middle of `player`'s land, to aim convoys at. */
-function anchorTile(game: Game, player: Player): TileRef | null {
-  // Unset (undefined) until PlayerExecution first measures the player.
-  const box = player.largestClusterBoundingBox;
-  if (box) {
-    const x = Math.floor((box.min.x + box.max.x) / 2);
-    const y = Math.floor((box.min.y + box.max.y) / 2);
-    if (game.isValidCoord(x, y)) return game.ref(x, y);
-  }
-  const spawn = player.spawnTile();
-  if (spawn !== undefined) return spawn;
-  for (const tile of player.borderTiles()) return tile;
-  return null;
-}
-
-/** The tile of `tiles` nearest `target` that passes `accept` (first wins ties). */
-function nearestTile(
-  game: Game,
-  tiles: Iterable<TileRef>,
-  target: TileRef,
-  accept: (t: TileRef) => boolean,
-): TileRef | null {
-  let best: TileRef | null = null;
-  let bestDist = Infinity;
-  for (const tile of tiles) {
-    if (!accept(tile)) continue;
-    const dist = game.manhattanDist(tile, target);
-    if (dist < bestDist) {
-      best = tile;
-      bestDist = dist;
-      if (dist === 0) break;
-    }
-  }
-  return best;
 }
 
 /** Moves a convoy along its route and settles how it ends. */
@@ -262,10 +157,9 @@ export class ConvoyExecution implements Execution {
     if (!this.mg.isLand(tile)) return;
     const owner = this.mg.owner(tile);
     if (!owner.isPlayer() || !isConvoyHostile(this.convoy, owner)) return;
-    const tiles = owner.numTilesOwned();
-    if (tiles <= 0) return;
-    const loss = Math.floor(
-      (owner.troops() * CONVOY_AMBUSH_DENSITY_MULTIPLIER) / tiles,
+    const loss = convoyAmbushLoss(
+      this.convoy.troops(),
+      convoyAmbushDensityLoss(owner.troops(), owner.numTilesOwned()),
     );
     damageConvoy(this.convoy, loss, owner);
   }
@@ -284,9 +178,7 @@ export class ConvoyExecution implements Execution {
     this.convoy.delete(false);
 
     this.recipient.receiveTroopDonation(this.sender, delivered);
-    if (troops > delivered && this.sender.isAlive()) {
-      this.sender.addTroops(troops - delivered);
-    }
+    this.refund(troops - delivered);
 
     // Prevent players from just buying a good relation by sending 1% troops.
     // Instead, a minimum is needed, and it's random.
@@ -319,16 +211,46 @@ export class ConvoyExecution implements Execution {
     this.convoy.setReachedTarget();
     this.convoy.delete(false);
     if (!this.sender.isAlive()) return;
-    this.sender.addTroops(troops);
+    const returned = this.refund(troops);
     this.mg.displayMessage(
       "events_display.convoy_disbanded",
       MessageType.DONATION_SENT,
       this.sender.id(),
       undefined,
-      { name: this.recipient.displayName(), troops: renderTroops(troops) },
+      { name: this.recipient.displayName(), troops: renderTroops(returned) },
       undefined,
       this.recipient.id(),
     );
+  }
+
+  /**
+   * Gives `troops` back to the sender, up to the sender's troop cap, and
+   * tells the sender about any that didn't fit, which are lost. Returns how
+   * many went back.
+   */
+  private refund(troops: number): number {
+    if (troops <= 0 || !this.sender.isAlive()) return 0;
+    const room = Math.max(
+      0,
+      Math.floor(
+        this.mg.config().maxTroops(this.sender) - this.sender.troops(),
+      ),
+    );
+    const returned = Math.min(troops, room);
+    if (returned > 0) this.sender.addTroops(returned);
+    const lost = troops - returned;
+    if (lost > 0) {
+      this.mg.displayMessage(
+        "events_display.convoy_troops_lost",
+        MessageType.DONATION_SENT,
+        this.sender.id(),
+        undefined,
+        { name: this.recipient.displayName(), troops: renderTroops(lost) },
+        undefined,
+        this.recipient.id(),
+      );
+    }
+    return returned;
   }
 
   private reportDestroyed(destroyer: Player): void {

@@ -1,4 +1,9 @@
+import type { ConvoyRouteForecast } from "@openfront/engine-api/game/ConvoyForecast";
 import { renderTroops } from "@openfront/engine-lib/Format";
+import {
+  chooseConvoyRoute,
+  convoyLossAlong,
+} from "@openfront/engine-lib/game/Convoys";
 import { within } from "@openfront/engine-lib/Util";
 import { EventBus } from "@openfront/shared/EventBus";
 import { html, LitElement } from "lit";
@@ -31,6 +36,13 @@ export class SendResourceModal extends LitElement {
   @state() private sendAmount: number = 0;
   @state() private selectedPercent: number | null = null;
 
+  // Troops only: the routes a convoy to the target could take, priced by the
+  // engine (null while asking). Refreshed while the panel is open, since
+  // land changes hands.
+  @state() private convoyRoutes: ConvoyRouteForecast[] | null = null;
+  private convoyRoutesFor: string | null = null;
+  private convoyRefresh: ReturnType<typeof setInterval> | null = null;
+
   private PRESETS = [10, 25, 50, 75, 100] as const;
 
   createRenderRoot() {
@@ -51,7 +63,13 @@ export class SendResourceModal extends LitElement {
     );
   }
 
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this.stopConvoyForecast();
+  }
+
   updated(changed: Map<string, unknown>) {
+    this.syncConvoyForecast();
     if (changed.has("open") && this.open) {
       // If either side is dead, just close and do nothing
       if (!this.isSenderAlive() || !this.isTargetAlive()) {
@@ -82,6 +100,41 @@ export class SendResourceModal extends LitElement {
 
   private closeModal() {
     this.dispatchEvent(new CustomEvent("close"));
+  }
+
+  /** Asks for the convoy routes while a troops panel is open. */
+  private syncConvoyForecast() {
+    const target = this.target;
+    const me = this.myPlayer;
+    const wanted =
+      this.open && this.mode === "troops" && target !== null && me !== null
+        ? `${me.id()}>${target.id()}`
+        : null;
+    if (wanted === this.convoyRoutesFor) return;
+    this.stopConvoyForecast();
+    this.convoyRoutesFor = wanted;
+    this.convoyRoutes = null;
+    if (wanted === null) return;
+    this.requestConvoyForecast();
+    this.convoyRefresh = setInterval(() => this.requestConvoyForecast(), 2000);
+  }
+
+  private stopConvoyForecast() {
+    if (this.convoyRefresh !== null) clearInterval(this.convoyRefresh);
+    this.convoyRefresh = null;
+    this.convoyRoutesFor = null;
+  }
+
+  private requestConvoyForecast() {
+    const key = this.convoyRoutesFor;
+    const worker = this.gameView?.worker;
+    if (key === null || !worker || !this.myPlayer || !this.target) return;
+    worker
+      .convoyForecast(this.myPlayer.id(), this.target.id())
+      .then((routes) => {
+        if (this.convoyRoutesFor === key) this.convoyRoutes = routes;
+      })
+      .catch(() => {});
   }
 
   private confirm() {
@@ -419,6 +472,73 @@ export class SendResourceModal extends LitElement {
     </p>`;
   }
 
+  /**
+   * The route a convoy of `allowed` troops would take and what it would
+   * lose on the way, by the same rule the convoy is hit by.
+   */
+  private renderConvoyForecast(allowed: number) {
+    const routes = this.convoyRoutes;
+    if (routes === null) {
+      return html`<p class="mt-2 text-xs text-zinc-400 convoy-forecast">
+        ${translateText("send_troops_modal.route_planning")}
+      </p>`;
+    }
+    const route = chooseConvoyRoute(allowed, routes);
+    if (route === null) {
+      return html`<p class="mt-2 text-xs text-amber-300 convoy-forecast">
+        ${translateText("send_troops_modal.no_route", {
+          name: this.target?.displayName() ?? "",
+        })}
+      </p>`;
+    }
+    const lost = convoyLossAlong(allowed, route.steps);
+    const percent = allowed > 0 ? Math.round((lost / allowed) * 100) : 0;
+    const seconds = Math.max(1, Math.ceil(route.length / 10));
+    const names = route.crossed
+      .slice(0, 3)
+      .map((id) =>
+        this.gameView?.hasPlayer(id)
+          ? this.gameView.player(id).displayName()
+          : id,
+      )
+      .join(", ");
+    const more = route.crossed.length > 3 ? ", ..." : "";
+    return html`<div class="mt-2 text-xs text-zinc-300 convoy-forecast">
+      <div>
+        ${translateText(
+          route.mode === "land"
+            ? "send_troops_modal.route_land"
+            : "send_troops_modal.route_sea",
+          { tiles: route.length, seconds },
+        )}
+        ·
+        ${
+          route.hostileTiles > 0
+            ? translateText("send_troops_modal.route_hostile", {
+                count: route.hostileTiles,
+                names: names + more,
+              })
+            : translateText("send_troops_modal.route_safe")
+        }
+        ${
+          route.shells > 0
+            ? html` ·
+              ${translateText("send_troops_modal.route_shells", {
+                count: route.shells,
+              })}`
+            : ""
+        }
+      </div>
+      <div class="${lost > 0 ? "text-amber-300" : "text-emerald-400"}">
+        ${translateText("send_troops_modal.expected_loss", {
+          lost: this.format(lost),
+          percent,
+          arrive: this.format(allowed - lost),
+        })}
+      </div>
+    </div>`;
+  }
+
   private renderSummary(allowed: number) {
     const total = this.getTotalNumber();
     const keep = this.keepAfter(allowed);
@@ -566,6 +686,11 @@ export class SendResourceModal extends LitElement {
             ${this.renderPresets(percent)} ${this.renderSlider(percent)}
             ${
               this.mode === "troops" ? this.renderCapacityNote(allowed) : html``
+            }
+            ${
+              this.mode === "troops"
+                ? this.renderConvoyForecast(allowed)
+                : html``
             }
             ${this.renderSummary(allowed)} ${this.renderActions()}
             ${this.renderSliderStyles()}

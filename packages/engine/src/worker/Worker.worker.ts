@@ -4,6 +4,7 @@ import {
 } from "@openfront/engine-api/game/GameUpdates";
 import {
   AttackClusteredPositionsResultMessage,
+  ConvoyForecastResultMessage,
   ExtractSnapshotErrorMessage,
   ExtractSnapshotResultMessage,
   HumanDisconnectsResultMessage,
@@ -432,6 +433,30 @@ async function onMessage(e: MessageEvent<MainThreadMessage>) {
         } as TransportShipSpawnResultMessage);
       } catch (error) {
         console.error("Failed to spawn transport ship:", error);
+      }
+      break;
+    case "convoy_forecast":
+      if (!gameRunner) {
+        throw new Error("Game runner not initialized");
+      }
+
+      try {
+        const forecast = (await gameRunner).convoyForecast(
+          message.senderID,
+          message.recipientID,
+        );
+        sendMessage({
+          type: "convoy_forecast_result",
+          id: message.id,
+          result: forecast,
+        } as ConvoyForecastResultMessage);
+      } catch (error) {
+        console.error("Failed to forecast a convoy:", error);
+        sendMessage({
+          type: "convoy_forecast_result",
+          id: message.id,
+          result: [],
+        } as ConvoyForecastResultMessage);
       }
       break;
     case "snapshot": {

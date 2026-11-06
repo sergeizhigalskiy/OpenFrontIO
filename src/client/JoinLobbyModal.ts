@@ -1,4 +1,9 @@
-import { GameMode, GameType, maps } from "@openfront/engine-api/game/GameTypes";
+import {
+  Difficulty,
+  GameMode,
+  GameType,
+  maps,
+} from "@openfront/engine-api/game/GameTypes";
 import { GAME_ID_REGEX, GameConfig } from "@openfront/engine-api/Schemas";
 import { assetUrl } from "@openfront/shared/AssetUrls";
 import { EventBus } from "@openfront/shared/EventBus";
@@ -253,6 +258,9 @@ export class JoinLobbyModal extends BaseModal {
                               this.gameConfig?.anonymizeNames ?? false
                             }
                             .teamCount=${this.gameConfig?.playerTeams ?? 2}
+                            .difficulty=${
+                              this.gameConfig?.difficulty ?? Difficulty.Medium
+                            }
                             .isPublicGame=${
                               this.gameConfig?.gameType === GameType.Public
                             }

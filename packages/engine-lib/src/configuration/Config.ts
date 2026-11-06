@@ -2,6 +2,7 @@ import {
   Difficulty,
   GameType,
   PlayerType,
+  Team,
   Tick,
   UnitInfo,
   UnitType,
@@ -26,6 +27,10 @@ import { DoomsdayClockSpeed } from "../game/DoomsdayClock";
 import { HORDE_NIGHT_DEFAULT_SURVIVAL_MINUTES } from "../game/HordeNight";
 import { isInfected } from "../game/Plague";
 import { isWinterAt, seasonTroopGrowthMultiplier } from "../game/Seasons";
+import {
+  harderDifficulty,
+  STACKED_IMPOSSIBLE_GROWTH_PERCENT,
+} from "../game/TeamAssignment";
 import { cityStateTroopCap } from "../game/WorldFeatures";
 import { assertNever } from "../Util";
 
@@ -497,7 +502,8 @@ export class Config implements AttackRules {
 
   /**
    * The difficulty a nation plays at: the lobby's, except a Boss Raid's
-   * nation Boss, which is always Impossible.
+   * nation Boss, which is always Impossible, and nations on a short-handed
+   * team of a stacked game, which play one step harder (TeamAssignment.ts).
    */
   difficultyFor(player: PlayerLike): Difficulty {
     if (
@@ -506,7 +512,35 @@ export class Config implements AttackRules {
     ) {
       return Difficulty.Impossible;
     }
+    if (this.onStackedTeam(player)) {
+      return harderDifficulty(this._gameConfig.difficulty);
+    }
     return this._gameConfig.difficulty;
+  }
+
+  /**
+   * Records the short-handed teams of a stacked game. The engine sets them
+   * when it creates the game (they are then part of the stored config); the
+   * client's view sets them once it sees the teams.
+   */
+  setStackedTeams(teams: readonly Team[]): void {
+    const current = this._gameConfig.stackedTeams ?? [];
+    if (
+      current.length === teams.length &&
+      current.every((team, i) => team === teams[i])
+    ) {
+      return;
+    }
+    this._gameConfig = { ...this._gameConfig, stackedTeams: [...teams] };
+  }
+
+  /** A nation on a short-handed team of a stacked game. */
+  private onStackedTeam(player: PlayerLike): boolean {
+    if (player.type() !== PlayerType.Nation) return false;
+    const stacked = this._gameConfig.stackedTeams;
+    if (stacked === undefined || stacked.length === 0) return false;
+    const team = player.team();
+    return team !== null && stacked.includes(team);
   }
 
   /** N, the raiders a Boss Raid started with (0 outside one). */
@@ -543,9 +577,17 @@ export class Config implements AttackRules {
     if (this.plague() && isInfected(player)) return 0;
     const max = this.maxTroops(player);
 
-    let toAdd = 10 + pow(player.troops(), 0.73) / 4;
+    // Troops on the road in the player's convoys still count as theirs, so
+    // sending troops away doesn't speed up regrowth.
+    const home = player.troops();
+    let troops = home;
+    for (const convoy of player.units(UnitType.Convoy)) {
+      troops += convoy.troops();
+    }
 
-    const ratio = 1 - player.troops() / max;
+    let toAdd = 10 + pow(troops, 0.73) / 4;
+
+    const ratio = 1 - troops / max;
     toAdd *= ratio;
 
     if (player.type() === PlayerType.Bot) {
@@ -570,6 +612,14 @@ export class Config implements AttackRules {
         default:
           assertNever(difficulty);
       }
+      // A stacked game's short-handed Impossible nations can't step up a
+      // difficulty, so they grow faster instead.
+      if (
+        this.onStackedTeam(player) &&
+        this._gameConfig.difficulty === Difficulty.Impossible
+      ) {
+        toAdd = (toAdd * STACKED_IMPOSSIBLE_GROWTH_PERCENT) / 100;
+      }
     }
 
     if (isBossRaidBoss(this._gameConfig, player)) {
@@ -580,7 +630,11 @@ export class Config implements AttackRules {
       ticksSinceStart !== undefined && this.isWinter(ticksSinceStart),
     );
 
-    return Math.min(player.troops() + toAdd, max) - player.troops();
+    const growth = Math.min(troops + toAdd, max) - troops;
+    if (troops === home) return growth;
+    // With convoys out, home troops over the cap are still cut back to it,
+    // but the convoys' troops never push home troops down.
+    return Math.max(growth, Math.min(0, max - home));
   }
 
   nukeMagnitudes(unitType: UnitType): NukeMagnitude {

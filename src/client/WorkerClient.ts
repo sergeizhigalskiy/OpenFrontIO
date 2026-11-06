@@ -1,3 +1,4 @@
+import type { ConvoyRouteForecast } from "@openfront/engine-api/game/ConvoyForecast";
 import { TileRef } from "@openfront/engine-api/game/GameMap";
 import {
   BuildableUnit,
@@ -492,6 +493,37 @@ export class WorkerClient {
         id: messageId,
         playerID: playerID,
         targetTile: targetTile,
+      });
+    });
+  }
+
+  /**
+   * The routes a troop convoy from `senderID` to `recipientID` could take,
+   * priced by the engine (engine-lib/game/Convoys.ts chooses among them).
+   */
+  convoyForecast(
+    senderID: PlayerID,
+    recipientID: PlayerID,
+  ): Promise<ConvoyRouteForecast[]> {
+    return new Promise((resolve, reject) => {
+      if (!this.isInitialized) {
+        reject(new Error("Worker not initialized"));
+        return;
+      }
+
+      const messageId = generateID();
+
+      this.messageHandlers.set(messageId, (message) => {
+        if (message.type === "convoy_forecast_result") {
+          resolve(message.result);
+        }
+      });
+
+      this.worker!.postMessage({
+        type: "convoy_forecast",
+        id: messageId,
+        senderID,
+        recipientID,
       });
     });
   }

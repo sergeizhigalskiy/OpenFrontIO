@@ -1,3 +1,4 @@
+import { ConvoyRouteForecast } from "../game/ConvoyForecast";
 import { TileRef } from "../game/GameMap";
 import {
   BuildableUnit,
@@ -39,6 +40,8 @@ export type WorkerMessageType =
   | "attack_clustered_positions_result"
   | "transport_ship_spawn"
   | "transport_ship_spawn_result"
+  | "convoy_forecast"
+  | "convoy_forecast_result"
   | "snapshot"
   | "snapshot_result"
   | "read_snapshot_header"
@@ -204,6 +207,18 @@ export interface TransportShipSpawnResultMessage extends BaseWorkerMessage {
   result: TileRef | false;
 }
 
+export interface ConvoyForecastMessage extends BaseWorkerMessage {
+  type: "convoy_forecast";
+  senderID: PlayerID;
+  recipientID: PlayerID;
+}
+
+export interface ConvoyForecastResultMessage extends BaseWorkerMessage {
+  type: "convoy_forecast_result";
+  /** The land route first, then the sea route; empty with no route. */
+  result: ConvoyRouteForecast[];
+}
+
 export interface SnapshotMessage extends BaseWorkerMessage {
   type: "snapshot";
   gitCommit?: string;
@@ -282,6 +297,7 @@ export type MainThreadMessage =
   | PlayerBorderTilesMessage
   | AttackClusteredPositionsMessage
   | TransportShipSpawnMessage
+  | ConvoyForecastMessage
   | SnapshotMessage
   | ReadSnapshotHeaderMessage
   | ExtractSnapshotMessage
@@ -303,6 +319,7 @@ export type WorkerMessage =
   | PlayerBorderTilesResultMessage
   | AttackClusteredPositionsResultMessage
   | TransportShipSpawnResultMessage
+  | ConvoyForecastResultMessage
   | SnapshotResultMessage
   | ReadSnapshotHeaderResultMessage
   | ExtractSnapshotResultMessage

@@ -8,6 +8,7 @@ import {
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
 import { GameConfig } from "@openfront/engine-api/Schemas";
+import { NATION_TROOP_DONATION_COOLDOWN_TICKS } from "@openfront/engine-lib/game/Convoys";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import { AllianceRequestExecution } from "@openfront/engine/execution/alliance/AllianceRequestExecution";
 import { AttackExecution } from "@openfront/engine/execution/AttackExecution";
@@ -1258,9 +1259,14 @@ describe("City troops and expansion", () => {
 });
 
 describe("Troop donations to teammates", () => {
-  // Five stripes. "busy" and "strong" fight the enemy, "idle" has no troops but isn't fighting.
-  async function setupTeam(gameConfig: Partial<GameConfig> = {}) {
-    const ids = ["nation", "busy", "strong", "idle", "enemy"];
+  // Six stripes. Nations "busy" and "strong" and the human "human" fight the
+  // enemy; the nation "idle" has no troops but isn't fighting.
+  async function setupTeam(
+    gameConfig: Partial<GameConfig> = {},
+    fighting: string[] = ["busy", "strong", "human"],
+  ) {
+    const ids = ["nation", "busy", "strong", "idle", "human", "enemy"];
+    const humanIds = ["human", "enemy"];
     const game = await setup(
       "big_plains",
       {
@@ -1271,10 +1277,10 @@ describe("Troop donations to teammates", () => {
         ...gameConfig,
       },
       ids.map(
-        (id, i) =>
+        (id) =>
           new PlayerInfo(
             id,
-            i === 0 ? PlayerType.Nation : PlayerType.Human,
+            humanIds.includes(id) ? PlayerType.Human : PlayerType.Nation,
             null,
             id,
             false,
@@ -1284,10 +1290,10 @@ describe("Troop donations to teammates", () => {
           ),
       ),
     );
-    const [nation, busy, strong, idle, enemy] = ids.map((id) =>
+    const [nation, busy, strong, idle, human, enemy] = ids.map((id) =>
       game.player(id),
     );
-    const owners = [nation, busy, strong, idle, enemy];
+    const owners = [nation, busy, strong, idle, human, enemy];
     game.map().forEachTile((tile) => {
       if (!game.map().isLand(tile)) return;
       owners[Math.floor((game.x(tile) * owners.length) / game.width())].conquer(
@@ -1298,9 +1304,12 @@ describe("Troop donations to teammates", () => {
     busy.setTroops(1_000);
     strong.setTroops(200_000);
     idle.setTroops(0);
+    // The human is the fighting teammate lowest on troops.
+    human.setTroops(200);
     enemy.setTroops(100_000);
-    busy.createAttack(enemy, 1_000, null, new Set());
-    strong.createAttack(enemy, 1_000, null, new Set());
+    for (const id of fighting) {
+      game.player(id).createAttack(enemy, 100, null, new Set());
+    }
 
     const behavior = new NationAttackBehavior(
       new PseudoRandom(42),
@@ -1318,10 +1327,10 @@ describe("Troop donations to teammates", () => {
       spy.mock.calls
         .map((c) => c[0])
         .filter((e) => e instanceof DonateTroopsExecution);
-    return { game, nation, busy, strong, behavior, donations };
+    return { game, nation, busy, strong, human, behavior, donations };
   }
 
-  it("Impossible gives its troops above the reserve to the fighting teammate lowest on troops", async () => {
+  it("Impossible gives its troops above the reserve to the fighting nation teammate lowest on troops", async () => {
     const { game, nation, busy, behavior, donations } = await setupTeam();
     expect(behavior["donateTroops"]()).toBe(true);
     const [donation] = donations();
@@ -1329,6 +1338,12 @@ describe("Troop donations to teammates", () => {
     expect(donation["troops"]).toBeCloseTo(
       nation.troops() - 0.3 * game.config().maxTroops(nation),
     );
+  });
+
+  it("never sends troops to a human teammate", async () => {
+    const { behavior, donations } = await setupTeam({}, ["human"]);
+    expect(behavior["donateTroops"]()).toBe(false);
+    expect(donations()).toEqual([]);
   });
 
   it("skips a teammate its convoy is already heading to", async () => {
@@ -1343,6 +1358,30 @@ describe("Troop donations to teammates", () => {
     expect(behavior["donateTroops"]()).toBe(true);
     const [donation] = donations();
     expect(donation["recipientID"]).toBe(strong.id());
+  });
+
+  it("waits 60 s after its last donation", async () => {
+    const { game, nation, busy, behavior, donations } = await setupTeam();
+    expect(NATION_TROOP_DONATION_COOLDOWN_TICKS).toBe(600);
+    const sentAt = game.ticks();
+    nation.recordTroopDonation(busy);
+    const ticks = vi.spyOn(game, "ticks");
+    ticks.mockReturnValue(sentAt + 599);
+    expect(behavior["donateTroops"]()).toBe(false);
+    ticks.mockReturnValue(sentAt + 600);
+    expect(behavior["donateTroops"]()).toBe(true);
+    expect(donations()).toHaveLength(1);
+  });
+
+  it("doesn't donate in Boss Raid", async () => {
+    const { game, behavior, donations } = await setupTeam();
+    const config = game.config().gameConfig();
+    vi.spyOn(game.config(), "gameConfig").mockReturnValue({
+      ...config,
+      bossRaid: { boss: "nation" },
+    });
+    expect(behavior["donateTroops"]()).toBe(false);
+    expect(donations()).toEqual([]);
   });
 
   it.each([

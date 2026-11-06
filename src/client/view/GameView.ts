@@ -38,6 +38,7 @@ import {
   UNIT_UPDATE_STRIDE,
   unpackUnitUpdates,
 } from "@openfront/engine-lib/game/PackedUnitUpdates";
+import { stackedTeamsOf } from "@openfront/engine-lib/game/TeamAssignment";
 import { TerrainMapData } from "@openfront/engine-lib/game/TerrainMapLoader";
 import { TerraNulliusImpl } from "@openfront/engine-lib/game/TerraNulliusImpl";
 import { UnitGrid } from "@openfront/engine-lib/game/UnitGrid";
@@ -343,6 +344,7 @@ export class GameView implements GameLike {
     // PlayerUpdate is now partial: only `id` is guaranteed; everything else
     // is present only when its value changed since the last emission.
     let addedBoss = false;
+    let addedPlayer = false;
     gu.updates[GameUpdateType.Player].forEach((pu) => {
       // First-emission (new player) — must have all static fields populated.
       // Subsequent emissions for an existing player carry only changed fields.
@@ -405,6 +407,7 @@ export class GameView implements GameLike {
           this._teams.set(pu.smallID!, team);
         }
         if (team === BOSS_RAID_BOSS_TEAM) addedBoss = true;
+        addedPlayer = true;
         this._namesDirty = true;
         this._relationsDirty = true;
         this._clustersDirty = true;
@@ -418,6 +421,13 @@ export class GameView implements GameLike {
     if (addedBoss) {
       this._config.setBossRaidRaiders(
         countBossRaidRaiders(this._players.values()),
+      );
+    }
+    // Stacked teams: nations on short-handed teams play a step harder. The
+    // engine works them out from the same players (TeamAssignment.ts).
+    if (addedPlayer) {
+      this._config.setStackedTeams(
+        stackedTeamsOf(this._config.gameConfig(), this._players.values()),
       );
     }
 

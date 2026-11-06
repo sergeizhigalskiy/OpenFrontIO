@@ -14,6 +14,7 @@ import {
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
 import { isBossRaid } from "@openfront/engine-lib/game/BossRaid";
+import { NATION_TROOP_DONATION_COOLDOWN_TICKS } from "@openfront/engine-lib/game/Convoys";
 import { terrainFeatureLossMultiplier } from "@openfront/engine-lib/game/TerrainFeatures";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import { Versioned } from "@openfront/engine-lib/snapshot/SnapshotType";
@@ -1618,6 +1619,11 @@ export class NationAttackBehavior extends AiAttackBehavior {
       return false;
     }
 
+    // Boss Raid: nation raiders don't pool their troops
+    if (isBossRaid(this.game.config().gameConfig())) {
+      return false;
+    }
+
     // Don't donate in public games (To balance HvN)
     if (this.game.config().gameConfig().gameType === GameType.Public) {
       return false;
@@ -1653,10 +1659,22 @@ export class NationAttackBehavior extends AiAttackBehavior {
         assertNever(difficulty);
     }
 
-    // Find teammates who are currently in combat
+    // At most one donation every NATION_TROOP_DONATION_COOLDOWN_TICKS
+    const lastDonation = this.player.lastDonationTick();
+    if (
+      lastDonation !== null &&
+      this.game.ticks() - lastDonation < NATION_TROOP_DONATION_COOLDOWN_TICKS
+    ) {
+      return false;
+    }
+
+    // Find nation teammates who are currently in combat: nations never send
+    // troops to humans
     const teammates = this.game
       .players()
-      .filter((p) => this.player.isOnSameTeam(p))
+      .filter(
+        (p) => p.type() === PlayerType.Nation && this.player.isOnSameTeam(p),
+      )
       .filter(
         (p) => p.incomingAttacks().length > 0 || p.outgoingAttacks().length > 0,
       );

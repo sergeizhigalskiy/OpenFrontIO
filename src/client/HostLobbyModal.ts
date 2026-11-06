@@ -924,6 +924,7 @@ export class HostLobbyModal extends BaseModal {
             .currentClientID=${this.lobbyCreatorClientID}
             .teamCount=${this.teamCount}
             .nationCount=${this.nations}
+            .difficulty=${this.selectedDifficulty}
             .onKickPlayer=${
               this.publiclyListed
                 ? undefined
