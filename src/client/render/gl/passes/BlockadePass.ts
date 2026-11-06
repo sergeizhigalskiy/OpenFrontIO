@@ -1,7 +1,7 @@
 /**
- * BlockadePass — a red dashed ring around every blockaded port: a hostile
- * warship is within BLOCKADE_RANGE of it (engine-lib game/TradeRoutes), so it
- * sends no trade ships and none come to it.
+ * BlockadePass — a red dashed ring around every blockaded port: a warship at
+ * war with its owner is within BLOCKADE_RANGE of it (engine-lib
+ * game/TradeRoutes), so it sends half its trade ships and none come to it.
  *
  * Everyone sees it, like the warships that cause it. One draw call per port;
  * only blockaded ones are drawn.

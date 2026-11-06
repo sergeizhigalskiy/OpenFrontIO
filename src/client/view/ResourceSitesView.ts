@@ -1,5 +1,7 @@
+import { PlayerType } from "@openfront/engine-api/game/GameTypes";
 import { GameUpdateType } from "@openfront/engine-api/game/GameUpdates";
 import {
+  paidByResourceSites,
   RESOURCE_SITE_INFO,
   ResourceSite,
   resourceSitesGoldPerTick,
@@ -11,8 +13,9 @@ import type { GameView } from "./GameView";
 /**
  * The client's copy of the game's resource sites (engine-lib/game/
  * ResourceSites.ts). The engine sends the full list in a ResourceSitesUpdate
- * when it places them and every second after; WebGLFrameBuilder calls
- * absorbResourceSites once per tick, and the map icons, the hover and the
+ * when it places them, once the spawn phase is over, and every second after
+ * (until then the list is empty and nothing is drawn). WebGLFrameBuilder
+ * calls absorbResourceSites once per tick, and the map icons, the hover and the
  * leaderboard read it back with resourceSitesOf. Who holds a site comes
  * from engine-lib's resourceSiteHolderTile, the same answer the engine pays.
  */
@@ -45,14 +48,22 @@ export function siteGoldPerSecond(game: GameView, site: ResourceSite): number {
   );
 }
 
-/** How many sites (of every kind) `smallID` holds and their gold per minute. */
+/**
+ * How many sites (of every kind) `smallID` holds and the gold per minute
+ * they pay: the best few only (resourceSitesGoldPerTick), and nothing to a
+ * tribe or city-state when its `type` is given.
+ */
 export function heldResourceSites(
   game: GameView,
   smallID: number,
+  type?: PlayerType,
 ): { count: number; goldPerMinute: number } {
   const sites = resourceSitesOf(game);
   if (sites.length === 0) return { count: 0, goldPerMinute: 0 };
   const held = resourceSitesHeldBy(game, sites, smallID);
+  if (type !== undefined && !paidByResourceSites(type)) {
+    return { count: held.length, goldPerMinute: 0 };
+  }
   const perTick = Number(resourceSitesGoldPerTick(held)) * goldMultiplier(game);
   return { count: held.length, goldPerMinute: perTick * 600 };
 }

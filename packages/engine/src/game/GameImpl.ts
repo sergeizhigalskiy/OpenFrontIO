@@ -62,7 +62,10 @@ import {
 } from "@openfront/engine-lib/game/TeamAssignment";
 import { TerraNulliusImpl } from "@openfront/engine-lib/game/TerraNulliusImpl";
 import { UnitGrid } from "@openfront/engine-lib/game/UnitGrid";
-import { RuinReward } from "@openfront/engine-lib/game/WorldFeatures";
+import {
+  claimsRuins,
+  RuinReward,
+} from "@openfront/engine-lib/game/WorldFeatures";
 import {
   readVersioned,
   snapshotType,
@@ -1102,9 +1105,10 @@ export class GameImpl implements Game {
     this.updateBorders(tile);
     this._map.setFallout(tile, false);
     this.recordTileUpdate(tile);
-    // Ruins: the first player to take a ruin's tile from unclaimed land
-    // claims it. One size check while there are none.
-    if (this._ruins.size > 0 && !previousOwner.isPlayer()) {
+    // Ruins: the first human or nation to take a ruin's tile, from free land
+    // or a tribe, claims it; a tribe taking it leaves it standing. One size
+    // check while there are none.
+    if (this._ruins.size > 0 && claimsRuins(owner.type())) {
       const reward = this._ruins.get(tile);
       if (reward !== undefined) {
         this._ruins.delete(tile);
@@ -1994,13 +1998,26 @@ export const GameSnapshot = snapshotType({
   name: "Game",
   // v2 added clusterMissilesLaunched (conventional war), v3 the unclaimed
   // ruins (world features), v4 dropped clusterMissilesLaunched again with the
-  // removed cluster missile (zod strips it from older records).
-  version: 4,
+  // removed cluster missile (zod strips it from older records), v5 dropped
+  // the ruins' free defense post reward.
+  version: 5,
   migrations: {
     1: (d) => d,
     // Older builds had no ruins.
     2: (d) => ({ ...(d as Record<string, unknown>), ruins: [] }),
     3: (d) => d,
+    // A ruin that held a free defense post (reward 2) holds gold instead.
+    4: (d) => {
+      const old = d as Record<string, unknown> & {
+        ruins: { tile: number; reward: number }[];
+      };
+      return {
+        ...old,
+        ruins: old.ruins.map((r) =>
+          r.reward === 2 ? { ...r, reward: RuinReward.Gold } : r,
+        ),
+      };
+    },
   },
   schema: z.object({
     ticks: zInt(),

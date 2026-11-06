@@ -17,6 +17,7 @@ import {
   cityStateZones,
   mineZones,
   overlapsZone,
+  spawnsSettled,
   volcanoZones,
 } from "../game/StartPlacements";
 import { execSnapshotType } from "../snapshot/ExecutionSnapshot";
@@ -32,9 +33,9 @@ import { volcanoSitesOf } from "./VolcanoExecution";
 const RUINS_SEED_OFFSET = 4;
 
 /**
- * Places the ruins (engine-lib/game/WorldFeatures.ts) on the first tick after
- * the spawn phase ends, then retires. GameRunner adds it when the setting is
- * on; GameImpl.conquer hands out the loot.
+ * Places the ruins (engine-lib/game/WorldFeatures.ts) once the spawn phase is
+ * over and every spawn has landed (spawnsSettled), then retires. GameRunner
+ * adds it when the setting is on; GameImpl.conquer hands out the loot.
  */
 export class RuinsExecution implements Execution {
   private active = true;
@@ -50,7 +51,7 @@ export class RuinsExecution implements Execution {
   }
 
   tick(): void {
-    if (this.mg.inSpawnPhase()) return;
+    if (!spawnsSettled(this.mg)) return;
     this.mg.addRuins(placeRuins(this.mg, this.random));
     this.active = false;
   }

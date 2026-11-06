@@ -263,7 +263,7 @@ export const COLUMN_DEFS: readonly ColumnDef[] = [
       superscript: { text: "⛏" },
     },
     value: (player, game) =>
-      heldResourceSites(game, player.smallID()).goldPerMinute,
+      heldResourceSites(game, player.smallID(), player.type()).goldPerMinute,
     cell: (row) => renderNumber(row.value),
   }),
   defineColumn({

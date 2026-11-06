@@ -57,6 +57,18 @@ import {
 } from "./render/types/UnitType";
 import type { GameView, PlayerView } from "./view";
 
+/**
+ * The blockade's "at war" test (engine-lib TradeRoutes, engine
+ * PortBlockade.atWar) on the view: one of the two is attacking the other,
+ * and they aren't allied or teammates.
+ */
+function atWarInView(a: PlayerView, b: PlayerView): boolean {
+  if (a === b || a.isFriendly(b) || b.isFriendly(a)) return false;
+  const attacks = (from: PlayerView, to: PlayerView) =>
+    from.outgoingAttacks().some((attack) => attack.targetID === to.smallID());
+  return attacks(a, b) || attacks(b, a);
+}
+
 // A human player counts as "small" (and glows) at or below this fraction of the
 // map; the glow is suppressed for a grace window after the game starts.
 const SMALL_PLAYER_MAX_MAP_FRACTION = 0.002; // 0.2%
@@ -554,8 +566,9 @@ export class WebGLFrameBuilder {
 
   /**
    * A ring on every blockaded port, for everyone. The view applies the
-   * engine's rule (engine-lib TradeRoutes) to the warships it sees, as often
-   * as the engine checks. Re-sent only when the set of ports changes.
+   * engine's rule (engine-lib TradeRoutes) to the warships and attacks it
+   * sees, as often as the engine checks. Re-sent only when the set of ports
+   * changes.
    */
   private syncBlockades(gameView: GameView): void {
     const tick = gameView.ticks();
@@ -574,7 +587,7 @@ export class WebGLFrameBuilder {
         gameView,
         port.tile(),
         port.owner(),
-        (a, b) => a.isFriendly(b),
+        atWarInView,
       );
       if (blockader === null) continue;
       key += `${port.id()},`;

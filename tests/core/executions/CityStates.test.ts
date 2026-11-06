@@ -24,7 +24,7 @@ import {
   CITY_STATES_MAX_COUNT,
   CITY_STATES_MIN_COUNT,
   cityStateCount,
-  LAND_TILES_PER_CITY_STATE,
+  PLAYERS_PER_CITY_STATE,
 } from "@openfront/engine-lib/game/WorldFeatures";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import { AttackExecution } from "@openfront/engine/execution/AttackExecution";
@@ -39,6 +39,7 @@ import { RuinsExecution } from "@openfront/engine/execution/RuinsExecution";
 import { TribeAttackBehavior } from "@openfront/engine/execution/TribeAttackBehavior";
 import { TribeExecution } from "@openfront/engine/execution/TribeExecution";
 import { Game, Player } from "@openfront/engine/game/Game";
+import { humanAndNationCount } from "@openfront/engine/game/StartPlacements";
 import { GameRunner } from "@openfront/engine/GameRunner";
 import { conquerRect, setGold } from "../../util/GameHelpers";
 import { setup } from "../../util/Setup";
@@ -83,10 +84,34 @@ async function founded(
 }
 
 describe("city-states: placement", () => {
-  test("the count scales with land, clamped to 4-8", () => {
-    expect(cityStateCount(0)).toBe(CITY_STATES_MIN_COUNT);
-    expect(cityStateCount(5 * LAND_TILES_PER_CITY_STATE)).toBe(5);
-    expect(cityStateCount(100_000_000)).toBe(CITY_STATES_MAX_COUNT);
+  test("one per 8 humans and nations, clamped to 2-6", () => {
+    expect(PLAYERS_PER_CITY_STATE).toBe(8);
+    expect(CITY_STATES_MIN_COUNT).toBe(2);
+    expect(CITY_STATES_MAX_COUNT).toBe(6);
+    expect(cityStateCount(0)).toBe(2);
+    // A duel, and Iceland's 8 nations and a human.
+    expect(cityStateCount(2)).toBe(2);
+    expect(cityStateCount(9)).toBe(2);
+    expect(cityStateCount(24)).toBe(3);
+    expect(cityStateCount(40)).toBe(5);
+    // World: 72 nations and a human.
+    expect(cityStateCount(73)).toBe(6);
+  });
+
+  test("the spawner counts the game's humans and nations", async () => {
+    const humans = Array.from(
+      { length: 24 },
+      (_, i) => new PlayerInfo(`h${i}`, PlayerType.Human, `c${i}`, `h${i}`),
+    );
+    const game = await setup(MAP, {}, humans);
+    expect(humanAndNationCount(game)).toBe(24);
+    const execs = new CityStateSpawner(
+      game,
+      GAME_ID,
+      NATION_CELLS,
+      [],
+    ).spawnCityStates();
+    expect(execs).toHaveLength(3);
   });
 
   test("they sit on land, 40 tiles from every nation spawn cell and each other", async () => {
@@ -97,7 +122,7 @@ describe("city-states: placement", () => {
       NATION_CELLS,
       [],
     ).spawnCityStates();
-    expect(execs).toHaveLength(cityStateCount(game.numLandTiles()));
+    expect(execs).toHaveLength(cityStateCount(humanAndNationCount(game)));
     const centers = execs.map(center);
     for (const c of centers) {
       expect(game.isLand(c)).toBe(true);
@@ -144,8 +169,8 @@ describe("city-states: placement", () => {
     expect(names).not.toContain("Sunk");
     expect(names).not.toContain("Plain Tribe");
     expect(warn).toHaveBeenCalled();
-    // They count toward the map's total.
-    expect(execs).toHaveLength(cityStateCount(game.numLandTiles()));
+    // They count toward the game's total.
+    expect(execs).toHaveLength(cityStateCount(humanAndNationCount(game)));
   });
 });
 
@@ -307,7 +332,7 @@ describe("city-states: founding", () => {
 });
 
 describe("city-states: conquest", () => {
-  test("eliminating it pays its bounty once, and its city is captured at level 1", async () => {
+  test("eliminating it pays the 120,000 gold bounty once, and its city is captured at level 1", async () => {
     const { game, a, cs } = await founded();
     // Next to its disc, and strong.
     conquerRect(game, a, 90, 108, 111, 130);
@@ -321,7 +346,9 @@ describe("city-states: conquest", () => {
     executeTicks(game, 2);
     expect(cs.isAlive()).toBe(false);
 
-    expect(a.gold()).toBeGreaterThanOrEqual(BigInt(CITY_STATE_CONQUEST_GOLD));
+    // The bounty alone: a city-state banks nothing to hand over.
+    expect(CITY_STATE_CONQUEST_GOLD).toBe(120_000);
+    expect(a.gold()).toBe(120_000n);
     expect(
       shown.mock.calls.filter(
         ([key]) => key === "events_display.city_state_conquered",
@@ -437,6 +464,26 @@ describe("city-states: conquest", () => {
     expect(inputs.every((i) => i.defender?.isCityState === true)).toBe(true);
   });
 
+  test("the bounty follows the gold multiplier", async () => {
+    const { game, a, cs } = await founded(100, 100, { goldMultiplier: 2 });
+    setGold(a, 0n);
+    game.conquerPlayer(a, cs);
+    expect(a.gold()).toBe(240_000n);
+  });
+
+  test("a city-state earns no gold, so the prize never grows", async () => {
+    const { game, cs } = await founded();
+    expect(game.config().goldAdditionRate(cs)).toBe(0n);
+    // A tribe earns its 50 a tick.
+    const tribe = game.addPlayer(
+      new PlayerInfo("tribe", PlayerType.Bot, null, "tribe"),
+    );
+    expect(game.config().goldAdditionRate(tribe)).toBe(50n);
+    executeTicks(game, 600);
+    expect(cs.isAlive()).toBe(true);
+    expect(cs.gold()).toBe(0n);
+  });
+
   test("a normal tribe pays no bounty", async () => {
     const game = await setup(MAP, {}, [
       new PlayerInfo("a", PlayerType.Human, "c_a", "a"),
@@ -493,10 +540,11 @@ describe("world features: lobby settings", () => {
     executeTicks(game, 2);
     expect(game.inSpawnPhase()).toBe(true);
     const cityStates = game.allPlayers().filter((p) => p.isCityState());
-    expect(cityStates).toHaveLength(cityStateCount(game.numLandTiles()));
+    expect(cityStates).toHaveLength(cityStateCount(humanAndNationCount(game)));
     expect(game.ruins().size).toBe(0);
     game.endSpawnPhase();
-    executeTicks(game, 1);
+    // Once a spawn picked on the phase's last tick has landed.
+    executeTicks(game, 2);
     expect(game.ruins().size).toBeGreaterThan(0);
   });
 

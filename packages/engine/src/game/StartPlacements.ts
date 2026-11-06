@@ -1,4 +1,5 @@
 import { TileRef } from "@openfront/engine-api/game/GameMap";
+import { PlayerType } from "@openfront/engine-api/game/GameTypes";
 import { VOLCANO_WARNING_RADIUS } from "@openfront/engine-lib/game/Volcanoes";
 import { CITY_STATE_RADIUS } from "@openfront/engine-lib/game/WorldFeatures";
 import { CityStateExecution } from "../execution/CityStateExecution";
@@ -12,8 +13,9 @@ import { Game } from "./Game";
  * never lands on a mine.
  *
  * Each placer already runs in that order (city-states in GameRunner.init,
- * volcanoes and mines when their executions start at tick 0, ruins when the
- * spawn phase ends), and every zone is read off the game: the pending or
+ * volcanoes when their execution starts at tick 0, then mines and ruins on
+ * the first tick the spawns are settled, the mine execution ticking ahead of
+ * the ruins one), and every zone is read off the game: the pending or
  * founded city-states, the volcano execution's sites and the mine
  * execution's sites. So a restored game places exactly what the original
  * did, and none of this needs a snapshot of its own. (The volcano and mine
@@ -21,6 +23,59 @@ import { Game } from "./Game";
  * ResourceSiteExecution's resourceSitesOf; the placers pass them in, which
  * keeps this module free of import cycles.)
  */
+
+/**
+ * Ticks after the spawn phase ends before the spawns are final: a spawn
+ * picked on the phase's last tick lands on the tick it ends.
+ */
+export const SPAWNS_SETTLE_TICKS = 1;
+
+/**
+ * Whether every spawn is final, so features that keep away from spawns
+ * (mines and ruins) can be placed: the spawn phase ended
+ * SPAWNS_SETTLE_TICKS ago or more.
+ */
+export function spawnsSettled(game: Game): boolean {
+  return !game.inSpawnPhase() && game.ticksSinceStart() >= SPAWNS_SETTLE_TICKS;
+}
+
+/**
+ * How many humans and nations the game has: the player count P that sizes
+ * resource sites and city-states (engine-lib ResourceSites.ts and
+ * WorldFeatures.ts). Tribe-type players (tribes, city-states and the modes'
+ * bands) don't count.
+ */
+export function humanAndNationCount(game: Game): number {
+  let n = 0;
+  for (const p of game.allPlayers()) {
+    if (p.type() === PlayerType.Human || p.type() === PlayerType.Nation) n++;
+  }
+  return n;
+}
+
+/**
+ * Where the humans and nations spawned: each spawned one's spawn tile, and
+ * for a nation still waiting to spawn, its spawn cell.
+ */
+export function humanAndNationSpawns(game: Game): TileRef[] {
+  const spawns: TileRef[] = [];
+  for (const p of game.allPlayers()) {
+    if (p.type() !== PlayerType.Human && p.type() !== PlayerType.Nation) {
+      continue;
+    }
+    const t = p.spawnTile();
+    if (t !== undefined) spawns.push(t);
+  }
+  for (const n of game.nations()) {
+    const cell = n.spawnCell;
+    if (cell === undefined || !game.isValidCoord(cell.x, cell.y)) continue;
+    if (game.hasPlayer(n.playerInfo.id)) {
+      if (game.player(n.playerInfo.id).hasSpawned()) continue;
+    }
+    spawns.push(game.ref(cell.x, cell.y));
+  }
+  return spawns;
+}
 
 /** A circle a later feature keeps out of (euclidean, in tiles). */
 export interface PlacementZone {

@@ -20,6 +20,7 @@ import {
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import { simpleHash } from "@openfront/engine-lib/Util";
 import { Game } from "../game/Game";
+import { humanAndNationCount } from "../game/StartPlacements";
 import { cityStateDisc, CityStateExecution } from "./CityStateExecution";
 
 /** Seed offset from the game id, apart from the other game-seeded PRNGs. */
@@ -30,8 +31,9 @@ const CITY_STATE_SEED_OFFSET = 3;
  * start, and returns one CityStateExecution each. A map's static
  * custom_tribes entries come first: at their coordinates when they have
  * them, else at a random spot under their name. Random ones fill up to
- * cityStateCount(): on passable land at least CITY_STATE_MIN_DISTANCE from
- * every nation spawn cell and from each other, with mostly land around them.
+ * cityStateCount() of the game's humans and nations: on passable land at
+ * least CITY_STATE_MIN_DISTANCE from every nation spawn cell and from each
+ * other, with mostly land around them.
  */
 export class CityStateSpawner {
   private random: PseudoRandom;
@@ -77,7 +79,7 @@ export class CityStateSpawner {
       ...this.random.shuffleArray(CITY_STATE_NAMES.filter((n) => !used.has(n))),
     ];
     const target = Math.max(
-      cityStateCount(this.game.numLandTiles()),
+      cityStateCount(humanAndNationCount(this.game)),
       execs.length + named.length,
     );
     const minDist2 = CITY_STATE_MIN_DISTANCE * CITY_STATE_MIN_DISTANCE;

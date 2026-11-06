@@ -212,6 +212,13 @@ export class GameRunner {
       );
     }
     this.game.addExecution(new WinCheckExecution());
+    // Ahead of the ruins: both place on the same tick once the spawn phase
+    // is over, mines first, so no ruin lands on one (StartPlacements).
+    if (this.game.config().resourceSites()) {
+      this.game.addExecution(
+        new ResourceSiteExecution(this.execManager.gameID()),
+      );
+    }
     if (this.game.config().ruinsEnabled()) {
       this.game.addExecution(new RuinsExecution(this.execManager.gameID()));
     }
@@ -245,11 +252,6 @@ export class GameRunner {
     if (!this.game.config().isUnitDisabled(UnitType.Factory)) {
       this.game.addExecution(
         new RecomputeRailClusterExecution(this.game.railNetwork()),
-      );
-    }
-    if (this.game.config().resourceSites()) {
-      this.game.addExecution(
-        new ResourceSiteExecution(this.execManager.gameID()),
       );
     }
   }
