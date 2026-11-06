@@ -1,10 +1,10 @@
 /**
- * Ships re-route when the water graph changes under them: a canal opens a
- * shortcut, or a tide wave floods one. Each ship's water pathfinder picks the
- * new graph up after its own stagger, and the motion plan it records must
- * describe the step it takes that very tick, or the client view (and the
- * replay) runs a tick behind the engine. Checked by a full replay round trip
- * with boats sailing the long way round when the shortcut opens.
+ * Ships re-route when the water graph changes under them, as when a tide wave
+ * floods a shortcut. Each ship's water pathfinder picks the new graph up
+ * after its own stagger, and the motion plan it records must describe the
+ * step it takes that very tick, or the client view (and the replay) runs a
+ * tick behind the engine. Checked by a full replay round trip with boats
+ * sailing the long way round when the shortcut opens.
  */
 import { TileRef } from "@openfront/engine-api/game/GameMap";
 import {
@@ -12,10 +12,8 @@ import {
   PlayerType,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
-import { ConstructionExecution } from "@openfront/engine/execution/ConstructionExecution";
 import { TransportShipExecution } from "@openfront/engine/execution/TransportShipExecution";
 import { Game, Player } from "@openfront/engine/game/Game";
-import { EAST_LAKE, WEST_LAKE } from "../../../util/Canals";
 import { setup } from "../../../util/Setup";
 import { expectReplayMatches } from "../util/Expect";
 import { recordGame, TickScript } from "../util/RecordGame";
@@ -30,8 +28,12 @@ const SHORTCUT = 70;
 
 type Rect = { x0: number; y0: number; x1: number; y1: number };
 
+/** Two 20x20 lakes side by side, with an 8-tile neck of land (x 40..47). */
+const WEST_LAKE: Rect = { x0: 20, y0: 40, x1: 39, y1: 59 };
+const EAST_LAKE: Rect = { x0: 48, y0: 40, x1: 67, y1: 59 };
+
 // plains (100x100): two lakes with an 8-tile neck of the builder's land
-// between them (Canals.ts), joined the long way by a channel south of them.
+// between them, joined the long way by a channel south of them.
 // The sailors hold only the west lake's west shore, so their boats to the
 // enemy past the east lake sail round until the neck opens.
 const WATER: Rect[] = [
@@ -87,7 +89,7 @@ async function lakes(): Promise<Scenario> {
 
 /**
  * The scenario's first ticks, inside a tick so the update stream carries
- * them: the water dug (as canals dig it), then the land claimed. The
+ * them: the water dug, then the land claimed. The
  * sailors split the west shore into bands.
  */
 function shapeTheMap(s: Scenario): void {
@@ -173,20 +175,6 @@ async function voyage(open: (s: Scenario) => void) {
 }
 
 describe("ships re-plan in the tick the water graph changes their route", () => {
-  test("a canal opens a shortcut while boats sail the long way", async () => {
-    const rec = await voyage((s) => {
-      // The builder digs through the neck (instant build).
-      s.game.addExecution(
-        new ConstructionExecution(
-          s.builder,
-          UnitType.Canal,
-          s.game.ref(44, 50),
-        ),
-      );
-    });
-    expectReplayMatches(rec);
-  }, 120_000);
-
   test("a tide wave floods a shortcut while boats sail the long way", async () => {
     const rec = await voyage((s) => {
       // A wave floods the neck the way RisingTideExecution does: always

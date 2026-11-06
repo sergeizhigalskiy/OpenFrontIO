@@ -1,20 +1,15 @@
 /**
- * Reload state of the units that fire rounds and reload them.
+ * Reload state of the units that fire rounds and reload them: SAM launchers
+ * and missile silos.
  *
  * Each of them keeps its reload on the unit's missile timer queue: the tick
- * each round was fired (or, for a silo or SAM upgrade, the tick the new slot
- * was added), oldest first. A round is loaded again `reloadTicks` after its
- * timer, and the timers run side by side. Pure, so the reload bars
- * (ReloadBarPass) and the hover card read the same numbers.
+ * each round was fired (or, for an upgrade, the tick the new slot was added),
+ * oldest first. A round is loaded again `reloadTicks` after its timer, and
+ * the timers run side by side. Pure; the reload bars (ReloadBarPass) draw
+ * from it.
  */
 
 import { UnitType } from "@openfront/engine-api/game/GameTypes";
-import {
-  AIRBASE_SORTIE_RECHARGE_TICKS,
-  FLAK_GUN_RELOAD_TICKS,
-  FLAK_ROUNDS,
-} from "@openfront/engine-lib/game/ConventionalWar";
-import { COASTAL_BATTERY_RELOAD_TICKS } from "@openfront/engine-lib/game/NavalDefense";
 
 /** How many rounds a unit holds and how long one takes to reload. */
 export interface ReloadSpec {
@@ -30,9 +25,8 @@ export interface ReloadConfig {
 
 /**
  * The rounds and reload time of a unit type, or null for one that doesn't
- * reload. Mirrors the executions that empty each queue: SAMLauncherExecution,
- * MissileSiloExecution, FlakGunExecution, AirbaseExecution and
- * CoastalBatteryExecution.
+ * reload. Mirrors the executions that empty each queue: SAMLauncherExecution
+ * and MissileSiloExecution.
  */
 export function reloadSpec(
   unitType: string,
@@ -43,15 +37,7 @@ export function reloadSpec(
     case UnitType.SAMLauncher:
       return { rounds: level, reloadTicks: config.SAMCooldown() };
     case UnitType.MissileSilo:
-      // Its missiles: nukes, or cruise, ballistic and cluster missiles.
       return { rounds: level, reloadTicks: config.SiloCooldown() };
-    case UnitType.FlakGun:
-      return { rounds: FLAK_ROUNDS, reloadTicks: FLAK_GUN_RELOAD_TICKS };
-    case UnitType.Airbase:
-      // Its airstrike or airdrop sortie. Drones don't use it.
-      return { rounds: level, reloadTicks: AIRBASE_SORTIE_RECHARGE_TICKS };
-    case UnitType.CoastalBattery:
-      return { rounds: 1, reloadTicks: COASTAL_BATTERY_RELOAD_TICKS };
     default:
       return null;
   }
@@ -154,12 +140,4 @@ export function reloadBar(
   const state = reloadState(unit.missileTimerQueue, spec, tick);
   if (state.ready >= state.rounds) return null;
   return reloadPips(state);
-}
-
-/** Seconds until the next round loads, to one decimal place. */
-export function nextReadySeconds(
-  state: ReloadState,
-  msPerTick: number,
-): string {
-  return ((state.nextReadyTicks * msPerTick) / 1000).toFixed(1);
 }
