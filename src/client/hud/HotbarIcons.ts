@@ -11,27 +11,6 @@ export const atomBombIcon = assetUrl("images/NukeIconWhite.svg");
 export const portIcon = assetUrl("images/PortIcon.svg");
 export const samLauncherIcon = assetUrl("images/SamLauncherIconWhite.svg");
 export const defensePostIcon = assetUrl("images/ShieldIconWhite.svg");
-// Naval defense, siege camps and conventional war (drawn by
-// scripts/genUnitArt.ts).
-export const siegeCampIcon = assetUrl("images/SiegeCampIconWhite.svg");
-export const minefieldIcon = assetUrl("images/MinefieldIconWhite.svg");
-export const coastalBatteryIcon = assetUrl(
-  "images/CoastalBatteryIconWhite.svg",
-);
-export const airbaseIcon = assetUrl("images/AirbaseIconWhite.svg");
-export const flakGunIcon = assetUrl("images/FlakGunIconWhite.svg");
-export const airstrikeIcon = assetUrl("images/AirstrikeIconWhite.svg");
-export const airdropIcon = assetUrl("images/AirdropIconWhite.svg");
-export const cruiseMissileIcon = assetUrl("images/CruiseMissileIconWhite.svg");
-export const ballisticMissileIcon = assetUrl(
-  "images/BallisticMissileIconWhite.svg",
-);
-export const clusterMissileIcon = assetUrl(
-  "images/ClusterMissileIconWhite.svg",
-);
-export const droneIcon = assetUrl("images/DroneIconWhite.svg");
-// Canals open routes for ships.
-export const canalIcon = assetUrl("images/BoatIconWhite.svg");
 export const soldierIcon = assetUrl("images/SoldierIcon.svg");
 export const claimIcon = assetUrl("images/ClaimIcon.svg");
 export const profileIcon = assetUrl("images/ProfileIcon.svg");

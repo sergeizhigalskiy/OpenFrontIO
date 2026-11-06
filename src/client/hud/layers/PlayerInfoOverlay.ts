@@ -33,16 +33,10 @@ import {
   TouchEvent,
 } from "../../InputHandler";
 import { Platform } from "../../Platform";
-import {
-  nextReadySeconds,
-  reloadSpec,
-  reloadState,
-} from "../../render/frame/derive/ReloadBars";
 import { themeProvider } from "../../theme/ThemeProvider";
 import { TransformHandler } from "../../TransformHandler";
 import { UIState } from "../../UIState";
 import { UserSettings } from "../../UserSettings";
-import { isCapitalLost } from "../../utilities/Capitals";
 import {
   formatKeyForDisplay,
   getTranslatedPlayerTeamLabel,
@@ -87,8 +81,6 @@ const soldierIcon = assetUrl("images/SoldierIcon.svg");
 
 /** How close (in tiles) the cursor must be to a convoy to show its info. */
 const CONVOY_HOVER_RADIUS = 5;
-/** How close (in tiles) the cursor must be to a coastal battery to show it. */
-const COASTAL_BATTERY_HOVER_RADIUS = 3;
 /** How often (ms) the attack forecast re-reads my border for its front size. */
 const FRONT_REFRESH_MS = 1000;
 
@@ -113,7 +105,6 @@ const FOG_TROOPS = "?";
 /** Unit types whose hover card names them through a translation key. */
 const UNIT_NAME_KEYS: Partial<Record<UnitType, string>> = {
   [UnitType.Convoy]: "unit_type.convoy",
-  [UnitType.CoastalBattery]: "unit_type.coastal_battery",
 };
 
 function euclideanDistWorld(
@@ -334,22 +325,6 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
       return;
     }
 
-    // So does a coastal battery: its card shows its health.
-    const battery = this.game
-      .units(UnitType.CoastalBattery)
-      .filter(
-        (u) =>
-          u.type() === UnitType.CoastalBattery &&
-          euclideanDistWorld(worldCoord, u.tile(), this.game) <
-            COASTAL_BATTERY_HOVER_RADIUS,
-      )
-      .sort(distSortUnitWorld(worldCoord, this.game))[0];
-    if (battery !== undefined) {
-      this.unit = battery;
-      this.setVisible(true);
-      return;
-    }
-
     this.site = resourceSiteUnderCursor(this.game, tile);
     if (this.site !== null) this.setVisible(true);
 
@@ -563,12 +538,9 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
             : Math.round(f.tilesPerSecond).toString();
     let cover = "";
     if (f.defensePostLevel > 0) {
-      cover = translateText(
-        f.siegeReduced
-          ? "attack_forecast.defense_post_reduced"
-          : "attack_forecast.defense_post",
-        { level: f.defensePostLevel.toString() },
-      );
+      cover = translateText("attack_forecast.defense_post", {
+        level: f.defensePostLevel.toString(),
+      });
     }
     return html`<div
       class="px-2 py-1 border-t border-gray-600 text-xs leading-tight"
@@ -586,15 +558,7 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
             </div>`
           : ""
       }
-      ${
-        cover !== ""
-          ? html`<div
-              class=${f.siegeReduced ? "text-yellow-300" : "text-red-400"}
-            >
-              ${cover}
-            </div>`
-          : ""
-      }
+      ${cover !== "" ? html`<div class="text-red-400">${cover}</div>` : ""}
     </div>`;
   }
 
@@ -1024,14 +988,6 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
                     >${playerType}</span
                   >`
             }
-            ${
-              isCapitalLost(this.game, player)
-                ? html`<span
-                    class="text-red-400 text-xs font-mono font-normal shrink-0 whitespace-nowrap"
-                    >★ ${translateText("player_panel.capital_lost")}</span
-                  >`
-                : ""
-            }
             ${this.renderPlayerNameIcons(playerIcons)} ${betrayalHtml ?? ""}
             ${allianceHtml ?? ""}
           </div>
@@ -1182,13 +1138,6 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
       (unit.owner() === this.game.myPlayer() ||
         this.game.myPlayer()?.isFriendly(unit.owner())) ??
       false;
-    // A coastal battery shows how much of its health is left.
-    const health = !unit.hasHealth()
-      ? ""
-      : unit.type() === UnitType.CoastalBattery
-        ? `${unit.health()} / ${this.game.config().unitInfo(UnitType.CoastalBattery).maxHealth}`
-        : `${unit.health()}`;
-    const reload = this.reloadText(unit);
 
     return html`
       <div class="p-2">
@@ -1205,10 +1154,9 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
           </div>
           ${
             unit.hasHealth()
-              ? html` <div class="text-sm">Health: ${health}</div> `
+              ? html` <div class="text-sm">Health: ${unit.health()}</div> `
               : ""
           }
-          ${reload !== "" ? html`<div class="text-sm">${reload}</div>` : ""}
           ${
             unit.type() === UnitType.TransportShip ||
             unit.type() === UnitType.Convoy
@@ -1227,30 +1175,6 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
         </div>
       </div>
     `;
-  }
-
-  /**
-   * "Rounds 1/2, next in 2.1 s" for a unit that reloads (the same numbers as
-   * its reload bar, shown to every player like the bar), else "".
-   */
-  private reloadText(unit: UnitView): string {
-    const config = this.game.config();
-    const spec = reloadSpec(unit.type(), unit.level(), config);
-    if (spec === null || spec.rounds <= 0 || unit.isUnderConstruction()) {
-      return "";
-    }
-    const s = reloadState(unit.missileTimerQueue(), spec, this.game.ticks());
-    if (s.ready >= s.rounds) {
-      return translateText("player_panel.rounds_ready", {
-        ready: s.ready,
-        rounds: s.rounds,
-      });
-    }
-    return translateText("player_panel.rounds_reloading", {
-      ready: s.ready,
-      rounds: s.rounds,
-      seconds: nextReadySeconds(s, config.msPerTick()),
-    });
   }
 
   private renderWeather(weather: WeatherKind) {

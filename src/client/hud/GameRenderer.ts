@@ -1,7 +1,3 @@
-import {
-  DRONE_SWARM_DEFAULT,
-  MINEFIELD_DEFAULT_DENSITY,
-} from "@openfront/engine-api/game/GameTypes";
 import { EventBus } from "@openfront/shared/EventBus";
 import { Controller } from "../Controller";
 import { AmbienceController } from "../controllers/AmbienceController";
@@ -71,8 +67,6 @@ export function createRenderer(
     ghostStructure: null,
     rocketDirectionUp: true,
     upgradeMultiplier: 1,
-    minefieldDensity: MINEFIELD_DEFAULT_DENSITY,
-    droneSwarmSize: DRONE_SWARM_DEFAULT,
   };
 
   //hide when the game renders

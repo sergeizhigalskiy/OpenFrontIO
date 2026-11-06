@@ -9,19 +9,6 @@
 import fs from "fs";
 import path from "path";
 import { describe, expect, it } from "vitest";
-import {
-  airbaseIcon,
-  airdropIcon,
-  airstrikeIcon,
-  ballisticMissileIcon,
-  clusterMissileIcon,
-  coastalBatteryIcon,
-  cruiseMissileIcon,
-  droneIcon,
-  flakGunIcon,
-  minefieldIcon,
-  siegeCampIcon,
-} from "../../../../src/client/hud/HotbarIcons";
 import { flattenedBuildTable } from "../../../../src/client/hud/layers/BuildMenu";
 import {
   STRUCTURE_ORDER,
@@ -92,20 +79,7 @@ describe("unit art atlases", () => {
   });
 
   it("points every build menu and unit bar icon at a file that exists", () => {
-    const icons = [
-      ...flattenedBuildTable.map((item) => item.icon),
-      airbaseIcon,
-      airdropIcon,
-      airstrikeIcon,
-      ballisticMissileIcon,
-      clusterMissileIcon,
-      coastalBatteryIcon,
-      cruiseMissileIcon,
-      droneIcon,
-      flakGunIcon,
-      minefieldIcon,
-      siegeCampIcon,
-    ];
+    const icons = flattenedBuildTable.map((item) => item.icon);
     for (const url of icons) {
       expect(fs.existsSync(path.join(RESOURCES, url)), url).toBe(true);
     }

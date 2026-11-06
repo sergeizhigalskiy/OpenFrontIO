@@ -1,4 +1,3 @@
-import { UnitType } from "@openfront/engine-api/game/GameTypes";
 import { EventBus } from "@openfront/shared/EventBus";
 import { ServerMessage } from "@openfront/shared/WireSchemas";
 import {
@@ -51,7 +50,6 @@ vi.mock("../../src/client/Utils", () => ({
 import type { LobbyConfig } from "../../src/client/ClientGameRunner";
 import { SendKickPlayerIntentEvent } from "../../src/client/LobbyEvents";
 import {
-  BuildUnitIntentEvent,
   CancelAttackIntentEvent,
   counterAttackTroops,
   SendAttackIntentEvent,
@@ -223,44 +221,6 @@ describe("Transport send paths", () => {
         type: "intent",
         intent: { type: "boat", troops: 0, dst: 7 },
       });
-    });
-
-    it("sends a minefield's density with its build intent, and no other unit's", () => {
-      const { eventBus, ws } = connected();
-      eventBus.emit(
-        new BuildUnitIntentEvent(
-          UnitType.Minefield,
-          77,
-          undefined,
-          undefined,
-          35,
-        ),
-      );
-      eventBus.emit(
-        new BuildUnitIntentEvent(UnitType.City, 78, undefined, undefined, 35),
-      );
-
-      const frames = decodeFrames(ws);
-      expect(frames).toContainEqual({
-        type: "intent",
-        intent: {
-          type: "build_unit",
-          unit: UnitType.Minefield,
-          tile: 77,
-          density: 35,
-        },
-      });
-      expect(frames).toContainEqual({
-        type: "intent",
-        intent: { type: "build_unit", unit: UnitType.City, tile: 78 },
-      });
-      const city = frames.find(
-        (f) =>
-          f.type === "intent" &&
-          f.intent.type === "build_unit" &&
-          f.intent.unit === UnitType.City,
-      );
-      expect(city && "intent" in city && "density" in city.intent).toBe(false);
     });
 
     it("turns a kick-player event into a kick_player intent frame", () => {

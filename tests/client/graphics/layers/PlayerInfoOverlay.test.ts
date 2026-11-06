@@ -59,7 +59,6 @@ import {
   DoRequestAllianceEvent,
   DoTargetPlayerEvent,
 } from "../../../../src/client/InputHandler";
-import { translateText } from "../../../../src/client/Utils";
 
 // Flattens the mocked-html template tree into one string for assertions.
 function flatten(node: unknown): string {
@@ -92,7 +91,6 @@ describe("PlayerInfoOverlay", () => {
     cosmetics: {},
     id: () => "bob",
     smallID: () => 2,
-    state: {},
   };
 
   const makeGame = (
@@ -108,13 +106,11 @@ describe("PlayerInfoOverlay", () => {
     owner: () => hovered,
     myPlayer: () => myPlayer,
     inSpawnPhase: () => false,
-    ticks: () => 100,
     config: () => ({
       isUnitDisabled: () => true,
       maxTroops: () => 1000,
       isReplay: () => isReplay,
       gameConfig: () => ({}),
-      msPerTick: () => 100,
     }),
     teamClanTag: () => undefined,
     weatherAt: (): WeatherKind | null => null,
@@ -166,64 +162,6 @@ describe("PlayerInfoOverlay", () => {
     expect(out).toContain("unit_type.convoy");
     expect(out).toContain("Troops:");
     expect(out).not.toContain("Bob");
-  });
-
-  const makeBattery = (missileTimerQueue: number[] = []) => ({
-    type: () => UnitType.CoastalBattery,
-    tile: () => 42,
-    owner: () => ({ ...hovered, displayName: () => "Dana" }),
-    hasHealth: () => true,
-    health: () => 1200,
-    level: () => 1,
-    isUnderConstruction: () => false,
-    missileTimerQueue: () => missileTimerQueue,
-  });
-  const batteryGame = (battery: ReturnType<typeof makeBattery>) => {
-    const game = makeGame(null, false, [battery]);
-    return {
-      ...game,
-      config: () => ({
-        ...game.config(),
-        unitInfo: () => ({ maxHealth: 1500 }),
-      }),
-    } as never;
-  };
-
-  it("shows a coastal battery's health under the cursor", () => {
-    overlay.game = batteryGame(makeBattery());
-
-    overlay.maybeShow(10, 10);
-    const out = flatten(overlay.render());
-
-    expect(out).toContain("Dana");
-    expect(out).toContain("unit_type.coastal_battery");
-    expect(out).toContain("Health: 1200 / 1500");
-    expect(out).not.toContain("Bob");
-  });
-
-  it("shows a coastal battery's rounds and reload", () => {
-    // Fired at tick 90; at tick 100 its 15-tick reload has 5 ticks to go.
-    overlay.game = batteryGame(makeBattery([90]));
-    overlay.maybeShow(10, 10);
-    expect(flatten(overlay.render())).toContain(
-      "player_panel.rounds_reloading",
-    );
-    expect(translateText).toHaveBeenCalledWith(
-      "player_panel.rounds_reloading",
-      {
-        ready: 0,
-        rounds: 1,
-        seconds: "0.5",
-      },
-    );
-
-    overlay.game = batteryGame(makeBattery());
-    overlay.maybeShow(10, 10);
-    expect(flatten(overlay.render())).toContain("player_panel.rounds_ready");
-    expect(translateText).toHaveBeenCalledWith("player_panel.rounds_ready", {
-      ready: 1,
-      rounds: 1,
-    });
   });
 
   it("names the weather over the hovered tile", () => {
@@ -300,24 +238,6 @@ describe("PlayerInfoOverlay", () => {
     expect(out).toContain("Bob");
     expect(out).toContain("text-white");
     expect(out).not.toContain("text-green-500");
-  });
-
-  it("marks a player whose capital someone else holds", () => {
-    const withCapital = { ...hovered, state: { capitalTile: 7 } };
-    const game = (ownerID: number) => ({
-      ...makeGame(null),
-      owner: () => withCapital,
-      ownerID: () => ownerID,
-    });
-    overlay.game = game(2) as never;
-    overlay.maybeShow(10, 10);
-    expect(flatten(overlay.render())).not.toContain(
-      "player_panel.capital_lost",
-    );
-
-    overlay.game = game(5) as never;
-    overlay.maybeShow(10, 10);
-    expect(flatten(overlay.render())).toContain("player_panel.capital_lost");
   });
 
   it("shows the terrain feature under the cursor", () => {

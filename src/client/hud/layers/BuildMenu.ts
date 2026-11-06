@@ -26,13 +26,6 @@ import {
 } from "../../Transport";
 import { UIState } from "../../UIState";
 import { GameView } from "../../view";
-import { airBlockedText, airOrderExtras, droneSwarmSlider } from "./AirOrders";
-import { canalBlockedText } from "./CanalMenu";
-import {
-  chosenMinefieldDensity,
-  displayedCost,
-  minefieldDensitySlider,
-} from "./MinefieldDensity";
 const warshipIcon = assetUrl("images/BattleshipIconWhite.svg");
 const cityIcon = assetUrl("images/CityIconWhite.svg");
 const factoryIcon = assetUrl("images/FactoryIconWhite.svg");
@@ -44,21 +37,6 @@ const atomBombIcon = assetUrl("images/NukeIconWhite.svg");
 const portIcon = assetUrl("images/PortIcon.svg");
 const samlauncherIcon = assetUrl("images/SamLauncherIconWhite.svg");
 const shieldIcon = assetUrl("images/ShieldIconWhite.svg");
-// Naval defense and conventional war (drawn by scripts/genUnitArt.ts).
-const minefieldIcon = assetUrl("images/MinefieldIconWhite.svg");
-const coastalBatteryIcon = assetUrl("images/CoastalBatteryIconWhite.svg");
-const airbaseIcon = assetUrl("images/AirbaseIconWhite.svg");
-const flakGunIcon = assetUrl("images/FlakGunIconWhite.svg");
-const airstrikeIcon = assetUrl("images/AirstrikeIconWhite.svg");
-const airdropIcon = assetUrl("images/AirdropIconWhite.svg");
-const cruiseMissileIcon = assetUrl("images/CruiseMissileIconWhite.svg");
-const ballisticMissileIcon = assetUrl("images/BallisticMissileIconWhite.svg");
-const clusterMissileIcon = assetUrl("images/ClusterMissileIconWhite.svg");
-const droneIcon = assetUrl("images/DroneIconWhite.svg");
-// A catapult (scripts/genUnitArt.ts).
-const siegeCampIcon = assetUrl("images/SiegeCampIconWhite.svg");
-// Canals open routes for ships.
-const canalIcon = assetUrl("images/BoatIconWhite.svg");
 
 export interface BuildItemDisplay {
   unitType: PlayerBuildableUnitType;
@@ -70,49 +48,6 @@ export interface BuildItemDisplay {
 
 const buildTable: BuildItemDisplay[][] = [
   [
-    // Conventional war only (hidden otherwise, like every disabled unit).
-    {
-      unitType: UnitType.CruiseMissile,
-      icon: cruiseMissileIcon,
-      description: "build_menu.desc.cruise_missile",
-      key: "unit_type.cruise_missile",
-      countable: false,
-    },
-    {
-      unitType: UnitType.BallisticMissile,
-      icon: ballisticMissileIcon,
-      description: "build_menu.desc.ballistic_missile",
-      key: "unit_type.ballistic_missile",
-      countable: false,
-    },
-    {
-      unitType: UnitType.ClusterMissile,
-      icon: clusterMissileIcon,
-      description: "build_menu.desc.cluster_missile",
-      key: "unit_type.cluster_missile",
-      countable: false,
-    },
-    {
-      unitType: UnitType.Airstrike,
-      icon: airstrikeIcon,
-      description: "build_menu.desc.airstrike",
-      key: "unit_type.airstrike",
-      countable: false,
-    },
-    {
-      unitType: UnitType.Airdrop,
-      icon: airdropIcon,
-      description: "build_menu.desc.airdrop",
-      key: "unit_type.airdrop",
-      countable: false,
-    },
-    {
-      unitType: UnitType.Drone,
-      icon: droneIcon,
-      description: "build_menu.desc.drone",
-      key: "unit_type.drone",
-      countable: false,
-    },
     {
       unitType: UnitType.AtomBomb,
       icon: atomBombIcon,
@@ -170,41 +105,6 @@ const buildTable: BuildItemDisplay[][] = [
       countable: true,
     },
     {
-      unitType: UnitType.SiegeCamp,
-      icon: siegeCampIcon,
-      description: "build_menu.desc.siege_camp",
-      key: "unit_type.siege_camp",
-      countable: true,
-    },
-    {
-      unitType: UnitType.CoastalBattery,
-      icon: coastalBatteryIcon,
-      description: "build_menu.desc.coastal_battery",
-      key: "unit_type.coastal_battery",
-      countable: true,
-    },
-    {
-      unitType: UnitType.Minefield,
-      icon: minefieldIcon,
-      description: "build_menu.desc.minefield",
-      key: "unit_type.minefield",
-      countable: true,
-    },
-    {
-      unitType: UnitType.Airbase,
-      icon: airbaseIcon,
-      description: "build_menu.desc.airbase",
-      key: "unit_type.airbase",
-      countable: true,
-    },
-    {
-      unitType: UnitType.FlakGun,
-      icon: flakGunIcon,
-      description: "build_menu.desc.flak_gun",
-      key: "unit_type.flak_gun",
-      countable: true,
-    },
-    {
       unitType: UnitType.City,
       icon: cityIcon,
       description: "build_menu.desc.city",
@@ -217,13 +117,6 @@ const buildTable: BuildItemDisplay[][] = [
       description: "build_menu.desc.factory",
       key: "unit_type.factory",
       countable: true,
-    },
-    {
-      unitType: UnitType.Canal,
-      icon: canalIcon,
-      description: "build_menu.desc.canal",
-      key: "unit_type.canal",
-      countable: false,
     },
   ],
 ];
@@ -468,14 +361,6 @@ export class BuildMenu extends LitElement implements Controller {
       return false;
     }
     const unit = this.playerBuildables.find((u) => u.type === item.unitType);
-    // Buildable once the thinnest field is affordable: check the density set.
-    if (
-      unit !== undefined &&
-      unit.type === UnitType.Minefield &&
-      (this.game.myPlayer()?.gold() ?? 0n) < this.cost(item)
-    ) {
-      return false;
-    }
     if (this.uiState.preventStacking) return !!unit && unit.canBuild !== false;
     return unit ? unit.canBuild !== false || unit.canUpgrade !== false : false;
   }
@@ -483,7 +368,7 @@ export class BuildMenu extends LitElement implements Controller {
   public cost(item: BuildItemDisplay): Gold {
     for (const bu of this.playerBuildables ?? []) {
       if (bu.type === item.unitType) {
-        return displayedCost(bu.type, bu.cost, this.uiState);
+        return bu.cost;
       }
     }
     return 0n;
@@ -512,25 +397,8 @@ export class BuildMenu extends LitElement implements Controller {
         buildableUnit.type === UnitType.HydrogenBomb
           ? this.uiState.rocketDirectionUp
           : undefined;
-      const density =
-        buildableUnit.type === UnitType.Minefield
-          ? chosenMinefieldDensity(this.uiState)
-          : undefined;
-      const extras = airOrderExtras(
-        buildableUnit.type,
-        this.uiState,
-        this.game?.myPlayer(),
-      );
       this.eventBus.emit(
-        new BuildUnitIntentEvent(
-          buildableUnit.type,
-          tile,
-          rocketDirectionUp,
-          undefined,
-          density,
-          extras.troops,
-          extras.count,
-        ),
+        new BuildUnitIntentEvent(buildableUnit.type, tile, rocketDirectionUp),
       );
     }
     this.hideMenu();
@@ -553,11 +421,6 @@ export class BuildMenu extends LitElement implements Controller {
                   return html``;
                 }
                 const enabled = this.canBuildOrUpgrade(item);
-                // A canal or an air order says why it can't go here instead.
-                const blocked =
-                  item.unitType === UnitType.Canal && this.game
-                    ? canalBlockedText(this.game, this.clickedTile)
-                    : airBlockedText(buildableUnit);
                 return html`
                   <button
                     class="build-button"
@@ -566,8 +429,7 @@ export class BuildMenu extends LitElement implements Controller {
                     ?disabled=${!enabled}
                     title=${
                       !enabled
-                        ? (blocked ??
-                          translateText("build_menu.not_enough_money"))
+                        ? translateText("build_menu.not_enough_money")
                         : ""
                     }
                   >
@@ -582,8 +444,7 @@ export class BuildMenu extends LitElement implements Controller {
                     </span>
                     <span class="build-description"
                       >${
-                        blocked ??
-                        (item.description && translateText(item.description))
+                        item.description && translateText(item.description)
                       }</span
                     >
                     <span class="build-cost" translate="no">
@@ -611,25 +472,8 @@ export class BuildMenu extends LitElement implements Controller {
             </div>
           `,
         )}
-        ${
-          this.playerBuildables?.some(
-            (bu) => bu.type === UnitType.Minefield && bu.canBuild !== false,
-          )
-            ? minefieldDensitySlider(this.uiState, () => this.requestUpdate())
-            : ""
-        }
-        ${this.renderDroneSwarmSlider()}
       </div>
     `;
-  }
-
-  private renderDroneSwarmSlider() {
-    const drone = this.playerBuildables?.find(
-      (bu) => bu.type === UnitType.Drone && bu.canBuild !== false,
-    );
-    return drone === undefined
-      ? ""
-      : droneSwarmSlider(this.uiState, drone.cost, () => this.requestUpdate());
   }
 
   hideMenu() {

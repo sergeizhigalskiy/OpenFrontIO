@@ -20,28 +20,8 @@ import {
   listNukeBreakAlliance,
   wouldNukeBreakAlliance,
 } from "@openfront/engine-lib/execution/NukeAlliance";
-import {
-  AIRBASE_STRIKE_RANGE,
-  AIRSTRIKE_FRONT_RADIUS,
-  BALLISTIC_MISSILE_BLAST_RADIUS,
-  CLUSTER_SPREAD_RADIUS,
-  CRUISE_MISSILE_BLAST_RADIUS,
-  DRONE_RANGE,
-  FLAK_GUN_RANGE,
-} from "@openfront/engine-lib/game/ConventionalWar";
-import {
-  COASTAL_BATTERY_RANGE,
-  MINEFIELD_RADIUS,
-} from "@openfront/engine-lib/game/NavalDefense";
-import { SIEGE_CAMP_RANGE } from "@openfront/engine-lib/game/Siege";
 import { EventBus } from "@openfront/shared/EventBus";
 import { Controller } from "../Controller";
-import { airBlockedText, airOrderExtras } from "../hud/layers/AirOrders";
-import { canalGhostMarker } from "../hud/layers/CanalMenu";
-import {
-  chosenMinefieldDensity,
-  displayedCost,
-} from "../hud/layers/MinefieldDensity";
 import {
   ConfirmGhostStructureEvent,
   MouseMoveEvent,
@@ -181,8 +161,7 @@ function isGhostDataEqual(
     prev.ownerID !== next.ownerID ||
     prev.upgradeTargetTile !== next.upgradeTargetTile ||
     prev.rangeRadius !== next.rangeRadius ||
-    prev.rangeWarning !== next.rangeWarning ||
-    prev.blockedText !== next.blockedText
+    prev.rangeWarning !== next.rangeWarning
   ) {
     return false;
   }
@@ -733,22 +712,6 @@ export class BuildPreviewController implements Controller {
     // The trajectory target is tracked separately from the ghost tile:
     // impassable terrain voids the ghost but still gets a trajectory arc.
     this.updateNukeTrajectoryPreview(trajectoryTileRef);
-    this.updateCanalGhost(tileRef);
-  }
-
-  /** Canals: whether a ghost path is on screen (so it is cleared once). */
-  private canalGhostShown = false;
-
-  /** Canals: the path the dig would take through the hovered tile. */
-  private updateCanalGhost(tileRef: TileRef | undefined): void {
-    const u = this.ghostUnit?.buildableUnit;
-    const marker =
-      u?.type === UnitType.Canal && tileRef !== undefined
-        ? canalGhostMarker(this.game, tileRef, u.canBuild !== false)
-        : null;
-    if (marker === null && !this.canalGhostShown) return;
-    this.canalGhostShown = marker !== null;
-    this.view.updateCanalGhost(marker);
   }
 
   /**
@@ -840,34 +803,8 @@ export class BuildPreviewController implements Controller {
     this.view.updateNukeTrajectory(null);
   }
 
-  /** An airdrop's troops and a drone order's swarm size, for the intent. */
-  private airExtras(
-    unitType: UnitType,
-  ): [number | undefined, number | undefined] {
-    const extras = airOrderExtras(unitType, this.uiState, this.game.myPlayer());
-    return [extras.troops, extras.count];
-  }
-
   private resolveGhostRangeRadius(u: BuildableUnit): number {
     switch (u.type) {
-      // Conventional war: launch ranges for the bases, blast and spread
-      // areas for the weapons, the troop-kill radius for an airstrike.
-      case UnitType.Airbase:
-        return AIRBASE_STRIKE_RANGE;
-      case UnitType.FlakGun:
-        return FLAK_GUN_RANGE;
-      case UnitType.Airstrike:
-        return AIRSTRIKE_FRONT_RADIUS;
-      case UnitType.Airdrop:
-        return AIRBASE_STRIKE_RANGE;
-      case UnitType.Drone:
-        return DRONE_RANGE;
-      case UnitType.CruiseMissile:
-        return CRUISE_MISSILE_BLAST_RADIUS;
-      case UnitType.BallisticMissile:
-        return BALLISTIC_MISSILE_BLAST_RADIUS;
-      case UnitType.ClusterMissile:
-        return CLUSTER_SPREAD_RADIUS;
       case UnitType.SAMLauncher: {
         const level = this.resolveGhostRangeLevel(u) ?? 1;
         return this.game.config().samRange(level);
@@ -882,13 +819,6 @@ export class BuildPreviewController implements Controller {
         return this.game
           .config()
           .defensePostRange(this.resolveGhostRangeLevel(u) ?? 1);
-      case UnitType.SiegeCamp:
-        // The enemy defense posts it would reduce.
-        return SIEGE_CAMP_RANGE;
-      case UnitType.Minefield:
-        return MINEFIELD_RADIUS;
-      case UnitType.CoastalBattery:
-        return COASTAL_BATTERY_RANGE;
       default:
         return 0;
     }
@@ -920,35 +850,12 @@ export class BuildPreviewController implements Controller {
       u.canUpgrade !== false || isNuke
         ? (this.uiState.upgradeMultiplier ?? 1)
         : 1;
-    // A minefield's price depends on the density picked in the build menu.
-    const cost = displayedCost(u.type, bulkCost(u, multiplier), this.uiState);
+    const cost = bulkCost(u, multiplier);
     let canAfford = myPlayer.gold() >= cost;
     if (isNuke) {
       canAfford &&= myPlayer.readyMissileCount() >= multiplier;
     }
     return { cost: Number(cost), multiplier, canAfford };
-  }
-
-  /**
-   * Airdrops preview their reach from the player's airbase nearest the
-   * cursor, not around the cursor. Null for everything else, or with no
-   * airbase. Drones need no airbase: their circle stays on the cursor, and
-   * some of the player's land must lie inside it.
-   */
-  private nearestOwnAirbase(type: UnitType, tile: TileRef): TileRef | null {
-    if (type !== UnitType.Airdrop) return null;
-    const myPlayer = this.game.myPlayer();
-    if (!myPlayer) return null;
-    let best: TileRef | null = null;
-    let bestDist = Infinity;
-    for (const base of myPlayer.units(UnitType.Airbase)) {
-      const dist = this.game.euclideanDistSquared(base.tile(), tile);
-      if (dist < bestDist) {
-        best = base.tile();
-        bestDist = dist;
-      }
-    }
-    return best;
   }
 
   private resolveGhostRadiusCenter(
@@ -988,19 +895,12 @@ export class BuildPreviewController implements Controller {
         ? (this.game.unit(u.canUpgrade)?.tile() ?? null)
         : null;
     const rangeRadius = this.resolveGhostRangeRadius(u);
-    const launchBase = this.nearestOwnAirbase(u.type, placementTile);
-    const { radiusTileX, radiusTileY } =
-      launchBase !== null
-        ? {
-            radiusTileX: this.game.x(launchBase),
-            radiusTileY: this.game.y(launchBase),
-          }
-        : this.resolveGhostRadiusCenter(
-            placementTile,
-            rangeRadius,
-            u.canUpgrade !== false,
-            upgradeTargetTile,
-          );
+    const { radiusTileX, radiusTileY } = this.resolveGhostRadiusCenter(
+      placementTile,
+      rangeRadius,
+      u.canUpgrade !== false,
+      upgradeTargetTile,
+    );
     const { cost, multiplier, canAfford } = this.resolveGhostAffordability(
       myPlayer,
       u,
@@ -1026,7 +926,6 @@ export class BuildPreviewController implements Controller {
       upgradeTargetTile,
       rangeRadius,
       rangeWarning: targetingAlly,
-      blockedText: airBlockedText(u) ?? undefined,
     };
 
     if (
@@ -1243,15 +1142,6 @@ export class BuildPreviewController implements Controller {
       if (this.shouldBlockRecentAllyNuke(targetTile, unitType)) {
         return;
       }
-      // The engine lists a minefield as buildable once the thinnest one is
-      // affordable; don't send one at a density the player can't pay for.
-      if (
-        unitType === UnitType.Minefield &&
-        (this.game.myPlayer()?.gold() ?? 0n) <
-          displayedCost(unitType, unit.cost, this.uiState)
-      ) {
-        return;
-      }
 
       const isNuke = unitType === UnitType.AtomBomb;
       const rocketDirectionUp =
@@ -1264,10 +1154,6 @@ export class BuildPreviewController implements Controller {
           targetTile,
           rocketDirectionUp,
           isNuke ? this.uiState.upgradeMultiplier || 1 : undefined,
-          unitType === UnitType.Minefield
-            ? chosenMinefieldDensity(this.uiState)
-            : undefined,
-          ...this.airExtras(unitType),
         ),
       );
       if (!shouldPreserveGhostAfterBuild(unitType)) {
@@ -1475,7 +1361,6 @@ export class BuildPreviewController implements Controller {
     this.resetCursorCaches();
     this.view.updateGhostPreview(null);
     this.clearNukeTrajectory();
-    this.updateCanalGhost(undefined);
   }
 
   private removeGhostStructure() {

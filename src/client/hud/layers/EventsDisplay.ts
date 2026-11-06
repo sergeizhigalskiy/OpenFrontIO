@@ -60,16 +60,6 @@ const TIER_1_TYPES: ReadonlySet<MessageType> = new Set([
 
 const isTier1 = (type: MessageType): boolean => TIER_1_TYPES.has(type);
 
-/** Conventional war messages whose {unit} is a unit_type translation key. */
-const UNIT_PARAM_MESSAGES: ReadonlySet<string> = new Set([
-  "events_display.air_destroyed_structure",
-  "events_display.air_destroyed_your_structure",
-  "events_display.air_shot_down_by_sam",
-  "events_display.missile_hit_nothing",
-  "events_display.plane_shot_down_by_flak",
-  "events_display.flak_shot_down_plane",
-]);
-
 @customElement("events-display")
 export class EventsDisplay extends LitElement implements Controller {
   public eventBus: EventBus;
@@ -270,10 +260,7 @@ export class EventsDisplay extends LitElement implements Controller {
     let params = event.params ?? {};
     if (
       (event.message === "events_display.missile_intercepted" ||
-        event.message === "events_display.unit_destroyed" ||
-        event.message === "events_display.mine_hit" ||
-        event.message === "events_display.mine_struck" ||
-        UNIT_PARAM_MESSAGES.has(event.message)) &&
+        event.message === "events_display.unit_destroyed") &&
       typeof params.unit === "string" &&
       params.unit.startsWith("unit_type.")
     ) {

@@ -19,7 +19,6 @@ import { assetUrl } from "@openfront/shared/AssetUrls";
 import { UIState } from "../../UIState";
 import { translateText } from "../../Utils";
 import { GameView, PlayerView } from "../../view";
-import { airBlockedText, airOrderExtras } from "./AirOrders";
 import { BuildItemDisplay, BuildMenu, flattenedBuildTable } from "./BuildMenu";
 import { ChatIntegration } from "./ChatIntegration";
 import { EmojiTable } from "./EmojiTable";
@@ -112,7 +111,6 @@ export const COLORS = {
   tooltip: {
     cost: "#f59e0b",
     count: "#94a3b8",
-    blocked: "#f87171",
   },
   chat: {
     default: "#6366f1",
@@ -433,11 +431,6 @@ function createMenuElements(
           : !BuildableAttacks.has(item.unitType)),
     )
     .map((item: BuildItemDisplay) => {
-      const blocked = airBlockedText(
-        params.playerActions.buildableUnits.find(
-          (bu) => bu.type === item.unitType,
-        ),
-      );
       return {
         id: `${elementIdPrefix}_${item.unitType}`,
         name: item.key
@@ -462,8 +455,6 @@ function createMenuElements(
             text: `${renderNumber(params.buildMenu.cost(item))} ${translateText("player_panel.gold")}`,
             className: "cost",
           },
-          // An air order that can't go here says why.
-          blocked === null ? null : { text: blocked, className: "blocked" },
           item.countable
             ? { text: `${params.buildMenu.count(item)}x`, className: "count" }
             : null,
@@ -590,20 +581,11 @@ function createMenuElements(
                 item.unitType === UnitType.HydrogenBomb
                   ? params.uiState?.rocketDirectionUp
                   : undefined;
-              const extras = airOrderExtras(
-                buildableUnit.type,
-                params.uiState,
-                params.myPlayer,
-              );
               params.eventBus.emit(
                 new BuildUnitIntentEvent(
                   buildableUnit.type,
                   params.tile,
                   rocketDirectionUp,
-                  undefined,
-                  undefined,
-                  extras.troops,
-                  extras.count,
                 ),
               );
             }
