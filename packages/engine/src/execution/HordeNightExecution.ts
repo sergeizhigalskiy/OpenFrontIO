@@ -40,6 +40,11 @@ import type {
   SnapshotWriter,
 } from "../snapshot/SnapshotContext";
 import { HordeBandExecution } from "./HordeBandExecution";
+import {
+  hordeBoatThreats,
+  hordePlainRoute,
+  hordeRouteCost,
+} from "./HordeBoats";
 import { PlayerExecution } from "./PlayerExecution";
 import { TransportShipExecution } from "./TransportShipExecution";
 
@@ -47,6 +52,9 @@ import { TransportShipExecution } from "./TransportShipExecution";
 // TribeSpawner (+2), CityStateSpawner (+3) and RuinsExecution (+4), so band
 // ids don't follow theirs.
 const HORDE_SEED_OFFSET = 5;
+
+// Landings priced beyond the bands' count when warships may shoot them.
+const BOAT_EXTRA_LANDINGS = 2;
 
 // Scratch for reachableShore: a flag per tile, all clear between searches.
 let SEEN = new Uint8Array(0);
@@ -252,26 +260,7 @@ export class HordeNightExecution implements Execution {
     }
     const coast = this.coastNearestEdge(defender);
     if (coast.length > 0 && edgeWater.length > 0) {
-      // The shortest crossings first: the coast nearest the map edge.
-      const spacing2 = HORDE_BAND_MIN_SPACING * HORDE_BAND_MIN_SPACING;
-      const sites: TileRef[] = [];
-      for (const spacing of [spacing2, 0]) {
-        for (const t of coast) {
-          if (sites.length >= count) break;
-          if (
-            sites.every(
-              (s) => s !== t && this.mg.euclideanDistSquared(s, t) >= spacing,
-            )
-          ) {
-            sites.push(t);
-          }
-        }
-      }
-      return sites.map((to) => ({
-        kind: "boat",
-        from: this.nearest(edgeWater, to),
-        to,
-      }));
+      return this.boatLandings(defender, coast, count, edgeWater);
     }
     const samples = this.borderSample(defender);
     if (samples.length === 0) return [];
@@ -369,6 +358,94 @@ export class HordeNightExecution implements Execution {
     const size = this.mg.width() * this.mg.height();
     if (SEEN.length !== size) SEEN = new Uint8Array(size);
     return SEEN;
+  }
+
+  /**
+   * Boats for `count` bands to `defender`'s `coast` (nearest the map edge
+   * first). The candidate landings are that coast, spaced out; with no
+   * warship that may shoot them about, the bands take the first and sail
+   * from the nearest map edge. Otherwise each candidate landing is priced
+   * from the nearest edge on each of the two nearest sides of the map, by
+   * the horde boat cost (an exposed tile costing 8) of the usual route
+   * there, and the bands take the cheapest; each boat then finds its way
+   * round the warships as it sails. (Pricing the usual routes rather than
+   * searching each candidate's detour keeps a wave's landing cheap.)
+   */
+  private boatLandings(
+    defender: Player,
+    coast: readonly TileRef[],
+    count: number,
+    edgeWater: readonly TileRef[],
+  ): Landing[] {
+    const threats = hordeBoatThreats(this.mg, defender);
+    const wanted = threats.length === 0 ? count : count + BOAT_EXTRA_LANDINGS;
+    const spacing2 = HORDE_BAND_MIN_SPACING * HORDE_BAND_MIN_SPACING;
+    const sites: TileRef[] = [];
+    for (const spacing of [spacing2, 0]) {
+      for (const t of coast) {
+        if (sites.length >= wanted) break;
+        if (
+          sites.every(
+            (s) => s !== t && this.mg.euclideanDistSquared(s, t) >= spacing,
+          )
+        ) {
+          sites.push(t);
+        }
+      }
+    }
+    if (threats.length === 0) {
+      return sites.map((to) => ({
+        kind: "boat",
+        from: this.nearest(edgeWater, to),
+        to,
+      }));
+    }
+    const priced: { landing: Landing; cost: number }[] = [];
+    for (const to of sites) {
+      let best: { landing: Landing; cost: number } | null = null;
+      for (const from of this.edgeStarts(edgeWater, to)) {
+        const route = hordePlainRoute(this.mg, from, to);
+        if (route === null) continue;
+        const cost = hordeRouteCost(this.mg, route, threats);
+        if (best === null || cost < best.cost) {
+          best = { landing: { kind: "boat", from, to }, cost };
+        }
+      }
+      if (best !== null) priced.push(best);
+    }
+    // Stable: equal costs keep the coast's order.
+    priced.sort((a, b) => a.cost - b.cost);
+    return priced.slice(0, count).map((p) => p.landing);
+  }
+
+  // The map-edge ocean tile nearest `to` on each of the two map sides
+  // nearest it.
+  private edgeStarts(edgeWater: readonly TileRef[], to: TileRef): TileRef[] {
+    const map = this.mg.map();
+    const h = map.height();
+    const side = (t: TileRef) => {
+      const x = map.x(t);
+      const y = map.y(t);
+      if (y === 0) return 0;
+      if (y === h - 1) return 1;
+      if (x === 0) return 2;
+      return 3;
+    };
+    const best: (TileRef | null)[] = [null, null, null, null];
+    const bestD = [Infinity, Infinity, Infinity, Infinity];
+    for (const t of edgeWater) {
+      const s = side(t);
+      const d = this.mg.euclideanDistSquared(t, to);
+      if (d < bestD[s]) {
+        bestD[s] = d;
+        best[s] = t;
+      }
+    }
+    return [0, 1, 2, 3]
+      .filter((s) => best[s] !== null)
+      .sort((a, b) => bestD[a] - bestD[b] || a - b)
+      .slice(0, 2)
+      .map((s) => best[s]!);
   }
 
   // `player`'s ocean coast, nearest the map edge first (ties by tile).

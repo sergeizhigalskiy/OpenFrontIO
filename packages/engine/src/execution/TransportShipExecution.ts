@@ -10,6 +10,7 @@ import {
   bossShieldAttackCap,
   isBossRaidBoss,
 } from "@openfront/engine-lib/game/BossRaid";
+import { isHordeBand } from "@openfront/engine-lib/game/HordeNight";
 import { MotionPlanRecord } from "@openfront/engine-lib/game/MotionPlans";
 import { STORM_SPEED_DIVISOR } from "@openfront/engine-lib/game/Weather";
 import {
@@ -37,6 +38,7 @@ import type {
   SnapshotWriter,
 } from "../snapshot/SnapshotContext";
 import { AttackExecution } from "./AttackExecution";
+import { HordeBoatPathFinder, HordeRouteSchema } from "./HordeBoats";
 
 const malusForRetreat = 25;
 
@@ -49,7 +51,8 @@ export class TransportShipExecution implements Execution {
 
   private mg: Game;
   private target: Player | TerraNullius;
-  private pathFinder: WaterPathFinder;
+  // A horde band's boat routes around the warships that may shoot it.
+  private pathFinder: WaterPathFinder | HordeBoatPathFinder;
 
   private dst: TileRef | null;
   private src: TileRef | null;
@@ -100,7 +103,11 @@ export class TransportShipExecution implements Execution {
     this.mg = mg;
     this.target = mg.owner(this.ref);
     const stagger = mg.nextShipStagger("transportShip");
-    this.pathFinder = new WaterPathFinder(mg, stagger);
+    // A horde boat sails at the player whose coast it lands on: the defender
+    // its band was sent at, or the one its band attacks (HordeBoats.ts).
+    this.pathFinder = isHordeBand(this.attacker)
+      ? new HordeBoatPathFinder(mg, this.target.isPlayer() ? this.target : null)
+      : new WaterPathFinder(mg, stagger);
 
     if (
       this.attacker.unitCount(UnitType.TransportShip) >=
@@ -181,6 +188,11 @@ export class TransportShipExecution implements Execution {
     this.boat = this.attacker.buildUnit(UnitType.TransportShip, this.src, {
       troops: this.troops,
       targetTile: this.dst,
+      // Who a horde boat sails at, for the warships that may shoot it.
+      ...(this.pathFinder instanceof HordeBoatPathFinder &&
+      this.target.isPlayer()
+        ? { targetPlayer: this.target }
+        : {}),
     });
 
     const fullPath = this.pathFinder.findPath(this.src, this.dst) ?? [this.src];
@@ -403,9 +415,19 @@ export class TransportShipExecution implements Execution {
       lastMove: this.lastMove,
       target: this.target === undefined ? undefined : w.owner(this.target),
       pathFinder:
-        this.pathFinder === undefined
-          ? undefined
-          : waterPathFinderState(this.pathFinder),
+        this.pathFinder instanceof WaterPathFinder
+          ? waterPathFinderState(this.pathFinder)
+          : undefined,
+      hordeRoute:
+        this.pathFinder instanceof HordeBoatPathFinder
+          ? {
+              aimedAt:
+                this.pathFinder.aimedAtPlayer() === null
+                  ? null
+                  : w.player(this.pathFinder.aimedAtPlayer()!),
+              route: this.pathFinder.getState(),
+            }
+          : null,
       dst: this.dst,
       src: this.src,
       retreatDst: this.retreatDst,
@@ -428,6 +450,13 @@ export class TransportShipExecution implements Execution {
     if (s.pathFinder !== undefined) {
       this.pathFinder = restoreWaterPathFinder(r.game, s.pathFinder);
     }
+    if (s.hordeRoute !== null) {
+      this.pathFinder = HordeBoatPathFinder.fromState(
+        r.game,
+        s.hordeRoute.aimedAt === null ? null : r.player(s.hordeRoute.aimedAt),
+        s.hordeRoute.route,
+      );
+    }
     if (s.dst !== undefined) this.dst = s.dst;
     if (s.src !== undefined) this.src = s.src;
     this.retreatDst = s.retreatDst;
@@ -448,6 +477,10 @@ const TransportShipExecutionStateSchema = z.object({
   lastMove: zInt().optional(),
   target: zPlayerRef().optional(),
   pathFinder: WaterPathFinderSchema.optional(),
+  // A horde boat's route and the player it sails at, instead.
+  hordeRoute: z
+    .object({ aimedAt: zPlayerRef().nullable(), route: HordeRouteSchema })
+    .nullable(),
   dst: zTile().nullable().optional(),
   src: zTile().nullable().optional(),
   /** Unresolved (null), none found (false), or the retreat tile. */
@@ -467,7 +500,12 @@ type TransportShipExecutionState = z.infer<
 
 export const TransportShipExecutionSnapshot = execSnapshotType({
   name: "TransportShip",
-  version: 1,
+  version: 2,
   schema: TransportShipExecutionStateSchema,
+  // v2: horde boats route around warships (HordeBoats.ts). Older boats all
+  // sailed the usual route.
+  migrations: {
+    1: (d) => ({ ...(d as Record<string, unknown>), hordeRoute: null }),
+  },
   cls: () => TransportShipExecution,
 });

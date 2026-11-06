@@ -1,6 +1,7 @@
 import { HordeBandExecutionSnapshot } from "@openfront/engine/execution/HordeBandExecution";
 import { HordeNightExecutionSnapshot } from "@openfront/engine/execution/HordeNightExecution";
 import { PlagueExecutionSnapshot } from "@openfront/engine/execution/PlagueExecution";
+import { TransportShipExecutionSnapshot } from "@openfront/engine/execution/TransportShipExecution";
 import { WinCheckExecutionSnapshot } from "@openfront/engine/execution/WinCheckExecution";
 
 // The game mode records bumped for Boss Raid, Horde Night and the plague:
@@ -54,5 +55,12 @@ describe("game mode snapshot migrations", () => {
     };
     expect(due.outbreaks).toBe(0);
     expect(due.nextOutbreakTick).toBe(1200);
+  });
+
+  test("TransportShip v1: every boat sailed the usual route", () => {
+    expect(TransportShipExecutionSnapshot.version).toBe(2);
+    expect(TransportShipExecutionSnapshot.migrations[1]({ troops: 5 })).toEqual(
+      { troops: 5, hordeRoute: null },
+    );
   });
 });

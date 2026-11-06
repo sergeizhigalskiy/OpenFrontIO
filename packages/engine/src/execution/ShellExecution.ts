@@ -24,6 +24,7 @@ import type {
   SnapshotWriter,
 } from "../snapshot/SnapshotContext";
 import { shellConvoy } from "./ConvoyExecution";
+import { isHordeBoat, shellHordeBoat } from "./HordeBoats";
 
 export class ShellExecution implements Execution {
   private active = true;
@@ -78,6 +79,9 @@ export class ShellExecution implements Execution {
         if (targetType === UnitType.Convoy) {
           // Convoys have troops, not health: a hit kills a share of them.
           shellConvoy(this.target, this._owner);
+        } else if (isHordeBoat(this.target)) {
+          // A horde boat isn't sunk: a hit kills a tenth of its troops.
+          shellHordeBoat(this.target, this._owner);
         } else {
           this.target.modifyHealth(-this.effectOnTarget(), this._owner);
         }

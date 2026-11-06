@@ -63,6 +63,8 @@ export interface UnitParamsMap {
   [UnitType.TransportShip]: {
     troops?: number;
     targetTile?: TileRef;
+    // A horde band's boat: the player it sails at (execution/HordeBoats.ts).
+    targetPlayer?: Player;
   };
 
   [UnitType.Warship]: {
