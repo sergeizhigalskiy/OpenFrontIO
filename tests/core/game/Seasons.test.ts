@@ -1,30 +1,25 @@
 import { GameMap } from "@openfront/engine-api/game/GameMap";
-import {
-  PlayerInfo,
-  PlayerType,
-  TerrainType,
-} from "@openfront/engine-api/game/GameTypes";
+import { PlayerInfo, PlayerType } from "@openfront/engine-api/game/GameTypes";
+import { TerrainFeature } from "@openfront/engine-api/game/TerrainFeature";
+import { environmentCost } from "@openfront/engine-lib/game/AttackEnvironment";
 import {
   isSnowLand,
   isWinterAt,
   SEASON_CYCLE_TICKS,
   seasonAt,
   SeasonPhase,
+  SNOW_NORTH_PERCENT,
   seasonTroopGrowthMultiplier,
-  WINTER_ATTACKER_LOSS_MULTIPLIER,
+  WINTER_ATTACK_TIME_MULTIPLIER,
   WINTER_TICKS,
   WINTER_TROOP_GROWTH_MULTIPLIER,
   WINTER_WARNING_TICKS,
-  winterAttackLossMultiplier,
+  winterSlowsAttack,
 } from "@openfront/engine-lib/game/Seasons";
-import {
-  AttackLogicInput,
-  EngineConfig,
-} from "@openfront/engine/configuration/EngineConfig";
 import { AttackExecution } from "@openfront/engine/execution/AttackExecution";
 import { PlayerExecution } from "@openfront/engine/execution/PlayerExecution";
 import { Game, Player } from "@openfront/engine/game/Game";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { conquerRect } from "../../util/GameHelpers";
 import { setup } from "../../util/Setup";
 import { UseRealAttackLogic } from "../../util/TestConfig";
@@ -102,84 +97,73 @@ describe("season timing", () => {
 });
 
 describe("snow land", () => {
-  function fakeMap(terrain: TerrainType, y: number, height = 100): GameMap {
+  function fakeMap(
+    y: number,
+    height = 100,
+    land = true,
+    impassable = false,
+  ): GameMap {
     return {
-      terrainType: () => terrain,
+      isLand: () => land,
+      isImpassable: () => impassable,
       y: () => y,
       height: () => height,
     } as unknown as GameMap;
   }
 
-  it("is highland and mountain anywhere, plains only in the north 30%", () => {
-    expect(isSnowLand(fakeMap(TerrainType.Highland, 90), 0)).toBe(true);
-    expect(isSnowLand(fakeMap(TerrainType.Mountain, 90), 0)).toBe(true);
-    expect(isSnowLand(fakeMap(TerrainType.Plains, 29), 0)).toBe(true);
-    expect(isSnowLand(fakeMap(TerrainType.Plains, 30), 0)).toBe(false);
-    expect(isSnowLand(fakeMap(TerrainType.Plains, 299, 1000), 0)).toBe(true);
-    expect(isSnowLand(fakeMap(TerrainType.Plains, 300, 1000), 0)).toBe(false);
+  it("is any land in the north 25% of the map", () => {
+    expect(SNOW_NORTH_PERCENT).toBe(25);
+    expect(isSnowLand(fakeMap(24), 0)).toBe(true);
+    expect(isSnowLand(fakeMap(25), 0)).toBe(false);
+    expect(isSnowLand(fakeMap(249, 1000), 0)).toBe(true);
+    expect(isSnowLand(fakeMap(250, 1000), 0)).toBe(false);
   });
 
   it("is never water or impassable land", () => {
-    expect(isSnowLand(fakeMap(TerrainType.Ocean, 0), 0)).toBe(false);
-    expect(isSnowLand(fakeMap(TerrainType.Impassable, 0), 0)).toBe(false);
+    expect(isSnowLand(fakeMap(0, 100, false), 0)).toBe(false);
+    expect(isSnowLand(fakeMap(0, 100, true, true), 0)).toBe(false);
   });
 
-  it("reads a real map's terrain and rows", async () => {
+  it("reads a real map's rows; highland and mountain south of the band aren't snow", async () => {
     const game = await setup("plains");
     const map = game.map();
-    expect(isSnowLand(map, map.ref(50, 29))).toBe(true);
-    expect(isSnowLand(map, map.ref(50, 30))).toBe(false);
+    expect(isSnowLand(map, map.ref(50, 24))).toBe(true);
+    expect(isSnowLand(map, map.ref(50, 25))).toBe(false);
     const south = map.ref(50, 80);
     map.setMagnitude(south, 15); // highland
-    expect(isSnowLand(map, south)).toBe(true);
+    expect(isSnowLand(map, south)).toBe(false);
+    map.setMagnitude(south, 25); // mountain
+    expect(isSnowLand(map, south)).toBe(false);
+    const north = map.ref(50, 10);
+    map.setMagnitude(north, 25);
+    expect(isSnowLand(map, north)).toBe(true);
   });
 });
 
 describe("winter rules", () => {
-  let config: EngineConfig;
-  beforeAll(async () => {
-    const game = await setup("plains", {}, [], undefined, UseRealAttackLogic);
-    config = game.config();
-  });
-  const input: AttackLogicInput = {
-    terrain: TerrainType.Plains,
-    attackTroops: 50_000,
-    attacker: { type: PlayerType.Human, numTiles: 2_000 },
-    defender: {
-      type: PlayerType.Human,
-      numTiles: 2_000,
-      troops: 20_000,
-      isTraitor: false,
-      isDisconnectedTeammate: false,
-    },
-    defenderHasDefensePost: false,
-    falloutRatio: null,
-    borderSize: 50,
-  };
+  const env = (winterSnow: boolean) =>
+    environmentCost({
+      feature: TerrainFeature.None,
+      enemyLand: true,
+      winterSnow,
+      mud: false,
+      defensePost: false,
+    });
 
-  it("costs +50% attacker troops on snow land, nothing else", () => {
-    const base = config.attackLogic(input);
-    const winter = config.attackLogic({
-      ...input,
-      weatherLossMultiplier: WINTER_ATTACKER_LOSS_MULTIPLIER,
-    });
-    expect(winter.attackerTroopLoss).toBeCloseTo(
-      base.attackerTroopLoss * 1.5,
-      9,
-    );
-    expect(winter.defenderTroopLoss).toBe(base.defenderTroopLoss);
-    expect(winter.tickFraction).toBe(base.tickFraction);
+  it("takes 25% longer on snow land, with no extra losses", () => {
+    expect(WINTER_ATTACK_TIME_MULTIPLIER).toBe(1.25);
+    expect(env(true)).toEqual({ lossMultiplier: 1, timeMultiplier: 1.25 });
+    expect(env(false)).toEqual({ lossMultiplier: 1, timeMultiplier: 1 });
     // Free land too.
-    const free = config.attackLogic({ ...input, defender: null });
-    const freeWinter = config.attackLogic({
-      ...input,
-      defender: null,
-      weatherLossMultiplier: 1.5,
-    });
-    expect(freeWinter.attackerTroopLoss).toBeCloseTo(
-      free.attackerTroopLoss * 1.5,
-      9,
-    );
+    expect(
+      environmentCost({
+        feature: TerrainFeature.None,
+        enemyLand: false,
+        winterSnow: true,
+        mud: false,
+        defensePost: false,
+      }),
+    ).toEqual({ lossMultiplier: 1, timeMultiplier: 1.25 });
   });
 
   it("applies only in winter and only to snow land", async () => {
@@ -187,14 +171,14 @@ describe("winter rules", () => {
     const map = game.map();
     const north = map.ref(10, 10);
     const south = map.ref(10, 80);
-    expect(winterAttackLossMultiplier(true, map, north)).toBe(1.5);
-    expect(winterAttackLossMultiplier(false, map, north)).toBe(1);
-    expect(winterAttackLossMultiplier(true, map, south)).toBe(1);
+    expect(winterSlowsAttack(true, map, north)).toBe(true);
+    expect(winterSlowsAttack(false, map, north)).toBe(false);
+    expect(winterSlowsAttack(true, map, south)).toBe(false);
     expect(game.config().isWinter(IN_WINTER)).toBe(true);
     expect(game.config().isWinter(BEFORE_WINTER)).toBe(false);
   });
 
-  it("slows every player's troop growth to 80% in winter only", async () => {
+  it("slows every player's troop growth to 90% in winter only", async () => {
     const game = await setup("plains", {}, [
       new PlayerInfo("a", PlayerType.Human, null, "a"),
     ]);
@@ -208,7 +192,7 @@ describe("winter rules", () => {
     expect(winter).toBeCloseTo(fair * WINTER_TROOP_GROWTH_MULTIPLIER, 9);
     // No clock, no season.
     expect(cfg.troopIncreaseRate(a)).toBe(fair);
-    expect(seasonTroopGrowthMultiplier(true)).toBe(0.8);
+    expect(seasonTroopGrowthMultiplier(true)).toBe(0.9);
     expect(seasonTroopGrowthMultiplier(false)).toBe(1);
   });
 });
@@ -242,12 +226,14 @@ describe("winter in a running game", () => {
     };
   }
 
-  it("costs the attacker 50% more troops for the same snow tiles", async () => {
+  it("takes snow tiles 25% slower at the same loss per tile", async () => {
     const fair = await front(0, 20, BEFORE_WINTER);
     const winter = await front(0, 20, IN_WINTER);
-    expect(fair.taken).toBeGreaterThan(0);
-    expect(winter.taken).toBe(fair.taken);
-    expect(winter.lost).toBeCloseTo(fair.lost * 1.5, 6);
+    expect(fair.taken).toBeGreaterThan(40);
+    // A quarter more budget per tile: about 80% as many tiles.
+    expect(winter.taken).toBeLessThan(fair.taken * 0.85);
+    expect(winter.taken).toBeGreaterThan(fair.taken * 0.75);
+    expect(winter.lost / winter.taken).toBeCloseTo(fair.lost / fair.taken, 2);
   });
 
   it("leaves attacks into land outside the snow alone", async () => {
@@ -257,7 +243,7 @@ describe("winter in a running game", () => {
     expect(winter.lost).toBe(fair.lost);
   });
 
-  it("grows troops at 80% through PlayerExecution", async () => {
+  it("grows troops at 90% through PlayerExecution", async () => {
     async function growth(ticksSinceStart: number): Promise<number> {
       const game: Game = await setup("plains", {}, [
         new PlayerInfo("a", PlayerType.Human, null, "a"),
@@ -273,8 +259,8 @@ describe("winter in a running game", () => {
     const fair = await growth(BEFORE_WINTER);
     const winter = await growth(IN_WINTER);
     expect(fair).toBeGreaterThan(0);
-    // Troops are whole numbers: within one per tick of 80%.
-    expect(Math.abs(winter - fair * 0.8)).toBeLessThanOrEqual(2);
-    expect(winter).toBeLessThan(fair * 0.85);
+    // Troops are whole numbers: within one per tick of 90%.
+    expect(Math.abs(winter - fair * 0.9)).toBeLessThanOrEqual(2);
+    expect(winter).toBeLessThan(fair * 0.95);
   });
 });

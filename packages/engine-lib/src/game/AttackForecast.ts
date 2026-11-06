@@ -1,7 +1,8 @@
 /**
  * The attack forecast: what attacking a tile would cost before the player
- * clicks, from the same inputs AttackExecution reads and the same
- * attackLogic it runs (see AttackLogic.ts).
+ * clicks, from the same inputs AttackExecution reads and the same rules it
+ * runs: attackLogic (AttackLogic.ts), the environment and its cap
+ * (AttackEnvironment.ts), and the spearhead's budget cap.
  *
  * Used by the client's hover card. Generic over the player type so the
  * engine's game can be passed too, which is how the tests check the forecast
@@ -9,10 +10,17 @@
  */
 import { GameMap, TileRef } from "@openfront/engine-api/game/GameMap";
 import { PlayerType } from "@openfront/engine-api/game/GameTypes";
-import { AttackLogicInput, AttackLogicResult } from "./AttackLogic";
-import { coveringDefensePostLevel, DefenseUnitQuery } from "./DefensePosts";
-import { winterAttackLossMultiplier } from "./Seasons";
-import { withTerrainFeatureCost } from "./TerrainFeatures";
+import {
+  attackEnvironment,
+  AttackEnvironmentGame,
+  withEnvironmentCost,
+} from "./AttackEnvironment";
+import {
+  attackBudgetFront,
+  AttackLogicInput,
+  AttackLogicResult,
+} from "./AttackLogic";
+import { defensePostCovers, DefenseUnitQuery } from "./DefensePosts";
 
 /** Mean of the 0-4 tiles of jitter AttackExecution adds to its front each tick. */
 export const ATTACK_FRONT_JITTER_MEAN = 2;
@@ -25,45 +33,12 @@ export interface ForecastPlayer<P> {
   troops(): number;
   isTraitor(): boolean;
   isDisconnected(): boolean;
+  isCityState(): boolean;
   isOnSameTeam(other: P): boolean;
 }
 
-/** What the weather inputs of an attack read (Seasons.ts, Weather.ts). */
-export interface AttackWeatherGame extends GameMap {
-  config(): { isWinter(ticksSinceStart: number): boolean };
-  /** Ticks since the spawn phase: the seasons' clock. */
-  ticksSinceStart(): number;
-  /** Mud's tick-cost multiplier for taking `tile` from a player; 1 without. */
-  mudTileCostMultiplier(tile: TileRef): number;
-}
-
-/**
- * The weather multipliers of taking `tile` (from a player when `enemyLand`,
- * else from terra nullius): winter on snow land raises the attacker's loss,
- * a mud front on enemy land the tile's cost. AttackExecution and the
- * forecast both call it, so they agree.
- */
-export function attackWeatherInput(
-  game: AttackWeatherGame,
-  tile: TileRef,
-  enemyLand: boolean,
-): Pick<
-  AttackLogicInput,
-  "weatherLossMultiplier" | "weatherTileCostMultiplier"
-> {
-  return {
-    weatherLossMultiplier: winterAttackLossMultiplier(
-      game.config().isWinter(game.ticksSinceStart()),
-      game,
-      tile,
-    ),
-    weatherTileCostMultiplier: enemyLand ? game.mudTileCostMultiplier(tile) : 1,
-  };
-}
-
 /** What the forecast reads about the game. */
-export interface ForecastGame
-  extends GameMap, DefenseUnitQuery, AttackWeatherGame {
+export interface ForecastGame extends DefenseUnitQuery, AttackEnvironmentGame {
   config(): {
     attackLogic(input: AttackLogicInput): AttackLogicResult;
     msPerTick(): number;
@@ -76,8 +51,6 @@ export interface AttackForecast {
   lossPerTile: number;
   /** Tiles taken per second at the start, or null when the front is unknown. */
   tilesPerSecond: number | null;
-  /** Highest level of the defender's defense posts covering the tile; 0 if none. */
-  defensePostLevel: number;
 }
 
 /**
@@ -108,7 +81,9 @@ export function attackFrontSizes(
 /**
  * The forecast for `attacker` sending `attackTroops` at `tile`, owned by
  * `defender` (null for terra nullius). `frontSize` is the attack's border
- * (attackFrontSizes), or null if unknown. The tile must be passable land.
+ * (attackFrontSizes), or null if unknown. `spearhead` prices an attack
+ * focused on the tile, whose budget comes from at most SPEAR_BUDGET_FRONT
+ * of that border, as a click sends. The tile must be passable land.
  */
 export function attackForecast<P extends ForecastPlayer<P>>(
   game: ForecastGame,
@@ -117,16 +92,14 @@ export function attackForecast<P extends ForecastPlayer<P>>(
   tile: TileRef,
   attackTroops: number,
   frontSize: number | null,
+  spearhead: boolean,
 ): AttackForecast {
-  // One scan for both: a tile is covered exactly when some post's level is.
-  const defensePostLevel =
-    defender === null
-      ? 0
-      : coveringDefensePostLevel(game, game, tile, defender.smallID());
-  const borderSize = Math.max(1, frontSize ?? 1) + ATTACK_FRONT_JITTER_MEAN;
-  // attackLogic, then the forest, river and ford multipliers on top, as
-  // AttackExecution applies them (winter and mud stack inside attackLogic).
-  const result = withTerrainFeatureCost(
+  const defenderHasDefensePost =
+    defender !== null && defensePostCovers(game, tile, defender.smallID());
+  const borderSize =
+    attackBudgetFront(Math.max(1, frontSize ?? 1), spearhead) +
+    ATTACK_FRONT_JITTER_MEAN;
+  const result = withEnvironmentCost(
     game.config().attackLogic({
       terrain: game.terrainType(tile),
       attackTroops: Math.max(1, attackTroops),
@@ -141,17 +114,16 @@ export function attackForecast<P extends ForecastPlayer<P>>(
               isTraitor: defender.isTraitor(),
               isDisconnectedTeammate:
                 defender.isDisconnected() && attacker.isOnSameTeam(defender),
+              isCityState: defender.isCityState(),
             },
-      defenderHasDefensePost: defensePostLevel > 0,
+      defenderHasDefensePost,
       falloutRatio: game.hasFallout(tile)
         ? game.numTilesWithFallout() / game.numLandTiles()
         : null,
       borderSize,
-      // Winter and mud, as AttackExecution applies them.
-      ...attackWeatherInput(game, tile, defender !== null),
     }),
-    game.terrainFeature(tile),
-    defender !== null,
+    // Forest, river, ford, winter and mud, capped, as AttackExecution does.
+    attackEnvironment(game, tile, defender !== null, defenderHasDefensePost),
   );
   const ticksPerSecond = 1000 / game.config().msPerTick();
   return {
@@ -160,6 +132,5 @@ export function attackForecast<P extends ForecastPlayer<P>>(
       frontSize === null || result.tickFraction <= 0
         ? null
         : ticksPerSecond / result.tickFraction,
-    defensePostLevel,
   };
 }

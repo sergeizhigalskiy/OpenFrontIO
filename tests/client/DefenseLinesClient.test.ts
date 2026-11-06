@@ -1,6 +1,6 @@
 /**
- * Client side of defense lines: the coverage overlay stamps each defense
- * post with its own level's range.
+ * Client side of defense posts: the coverage overlay stamps every built
+ * post, all at the engine's one range.
  */
 import { describe, expect, it } from "vitest";
 import { defensePostCircles } from "../../src/client/render/gl/passes/DefenseCoveragePass";
@@ -41,7 +41,7 @@ function unit(over: Partial<UnitState>): UnitState {
 }
 
 describe("defense coverage overlay", () => {
-  it("gives each built post the range of its level", () => {
+  it("stamps every built post, whatever its level", () => {
     const w = 100;
     const circles = defensePostCircles(
       [
@@ -54,9 +54,9 @@ describe("defense coverage overlay", () => {
       w,
     );
     expect(circles).toEqual([
-      { x: 7, y: 5, ownerID: 1, range: 30 },
-      { x: 10, y: 0, ownerID: 3, range: 38 },
-      { x: 20, y: 0, ownerID: 1, range: 45 },
+      { x: 7, y: 5, ownerID: 1 },
+      { x: 10, y: 0, ownerID: 3 },
+      { x: 20, y: 0, ownerID: 1 },
     ]);
   });
 });

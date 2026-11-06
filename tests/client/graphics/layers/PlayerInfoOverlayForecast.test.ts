@@ -9,7 +9,6 @@ const forecastMock = vi.hoisted(() => ({
   result: {
     lossPerTile: 123,
     tilesPerSecond: 4.25 as number | null,
-    defensePostLevel: 0,
   },
   calls: [] as unknown[][],
   fronts: new Map<number, number>([
@@ -148,7 +147,6 @@ describe("PlayerInfoOverlay attack forecast", () => {
     forecastMock.result = {
       lossPerTile: 123,
       tilesPerSecond: 4.25,
-      defensePostLevel: 0,
     };
     overlay = new PlayerInfoOverlay();
     overlay.eventBus = { on: vi.fn() } as never;
@@ -174,11 +172,13 @@ describe("PlayerInfoOverlay attack forecast", () => {
     expect(out).toContain('attack_forecast.speed{"speed":"4.3"}');
     expect(out).not.toContain("attack_forecast.defense_post");
     const last = forecastMock.calls[forecastMock.calls.length - 1];
-    // game, attacker, defender, tile, troops, front
+    // game, attacker, defender, tile, troops, front, spearhead
     expect(last[2]).toBe(enemy);
     expect(last[3]).toBe(42);
     expect(last[4]).toBe(50_000 * 0.2);
     expect(last[5]).toBe(40);
+    // A click attacks with the hovered tile as its focus.
+    expect(last[6]).toBe(true);
   });
 
   it("shows a card with just the forecast for unclaimed land", async () => {
@@ -190,20 +190,12 @@ describe("PlayerInfoOverlay attack forecast", () => {
     expect(last[5]).toBe(12);
   });
 
-  it("names the covering defense post's level", async () => {
-    forecastMock.result = { ...forecastMock.result, defensePostLevel: 2 };
-    const out = await hover(game(enemy, me()));
-    expect(out).toContain('attack_forecast.defense_post{"level":"2"}');
-  });
-
-  it("hides the troop-derived numbers under fog, not the post's cover", async () => {
-    forecastMock.result = { ...forecastMock.result, defensePostLevel: 1 };
+  it("hides the troop-derived numbers under fog", async () => {
     const fog = vi.fn(() => true);
     const out = await hover(game(enemy, me(), { fogHidesTroops: fog }));
     expect(out).toContain('attack_forecast.loss{"troops":"?"}');
     expect(out).toContain('attack_forecast.speed{"speed":"?"}');
     expect(out).not.toContain('"troops":"12"');
-    expect(out).toContain('attack_forecast.defense_post{"level":"1"}');
     expect(fog).toHaveBeenCalledWith(42, enemy);
 
     // Unclaimed land has no troops for fog to hide.

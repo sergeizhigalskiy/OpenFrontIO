@@ -26,7 +26,6 @@ import {
   terrainFeaturesByteLength,
   terrainFeatureTimeMultiplier,
   unpackTerrainFeatures,
-  withTerrainFeatureCost,
 } from "@openfront/engine-lib/game/TerrainFeatures";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import {
@@ -164,56 +163,25 @@ afterEach(() => {
 
 describe("Terrain feature rules", () => {
   test("multipliers", () => {
-    expect(FOREST_DEFENDED_LOSS_MULTIPLIER).toBe(1.3);
-    expect(FOREST_TIME_MULTIPLIER).toBe(1.3);
-    expect(RIVER_LOSS_MULTIPLIER).toBe(1.5);
-    expect(RIVER_TIME_MULTIPLIER).toBe(2.5);
+    expect(FOREST_DEFENDED_LOSS_MULTIPLIER).toBe(1.2);
+    expect(FOREST_TIME_MULTIPLIER).toBe(1.2);
+    expect(RIVER_LOSS_MULTIPLIER).toBe(1.25);
+    expect(RIVER_TIME_MULTIPLIER).toBe(2);
 
     const loss = (f: TerrainFeature, defended: boolean) =>
       terrainFeatureLossMultiplier(f, defended);
     expect(loss(TerrainFeature.None, true)).toBe(1);
-    expect(loss(TerrainFeature.Forest, true)).toBe(1.3);
+    expect(loss(TerrainFeature.Forest, true)).toBe(1.2);
     expect(loss(TerrainFeature.Forest, false)).toBe(1);
-    expect(loss(TerrainFeature.River, true)).toBe(1.5);
-    expect(loss(TerrainFeature.River, false)).toBe(1.5);
+    expect(loss(TerrainFeature.River, true)).toBe(1.25);
+    expect(loss(TerrainFeature.River, false)).toBe(1.25);
     expect(loss(TerrainFeature.Ford, true)).toBe(1);
     expect(loss(TerrainFeature.Ford, false)).toBe(1);
 
     expect(terrainFeatureTimeMultiplier(TerrainFeature.None)).toBe(1);
-    expect(terrainFeatureTimeMultiplier(TerrainFeature.Forest)).toBe(1.3);
-    expect(terrainFeatureTimeMultiplier(TerrainFeature.River)).toBe(2.5);
+    expect(terrainFeatureTimeMultiplier(TerrainFeature.Forest)).toBe(1.2);
+    expect(terrainFeatureTimeMultiplier(TerrainFeature.River)).toBe(2);
     expect(terrainFeatureTimeMultiplier(TerrainFeature.Ford)).toBe(1);
-  });
-
-  test("withTerrainFeatureCost scales attackLogic's result in place", () => {
-    const cost = {
-      attackerTroopLoss: 10,
-      defenderTroopLoss: 4,
-      tickFraction: 0.2,
-    };
-    expect(withTerrainFeatureCost(cost, TerrainFeature.River, false)).toBe(
-      cost,
-    );
-    expect(cost).toEqual({
-      attackerTroopLoss: 15,
-      defenderTroopLoss: 4,
-      tickFraction: 0.5,
-    });
-    const forest = withTerrainFeatureCost(
-      { attackerTroopLoss: 10, defenderTroopLoss: 4, tickFraction: 0.2 },
-      TerrainFeature.Forest,
-      false,
-    );
-    expect(forest.attackerTroopLoss).toBe(10);
-    expect(forest.tickFraction).toBeCloseTo(0.26);
-    const plain = {
-      attackerTroopLoss: 10,
-      defenderTroopLoss: 4,
-      tickFraction: 0.2,
-    };
-    expect(
-      withTerrainFeatureCost({ ...plain }, TerrainFeature.Ford, true),
-    ).toEqual(plain);
   });
 
   test("no structures on rivers or fords", () => {
@@ -318,27 +286,27 @@ describe("Attack cost on terrain features", () => {
     expect(runAttack(TerrainFeature.None, true)).toEqual(runAttack(null, true));
   });
 
-  test("owned forest: attacker losses and capture time x1.3", () => {
+  test("owned forest: attacker losses and capture time x1.2", () => {
     const plain = runAttack(null, true);
     const forest = runAttack(TerrainFeature.Forest, true);
-    expect(forest.lossPerTile).toBeCloseTo(FLAT_LOSS * 1.3);
-    // 0.125 * 1.3 per tile: 7 tiles a tick instead of 8.
+    expect(forest.lossPerTile).toBeCloseTo(FLAT_LOSS * 1.2);
+    // 0.125 * 1.2 per tile: 7 tiles a tick instead of 8.
     expect(forest.tiles / plain.tiles).toBe(7 / 8);
   });
 
-  test("unowned forest: capture time x1.3 only", () => {
+  test("unowned forest: capture time x1.2 only", () => {
     const plain = runAttack(null, false);
     const forest = runAttack(TerrainFeature.Forest, false);
     expect(forest.lossPerTile).toBe(FLAT_LOSS);
     expect(forest.tiles / plain.tiles).toBe(7 / 8);
   });
 
-  test("river: capture time x2.5 and attacker losses x1.5, owned or not", () => {
+  test("river: capture time x2 and attacker losses x1.25, owned or not", () => {
     for (const defended of [true, false]) {
       const plain = runAttack(null, defended);
       const river = runAttack(TerrainFeature.River, defended);
-      expect(river.lossPerTile).toBe(FLAT_LOSS * 1.5);
-      // 0.125 * 2.5 = 0.3125 per tile: 4 tiles a tick instead of 8.
+      expect(river.lossPerTile).toBe(FLAT_LOSS * 1.25);
+      // 0.125 * 2 = 0.25 per tile: 4 tiles a tick instead of 8.
       expect(river.tiles / plain.tiles).toBe(4 / 8);
     }
   });
@@ -367,7 +335,7 @@ describe("Attack cost on terrain features", () => {
       10,
     );
     expect(plain.lossPerTile).toBeCloseTo(16);
-    expect(river.lossPerTile).toBeCloseTo(16 * 1.5);
+    expect(river.lossPerTile).toBeCloseTo(16 * 1.25);
     expect(forest.lossPerTile).toBeCloseTo(16);
     expect(forest.tiles).toBeLessThan(plain.tiles);
     expect(river.tiles).toBeLessThan(forest.tiles);
@@ -532,8 +500,8 @@ describe("Nation AI sees terrain features", () => {
   test("forest and river raise the expected loss, fords don't", () => {
     const plain = botTileLoss(null);
     expect(plain).toBeGreaterThan(0);
-    expect(botTileLoss(TerrainFeature.Forest)).toBeCloseTo(plain * 1.3);
-    expect(botTileLoss(TerrainFeature.River)).toBeCloseTo(plain * 1.5);
+    expect(botTileLoss(TerrainFeature.Forest)).toBeCloseTo(plain * 1.2);
+    expect(botTileLoss(TerrainFeature.River)).toBeCloseTo(plain * 1.25);
     expect(botTileLoss(TerrainFeature.Ford)).toBeCloseTo(plain);
   });
 });

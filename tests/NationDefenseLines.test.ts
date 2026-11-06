@@ -1,6 +1,7 @@
 /**
- * Nation AI for defense lines: nations upgrade defense posts on threatened
- * borders, more readily on higher difficulty.
+ * Nation AI for defense lines: posts have one level (as upstream), so a
+ * nation whose threatened front is already covered never upgrades a post;
+ * it builds where cover is missing, or does nothing.
  */
 import {
   Difficulty,
@@ -11,21 +12,11 @@ import {
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import { AttackExecution } from "@openfront/engine/execution/AttackExecution";
 import { ConstructionExecution } from "@openfront/engine/execution/ConstructionExecution";
-import {
-  DEFENSE_POST_UPGRADE_GOLD_FACTOR,
-  NationStructureBehavior,
-} from "@openfront/engine/execution/nation/NationStructureBehavior";
+import { NationStructureBehavior } from "@openfront/engine/execution/nation/NationStructureBehavior";
 import { UpgradeStructureExecution } from "@openfront/engine/execution/UpgradeStructureExecution";
 import { Execution, Game, Player } from "@openfront/engine/game/Game";
 import { vi } from "vitest";
 import { createGame, L } from "./core/pathfinding/_fixtures";
-
-const DIFFICULTIES = [
-  Difficulty.Easy,
-  Difficulty.Medium,
-  Difficulty.Hard,
-  Difficulty.Impossible,
-];
 
 /**
  * 200x100 of land. The enemy holds y < 20 and borders the nation along
@@ -58,7 +49,7 @@ function added<T extends Execution>(
     .filter((e): e is T => e instanceof cls);
 }
 
-describe("nation defense post upgrades", () => {
+describe("nation defense posts: one level, no upgrades", () => {
   function behavior(game: Game, nation: Player, random = new PseudoRandom(42)) {
     return new NationStructureBehavior(random, game, nation) as unknown as {
       tryBuildDefensePost(): boolean;
@@ -69,64 +60,42 @@ describe("nation defense post upgrades", () => {
   /** The enemy attacks with 40% of the nation's troops: one post is enough. */
   function underAttack(difficulty: Difficulty) {
     const g = frontGame(difficulty);
-    const post = g.nation.buildUnit(
-      UnitType.DefensePost,
-      g.game.ref(100, 45),
-      {},
-    );
     g.game.addExecution(
       new AttackExecution(4_000, g.enemy, g.nation.id(), null, false),
     );
     for (let i = 0; i < 3; i++) g.game.executeNextTick();
     expect(g.nation.incomingAttacks()).toHaveLength(1);
-    return { ...g, post };
+    return g;
   }
 
-  function upgrades(spy: { mock: { calls: unknown[][] } }) {
-    return added(spy, UpgradeStructureExecution).map((e) => e["unitId"]);
-  }
-
-  test("the gold asked for falls with difficulty; Easy never upgrades", () => {
-    expect(DEFENSE_POST_UPGRADE_GOLD_FACTOR[Difficulty.Easy]).toBe(Infinity);
-    for (let i = 1; i < DIFFICULTIES.length; i++) {
-      expect(DEFENSE_POST_UPGRADE_GOLD_FACTOR[DIFFICULTIES[i]]).toBeLessThan(
-        DEFENSE_POST_UPGRADE_GOLD_FACTOR[DIFFICULTIES[i - 1]],
-      );
+  test("under attack with the front uncovered, builds a post behind it", () => {
+    for (const difficulty of [Difficulty.Hard, Difficulty.Impossible]) {
+      const { game, nation } = underAttack(difficulty);
+      const spy = vi.spyOn(game, "addExecution");
+      expect(behavior(game, nation).tryBuildDefensePost()).toBe(true);
+      expect(added(spy, ConstructionExecution)).toHaveLength(1);
+      expect(added(spy, UpgradeStructureExecution)).toEqual([]);
     }
   });
 
-  test("under attack with the front covered, upgrades the post there instead of building", () => {
-    const { game, nation, post } = underAttack(Difficulty.Hard);
-    const spy = vi.spyOn(game, "addExecution");
-    expect(behavior(game, nation).tryBuildDefensePost()).toBe(true);
-    expect(upgrades(spy)).toEqual([post.id()]);
-    expect(added(spy, ConstructionExecution)).toEqual([]);
+  test("under attack with the front covered, neither upgrades nor builds", () => {
+    for (const difficulty of [
+      Difficulty.Medium,
+      Difficulty.Hard,
+      Difficulty.Impossible,
+    ]) {
+      const { game, nation } = underAttack(difficulty);
+      nation.buildUnit(UnitType.DefensePost, game.ref(100, 45), {});
+      const random = new PseudoRandom(42);
+      vi.spyOn(random, "chance").mockReturnValue(true);
+      const spy = vi.spyOn(game, "addExecution");
+      expect(behavior(game, nation, random).tryBuildDefensePost()).toBe(false);
+      expect(added(spy, UpgradeStructureExecution)).toEqual([]);
+      expect(added(spy, ConstructionExecution)).toEqual([]);
+    }
   });
 
-  test("stops at level 3", () => {
-    const { game, nation, post } = underAttack(Difficulty.Impossible);
-    post.increaseLevel();
-    post.increaseLevel();
-    const spy = vi.spyOn(game, "addExecution");
-    expect(behavior(game, nation).tryBuildDefensePost()).toBe(false);
-    expect(upgrades(spy)).toEqual([]);
-  });
-
-  test("Medium needs twice the price in hand", () => {
-    const { game, nation, post } = underAttack(Difficulty.Medium);
-    const random = new PseudoRandom(42);
-    vi.spyOn(random, "chance").mockReturnValue(true);
-    nation.removeGold(nation.gold());
-    // The next post level costs 100k.
-    nation.addGold(199_999n);
-    const spy = vi.spyOn(game, "addExecution");
-    expect(behavior(game, nation, random).tryBuildDefensePost()).toBe(false);
-    nation.addGold(1n);
-    expect(behavior(game, nation, random).tryBuildDefensePost()).toBe(true);
-    expect(upgrades(spy)).toEqual([post.id()]);
-  });
-
-  test("Hard upgrades the post on a threatening neighbor's border before an attack", () => {
+  test("Hard leaves a threatening neighbor's covered border alone", () => {
     const { game, nation, enemy } = frontGame(Difficulty.Hard);
     for (const [x, y] of [
       [60, 90],
@@ -138,10 +107,10 @@ describe("nation defense post upgrades", () => {
     }
     enemy.setTroops(20_000);
     nation.updateRelation(enemy, -100);
-    const post = nation.buildUnit(UnitType.DefensePost, game.ref(100, 35), {});
+    nation.buildUnit(UnitType.DefensePost, game.ref(100, 35), {});
     const spy = vi.spyOn(game, "addExecution");
-    expect(behavior(game, nation).maybeBuildProactiveDefensePost()).toBe(true);
-    expect(upgrades(spy)).toEqual([post.id()]);
+    expect(behavior(game, nation).maybeBuildProactiveDefensePost()).toBe(false);
+    expect(added(spy, UpgradeStructureExecution)).toEqual([]);
     expect(added(spy, ConstructionExecution)).toEqual([]);
   });
 });

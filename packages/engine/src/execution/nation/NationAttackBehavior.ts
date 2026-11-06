@@ -777,6 +777,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
         tile,
         troops,
         null,
+        false,
       ).lossPerTile;
     }
     return (loss / tiles.length) * NATION_ATTACK_FRONT_TILES;

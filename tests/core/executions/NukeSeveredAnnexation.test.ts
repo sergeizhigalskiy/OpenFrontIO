@@ -17,6 +17,10 @@ import { executeTicks } from "../../util/utils";
 // it, as long as the cut-off piece itself has no coast or map edge. The
 // main body reaching the map edge (standing in for a coast) must not save
 // the piece just because the crater links the two.
+//
+// These pin the severance geometry, so the pocket size cap (a cut-off piece
+// over 150 tiles or 5% of its owner's land stays, PocketAnnexation.test.ts)
+// is lifted here.
 
 let game: Game;
 let defender: Player;
@@ -26,6 +30,10 @@ let attacker: Player;
 let third: Player;
 
 async function newGame() {
+  vi.spyOn(
+    PlayerExecution.prototype as unknown as { pocketLimit(): number },
+    "pocketLimit",
+  ).mockReturnValue(Infinity);
   game = await setup("big_plains", { infiniteGold: true, instantBuild: true }, [
     new PlayerInfo("defender", PlayerType.Human, "c1", "defender_id"),
     new PlayerInfo("attacker", PlayerType.Human, "c2", "attacker_id"),

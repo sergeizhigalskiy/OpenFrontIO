@@ -170,7 +170,6 @@
     "title": "Account Settings"
   },
   "attack_forecast": {
-    "defense_post": "Covered by a level {level} defense post",
     "loss": "You lose about {troops} troops per tile",
     "speed": "About {speed} tiles per second"
   },
@@ -2469,7 +2468,7 @@
     "spring": "Spring",
     "winter_arrived": "Winter has arrived",
     "winter_coming": "Winter is coming in {seconds}s",
-    "winter_effects": "Attacks into snow cost 50% more troops. Troops grow 20% slower.",
+    "winter_effects": "Attacks into snow take 25% longer. Troops grow 10% slower.",
     "winter_in": "Winter in {time}",
     "winter_left": "Winter: {time} left"
   },

@@ -186,8 +186,6 @@ export interface UnitInfo {
   damage?: number;
   constructionDuration?: number;
   upgradable?: boolean;
-  /** Highest level an upgradable unit reaches; unset means no limit. */
-  maxLevel?: number;
 }
 
 function unitTypeGroup<T extends readonly UnitType[]>(types: T) {

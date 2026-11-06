@@ -145,7 +145,7 @@ function shellIndices(
   for (const post of game.units(UnitType.DefensePost)) {
     if (!post.isActive() || post.isUnderConstruction()) continue;
     if (!isConvoyHostileTo(sender, recipient, post.owner())) continue;
-    const range = game.config().defensePostRange(post.level());
+    const range = game.config().defensePostRange();
     const i = firstInReach(game, tiles, end, post.tile(), range, false);
     if (i >= 0) indices.push(i);
   }

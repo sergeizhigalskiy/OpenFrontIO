@@ -5,6 +5,7 @@ import {
   Structures,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
+import { CITY_STATE_CAPTURED_CITY_LEVEL } from "@openfront/engine-lib/game/WorldFeatures";
 import { zInt, zPlayerRef } from "@openfront/engine-lib/snapshot/SnapshotType";
 import { getMode, simpleHash } from "@openfront/engine-lib/Util";
 import { z } from "zod";
@@ -25,6 +26,23 @@ import type {
 const TICKS_PER_CLUSTER_CALC = 20;
 
 const CLUSTER_SURROUNDED = 1;
+
+/**
+ * A cut-off pocket (land walled off from the owner's main body) is annexed
+ * only if it holds at most POCKET_ANNEX_MIN_TILES tiles or
+ * POCKET_ANNEX_PERCENT of the owner's land, whichever is bigger. A bigger
+ * piece stays with its owner and has to be fought for.
+ */
+export const POCKET_ANNEX_MIN_TILES = 150;
+export const POCKET_ANNEX_PERCENT = 5;
+
+/** The most tiles a cut-off pocket may hold to be annexed from an owner of `ownerTiles`. */
+export function pocketAnnexLimit(ownerTiles: number): number {
+  return Math.max(
+    POCKET_ANNEX_MIN_TILES,
+    Math.floor((ownerTiles * POCKET_ANNEX_PERCENT) / 100),
+  );
+}
 
 export class PlayerExecution implements Execution {
   private ticksPerClusterCalc = TICKS_PER_CLUSTER_CALC;
@@ -75,6 +93,10 @@ export class PlayerExecution implements Execution {
       if (u.type() === UnitType.DefensePost) {
         u.delete(true, captor);
       } else {
+        // A city-state's city changes hands at a lower level (WorldFeatures.ts).
+        if (this.player.isCityState() && u.type() === UnitType.City) {
+          while (u.level() > CITY_STATE_CAPTURED_CITY_LEVEL) u.decreaseLevel();
+        }
         captor.captureUnit(u);
       }
     }
@@ -186,10 +208,11 @@ export class PlayerExecution implements Execution {
     };
 
     const clusterRemoved = new Uint8Array(clusters.length);
+    // Cut-off pockets bigger than this stay with the owner (passes 1 and 2).
+    const pocketLimit = this.pocketLimit();
 
-    // Pass 0: Sovereign main body removal if fully enclosed by a single enemy,
-    // or by a coalition of enemies allied with each other.
-    const ring = this.surroundedBySamePlayer(
+    // Pass 0: Sovereign main body removal if fully enclosed by a single enemy
+    const surroundedBy = this.surroundedBySamePlayer(
       largestCluster,
       lMinX,
       lMinY,
@@ -197,12 +220,11 @@ export class PlayerExecution implements Execution {
       lMaxY,
     );
     // A city-state never takes land (engine-lib/game/WorldFeatures.ts), so a
-    // body ringed by one alone stays put. A coalition never includes one: a
-    // city-state can't ally.
+    // body ringed by one stays put.
     if (
-      ring &&
-      !ring.enemy.isFriendly(this.player) &&
-      !(!ring.coalition && ring.enemy.isCityState())
+      surroundedBy &&
+      !surroundedBy.isFriendly(this.player) &&
+      !surroundedBy.isCityState()
     ) {
       const removed = this.removeCluster(
         largestCluster,
@@ -210,9 +232,7 @@ export class PlayerExecution implements Execution {
         lMinY,
         lMaxX,
         lMaxY,
-        // A coalition ring has no single captor: let getCapturingPlayer pick
-        // the member pressing hardest.
-        ring.coalition ? undefined : ring.enemy,
+        surroundedBy,
         Boolean(isPinched[largestIndex]),
       );
       if (removed) clusterRemoved[largestIndex] = 1;
@@ -225,6 +245,7 @@ export class PlayerExecution implements Execution {
       isPinched,
       largestIndex,
       clusterRemoved,
+      pocketLimit,
     );
 
     // Pass 2: Pinch pass on unremoved pinched clusters
@@ -236,7 +257,13 @@ export class PlayerExecution implements Execution {
       clusterTileTIds,
       territoryAreas,
       maxTerritoryArea,
+      pocketLimit,
     );
+  }
+
+  /** The most tiles one of this player's cut-off pockets may hold to be annexed. */
+  private pocketLimit(): number {
+    return pocketAnnexLimit(this.player.numTilesOwned());
   }
 
   private executeSecondaryPass(
@@ -245,6 +272,7 @@ export class PlayerExecution implements Execution {
     isPinched: Uint8Array,
     largestIndex: number,
     clusterRemoved: Uint8Array,
+    pocketLimit: number,
   ): void {
     for (let i = 0; i < clusters.length; i++) {
       if (!this.player.isAlive()) break;
@@ -267,6 +295,7 @@ export class PlayerExecution implements Execution {
             maxY,
             undefined,
             Boolean(isPinched[i]),
+            pocketLimit,
           )
         ) {
           clusterRemoved[i] = 1;
@@ -283,6 +312,7 @@ export class PlayerExecution implements Execution {
     clusterTileTIds: Int32Array[],
     territoryAreas: number[],
     maxTerritoryArea: number,
+    pocketLimit: number,
   ): void {
     this.clusterTerritoryIds = null;
     this.nextTerritoryId = 1;
@@ -304,6 +334,7 @@ export class PlayerExecution implements Execution {
           maxTerritoryArea,
           clusterTileTIds[i],
           territoryAreas,
+          pocketLimit,
         );
       }
     } finally {
@@ -458,6 +489,7 @@ export class PlayerExecution implements Execution {
     maxTerritoryArea: number,
     tileTIds?: Int32Array,
     territoryAreas?: readonly number[],
+    pocketLimit = Infinity,
   ): void {
     if (!this.player.isAlive()) return;
     const map = this.map;
@@ -514,6 +546,10 @@ export class PlayerExecution implements Execution {
       }
       // Component cannot be the main body:
       if (componentTiles.length >= maxTerritoryArea) {
+        continue;
+      }
+      // Too big a pocket to hand over: it has to be fought for.
+      if (componentTiles.length > pocketLimit) {
         continue;
       }
 
@@ -644,21 +680,14 @@ export class PlayerExecution implements Execution {
   }
 
   // Perf: Accepts raw bounds to skip allocating {min, max} Box objects for every target evaluated.
-  // Returns the enclosing enemy, or the first member of an enclosing coalition: enemies of this
-  // player who are all friendly with each other (allies or teammates) and with none of them
-  // friendly to this player. Joint encirclement by allies counts. `coalition` says which it was.
-  // Nothing is kept on the instance, so snapshots don't need to carry it.
   private surroundedBySamePlayer(
     cluster: readonly TileRef[],
     clusterBoxMinX: number,
     clusterBoxMinY: number,
     clusterBoxMaxX: number,
     clusterBoxMaxY: number,
-  ): { enemy: Player; coalition: boolean } | null {
+  ): Player | null {
     let singleEnemySmallId = 0;
-    let firstEnemy: Player | null = null;
-    // Coalition members accepted so far (beyond the first enemy). Tiny, so a linear scan is fine.
-    const coalition: number[] = [];
 
     let minX = 1e9,
       minY = 1e9,
@@ -685,23 +714,9 @@ export class PlayerExecution implements Execution {
         }
         if (singleEnemySmallId === 0) {
           singleEnemySmallId = ownerId;
-          firstEnemy = this.mg.playerBySmallID(ownerId) as Player;
-        } else if (
-          singleEnemySmallId !== ownerId &&
-          !coalition.includes(ownerId)
-        ) {
-          // A second owner on the ring: fine only if it's allied with the first
-          // enemy and not friendly with us. Otherwise the body isn't encircled.
-          const other = this.mg.playerBySmallID(ownerId);
-          if (
-            !other.isPlayer() ||
-            firstEnemy === null ||
-            !other.isFriendly(firstEnemy) ||
-            other.isFriendly(this.player)
-          ) {
-            return null;
-          }
-          coalition.push(ownerId);
+        } else if (singleEnemySmallId !== ownerId) {
+          // Multi-enemy border: immediate O(1) early exit
+          return null;
         }
         const px = map.x(n);
         const py = map.y(n);
@@ -719,10 +734,7 @@ export class PlayerExecution implements Execution {
       maxX >= clusterBoxMaxX &&
       maxY >= clusterBoxMaxY
     ) {
-      return {
-        enemy: this.mg.playerBySmallID(singleEnemySmallId) as Player,
-        coalition: coalition.length > 0,
-      };
+      return this.mg.playerBySmallID(singleEnemySmallId) as Player;
     }
     return null;
   }
@@ -799,6 +811,8 @@ export class PlayerExecution implements Execution {
     maxY?: number,
     knownCaptor?: Player,
     isPinched?: boolean,
+    // Pockets: the most tiles a component may hold to be annexed.
+    maxTiles = Infinity,
   ): boolean {
     for (const t of cluster) {
       if (this.mg?.ownerID(t) !== this.player?.smallID()) {
@@ -854,6 +868,9 @@ export class PlayerExecution implements Execution {
         false,
         (tile) => this.mg.ownerID(tile) === this.player.smallID(),
       );
+      if (tiles.length > maxTiles) {
+        return false;
+      }
       if (this.player.numTilesOwned() === tiles.length) {
         this.mg.conquerPlayer(capturing, this.player);
       }
@@ -905,7 +922,7 @@ export class PlayerExecution implements Execution {
         (tile) => this.mg.ownerID(tile) === this.player.smallID(),
       );
 
-      if (tiles.length > 0) {
+      if (tiles.length > 0 && tiles.length <= maxTiles) {
         const componentCaptor = knownCaptor ?? this.getCapturingPlayer(tiles);
         if (componentCaptor === null) {
           continue;

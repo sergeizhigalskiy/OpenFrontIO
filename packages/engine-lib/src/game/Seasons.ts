@@ -1,11 +1,11 @@
 import { GameMap, TileRef } from "@openfront/engine-api/game/GameMap";
-import { TerrainType } from "@openfront/engine-api/game/GameTypes";
 
 /**
  * Seasons: every SEASON_CYCLE_TICKS a WINTER_TICKS winter arrives, announced
  * WINTER_WARNING_TICKS ahead. The first winter starts one full cycle after
- * the spawn phase ends. During winter, attacks into snow land cost the
- * attacker WINTER_ATTACKER_LOSS_MULTIPLIER times the troops, and every
+ * the spawn phase ends. During winter, attacks into snow land take
+ * WINTER_ATTACK_TIME_MULTIPLIER times as long, with no extra losses (one of
+ * the environment factors capped together in AttackEnvironment.ts), and every
  * player's troops grow at WINTER_TROOP_GROWTH_MULTIPLIER of the usual rate.
  *
  * A pure function of the ticks since the spawn phase ended, so it needs no
@@ -19,12 +19,12 @@ export const SEASON_CYCLE_TICKS = 7 * 60 * 10;
 export const WINTER_TICKS = 90 * 10;
 /** How long before a winter its warning shows: 30 seconds. */
 export const WINTER_WARNING_TICKS = 30 * 10;
-/** Attacker troop loss on snow land during winter (+50%). */
-export const WINTER_ATTACKER_LOSS_MULTIPLIER = 1.5;
+/** Capture time on snow land during winter (+25%). Losses are unchanged. */
+export const WINTER_ATTACK_TIME_MULTIPLIER = 1.25;
 /** Troop growth during winter, for every player. */
-export const WINTER_TROOP_GROWTH_MULTIPLIER = 0.8;
+export const WINTER_TROOP_GROWTH_MULTIPLIER = 0.9;
 /** Land in this northernmost share of the map (by tile y) is snow land. */
-export const SNOW_NORTH_PERCENT = 30;
+export const SNOW_NORTH_PERCENT = 25;
 
 export enum SeasonPhase {
   /** No winter, none due within the warning window. */
@@ -74,30 +74,26 @@ export function isWinterAt(ticksSinceStart: number): boolean {
 }
 
 /**
- * Snow land: highland and mountain tiles, and any land tile in the
+ * Snow land: any passable land tile (plains, highland or mountain) in the
  * northernmost SNOW_NORTH_PERCENT of the map by tile y. Water and impassable
  * terrain never are. (The client's winter tint shader encodes the same rule
  * on the terrain bytes: see WeatherPass.)
  */
 export function isSnowLand(map: GameMap, tile: TileRef): boolean {
-  switch (map.terrainType(tile)) {
-    case TerrainType.Highland:
-    case TerrainType.Mountain:
-      return true;
-    case TerrainType.Plains:
-      return map.y(tile) * 100 < map.height() * SNOW_NORTH_PERCENT;
-    default:
-      return false;
-  }
+  return (
+    map.isLand(tile) &&
+    !map.isImpassable(tile) &&
+    map.y(tile) * 100 < map.height() * SNOW_NORTH_PERCENT
+  );
 }
 
-/** Attacker troop loss multiplier for taking `tile`. */
-export function winterAttackLossMultiplier(
+/** Whether winter slows an attack into `tile`: it is winter and snow land. */
+export function winterSlowsAttack(
   winter: boolean,
   map: GameMap,
   tile: TileRef,
-): number {
-  return winter && isSnowLand(map, tile) ? WINTER_ATTACKER_LOSS_MULTIPLIER : 1;
+): boolean {
+  return winter && isSnowLand(map, tile);
 }
 
 /** Troop growth multiplier. */

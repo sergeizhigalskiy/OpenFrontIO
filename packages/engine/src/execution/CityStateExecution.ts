@@ -24,16 +24,16 @@ import { DefensePostExecution } from "./DefensePostExecution";
 import { PlayerExecution } from "./PlayerExecution";
 
 /**
- * A city-state's defense post sits about this many tiles from its city,
- * inside its land.
+ * A city-state's defense post sits this many tiles from its city, next to
+ * it, so a spearhead at the post crosses most of the disc's covered land.
  */
-const DEFENSE_POST_OFFSET = 4;
+export const CITY_STATE_DEFENSE_POST_OFFSET = 1;
 
 /**
  * Founds one neutral city-state (engine-lib/game/WorldFeatures.ts) on its
  * first tick, in the spawn phase so players see it while they pick a spawn:
  * the disc of free land around `center`, a level-2 city on the center, a
- * defense post inside the land, and a full garrison. It gets a
+ * defense post next to it, and a full garrison. It gets a
  * PlayerExecution (troops and gold grow as a tribe's do) but no
  * TribeExecution, so it never expands, attacks or deletes its buildings.
  */
@@ -148,15 +148,16 @@ export function cityStateDisc(game: Game, center: TileRef): TileRef[] {
 }
 
 /**
- * The tile of `player`'s land nearest DEFENSE_POST_OFFSET tiles from its
- * city (ties to the lowest ref), so the post sits between city and border.
+ * The tile of `player`'s land nearest CITY_STATE_DEFENSE_POST_OFFSET tiles
+ * from its city (ties to the lowest ref): next to the city.
  */
 function defensePostTile(game: Game, player: Player, center: TileRef): TileRef {
-  const want = DEFENSE_POST_OFFSET * DEFENSE_POST_OFFSET;
+  const want = CITY_STATE_DEFENSE_POST_OFFSET * CITY_STATE_DEFENSE_POST_OFFSET;
   let best = center;
   let bestScore = Infinity;
   for (const tile of player.tiles()) {
-    // Nothing is built on a river or ford (terrain features).
+    // The city stands on the center; nothing is built on a river or ford.
+    if (tile === center) continue;
     if (!terrainFeatureAllowsStructures(game.terrainFeature(tile))) continue;
     const score = Math.abs(game.euclideanDistSquared(tile, center) - want);
     if (score < bestScore || (score === bestScore && tile < best)) {

@@ -12,8 +12,8 @@ import { PseudoRandom } from "../PseudoRandom";
  * WEATHER_WARNING_TICKS, then takes effect for 2 to 4 minutes:
  *
  * - Mud front (spawns over land): enemy land under it costs
- *   MUD_TILE_COST_MULTIPLIER times the attack's tick budget per tile. Losses
- *   are unchanged.
+ *   MUD_TILE_COST_MULTIPLIER times the attack's tick budget per tile, within
+ *   the environment cap (AttackEnvironment.ts). Losses are unchanged.
  * - Sea storm (spawns over ocean): ships on water inside move at
  *   1 / STORM_SPEED_DIVISOR speed, and transport ships and sea convoys lose
  *   STORM_TROOP_LOSS_PERCENT_PER_TICK of their troops per tick, at most
@@ -51,7 +51,7 @@ export const STORM_SPEED_DIVISOR = 2;
 /** Troops a transport or sea convoy loses each tick in a storm, in percent. */
 export const STORM_TROOP_LOSS_PERCENT_PER_TICK = 1;
 /** The most it loses over one storm, in percent of its troops on entering. */
-export const STORM_TROOP_LOSS_MAX_PERCENT = 25;
+export const STORM_TROOP_LOSS_MAX_PERCENT = 10;
 
 const KINDS: readonly WeatherKind[] = [
   WeatherKind.Mud,

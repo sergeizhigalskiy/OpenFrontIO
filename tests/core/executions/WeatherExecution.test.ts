@@ -12,6 +12,7 @@ import { unpackMotionPlans } from "@openfront/engine-lib/game/MotionPlans";
 import {
   fogHidesTroops,
   MUD_TILE_COST_MULTIPLIER,
+  STORM_TROOP_LOSS_MAX_PERCENT,
   stormTroopLoss,
   WEATHER_DRIFT_PER_TICK,
   WEATHER_MAX_ACTIVE_TICKS,
@@ -318,7 +319,7 @@ describe("sea storms", () => {
     expect(stormy).toBeLessThanOrEqual(2 * clear + 1);
   });
 
-  it("drown 1% of a boat's troops a tick, at most 25% over one storm", async () => {
+  it("drown 1% of a boat's troops a tick, at most 10% over one storm", async () => {
     const { game, a, b, weather } = await seaGame(true);
     const boat = a.buildUnit(UnitType.TransportShip, game.ref(11, 12), {
       troops: 10_000,
@@ -334,21 +335,22 @@ describe("sea storms", () => {
       targetTile: game.ref(14, 7),
       targetPlayer: b,
     });
+    expect(STORM_TROOP_LOSS_MAX_PERCENT).toBe(10);
     executeTicks(game, 1);
     expect(boat.troops()).toBe(9_900);
     expect(convoy.troops()).toBe(3_960);
-    executeTicks(game, 10);
-    expect(boat.troops()).toBe(8_900);
+    executeTicks(game, 8);
+    expect(boat.troops()).toBe(9_100);
     executeTicks(game, 50);
-    expect(boat.troops()).toBe(7_500);
-    expect(convoy.troops()).toBe(3_000);
+    expect(boat.troops()).toBe(9_000);
+    expect(convoy.troops()).toBe(3_600);
     expect(ashore.troops()).toBe(4_000);
     // A second storm is a second budget.
     weather.addCell(cell({ ...STORM, id: 2, activeTick: game.ticks() }));
     executeTicks(game, 60);
-    expect(boat.troops()).toBe(5_625);
-    expect(stormTroopLoss(10_000, 2_450)).toBe(50);
-    expect(stormTroopLoss(10_000, 2_500)).toBe(0);
+    expect(boat.troops()).toBe(8_100);
+    expect(stormTroopLoss(10_000, 950)).toBe(50);
+    expect(stormTroopLoss(10_000, 1_000)).toBe(0);
   });
 });
 

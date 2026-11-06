@@ -234,18 +234,6 @@ const PROACTIVE_DEFENSE_POST_HOSTILE_TROOP_RATIO: Partial<
   [Difficulty.Impossible]: 0.5,
 };
 
-/**
- * Gold a nation needs, in multiples of the next level's price, before it
- * upgrades a defense post on a threatened border (its cover then reaches
- * further back), keyed by difficulty. Easy never upgrades them.
- */
-export const DEFENSE_POST_UPGRADE_GOLD_FACTOR: Record<Difficulty, number> = {
-  [Difficulty.Easy]: Infinity,
-  [Difficulty.Medium]: 2,
-  [Difficulty.Hard]: 1.5,
-  [Difficulty.Impossible]: 1,
-};
-
 /** Random tiles tried when looking for a defense post spot */
 const DEFENSE_POST_SAMPLE_ATTEMPTS = 150;
 
@@ -380,10 +368,8 @@ export class NationStructureBehavior {
     const frontTiles = this.getAttackFrontTiles(attacks);
     if (
       this.countDefensePostsNearFront(frontTiles, maxDist, allowed) >= allowed
-    ) {
-      // Enough posts already: make one of them reach further instead.
-      return this.maybeUpgradeFrontDefensePost(frontTiles, maxDist);
-    }
+    )
+      return false;
 
     return this.buildDefensePostBehind(frontTiles, minDist, maxDist);
   }
@@ -392,8 +378,7 @@ export class NationStructureBehavior {
    * Hard/Impossible: covers the border with a hostile (recently attacking)
    * neighbor before it attacks again, as humans do. Hard only fears ones at
    * least as strong as itself, Impossible also weaker ones. One post per
-   * threatening neighbor; once that front has its posts, or the nation has
-   * as many posts as it keeps, it upgrades one of them instead.
+   * threatening neighbor.
    */
   private maybeBuildProactiveDefensePost(): boolean {
     const config = this.game.config();
@@ -406,9 +391,11 @@ export class NationStructureBehavior {
     if (cityCount < PROACTIVE_DEFENSE_POST_MIN_CITIES) return false;
 
     const player = this.player;
-    const atPostCap =
+    if (
       player.units(UnitType.DefensePost).length >=
-      cityCount * PROACTIVE_DEFENSE_POSTS_PER_CITY;
+      cityCount * PROACTIVE_DEFENSE_POSTS_PER_CITY
+    )
+      return false;
     if (player.gold() < this.cost(UnitType.DefensePost)) return false;
 
     const minTroops = player.troops() * hostileTroopRatio;
@@ -428,54 +415,16 @@ export class NationStructureBehavior {
     const range = config.defensePostRange();
     const frontTiles = this.borderTilesFacing(threats);
     if (
-      atPostCap ||
       this.countDefensePostsNearFront(frontTiles, range * 1.5, threats.size) >=
-        threats.size
-    ) {
-      return this.maybeUpgradeFrontDefensePost(frontTiles, range * 1.5);
-    }
+      threats.size
+    )
+      return false;
 
     return this.buildDefensePostBehind(
       frontTiles,
       range * PROACTIVE_DEFENSE_POST_MIN_DIST,
       range * PROACTIVE_DEFENSE_POST_MAX_DIST,
     );
-  }
-
-  /**
-   * Upgrades the lowest-level defense post within `range` of the front
-   * (the first in unit order on ties), so its cover reaches further back.
-   * Needs DEFENSE_POST_UPGRADE_GOLD_FACTOR times the price in hand.
-   */
-  private maybeUpgradeFrontDefensePost(
-    frontTiles: TileRef[],
-    range: number,
-  ): boolean {
-    if (frontTiles.length === 0) return false;
-    const { difficulty } = this.game.config().gameConfig();
-    const factor = DEFENSE_POST_UPGRADE_GOLD_FACTOR[difficulty];
-    if (!Number.isFinite(factor)) return false;
-    const price = Number(this.cost(UnitType.DefensePost));
-    if (Number(this.player.gold()) < price * factor) return false;
-
-    const game = this.game;
-    const rangeSquared = range ** 2;
-    let best: Unit | null = null;
-    for (const dp of this.player.units(UnitType.DefensePost)) {
-      if (best !== null && dp.level() >= best.level()) continue;
-      if (!this.player.canUpgradeUnit(dp)) continue;
-      for (const ft of frontTiles) {
-        if (game.euclideanDistSquared(dp.tile(), ft) <= rangeSquared) {
-          best = dp;
-          break;
-        }
-      }
-    }
-    if (best === null) return false;
-    this.game.addExecution(
-      new UpgradeStructureExecution(this.player, best.id(), 1),
-    );
-    return true;
   }
 
   private buildDefensePostBehind(

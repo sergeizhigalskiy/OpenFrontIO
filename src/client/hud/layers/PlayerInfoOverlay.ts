@@ -453,6 +453,7 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
         ? null
         : (this.frontSizes.get(owner.smallID()) ?? 0);
     if (front === 0) return null;
+    // A click attacks with the clicked tile as its focus: a spearhead.
     return attackForecast(
       game,
       me,
@@ -460,6 +461,7 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
       tile,
       me.troops() * uiState.attackRatio,
       front,
+      true,
     );
   }
 
@@ -522,10 +524,7 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
     );
   }
 
-  /**
-   * Up to three short lines: loss per tile, speed, and defense cover. Under
-   * fog the loss and speed read "?"; the cover (a visible structure) stays.
-   */
+  /** Up to two short lines: loss per tile and speed. Under fog both read "?". */
   private renderAttackForecast(f: AttackForecast) {
     const fogged = this.forecastFogged();
     const speed =
@@ -536,12 +535,6 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
           : f.tilesPerSecond < 10
             ? f.tilesPerSecond.toFixed(1)
             : Math.round(f.tilesPerSecond).toString();
-    let cover = "";
-    if (f.defensePostLevel > 0) {
-      cover = translateText("attack_forecast.defense_post", {
-        level: f.defensePostLevel.toString(),
-      });
-    }
     return html`<div
       class="px-2 py-1 border-t border-gray-600 text-xs leading-tight"
       translate="no"
@@ -558,7 +551,6 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
             </div>`
           : ""
       }
-      ${cover !== "" ? html`<div class="text-red-400">${cover}</div>` : ""}
     </div>`;
   }
 

@@ -9,7 +9,11 @@ import {
   TerraNullius,
 } from "@openfront/engine-api/game/GameTypes";
 import { renderTroops } from "@openfront/engine-lib/Format";
-import { attackWeatherInput } from "@openfront/engine-lib/game/AttackForecast";
+import {
+  attackEnvironment,
+  withEnvironmentCost,
+} from "@openfront/engine-lib/game/AttackEnvironment";
+import { attackBudgetFront } from "@openfront/engine-lib/game/AttackLogic";
 import { defensePostCovers } from "@openfront/engine-lib/game/DefensePosts";
 import {
   bossShieldAttackCap,
@@ -19,7 +23,7 @@ import {
   isInfected,
   plagueCaptureTroops,
 } from "@openfront/engine-lib/game/Plague";
-import { withTerrainFeatureCost } from "@openfront/engine-lib/game/TerrainFeatures";
+import { CITY_STATE_ELIMINATION_TILES } from "@openfront/engine-lib/game/WorldFeatures";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import {
   zInt,
@@ -43,14 +47,21 @@ import type {
 import { FlatBinaryHeap } from "./utils/FlatBinaryHeap"; // adjust path if needed
 
 const malusForRetreat = 25;
+/** A player holding fewer tiles than this is eliminated (upstream). */
+const ELIMINATION_TILES = 100;
 /**
  * Spearhead attacks: when the player clicks a tile, each border tile is delayed
  * by this many ticks of queue priority per tile it lies further from the click
  * than the tip of the front does. The tip goes first, the flanks follow later.
+ * The tick budget comes from at most SPEAR_BUDGET_FRONT front tiles
+ * (engine-lib/game/AttackLogic.ts attackBudgetFront).
  */
 export const SPEARHEAD_DELAY_PER_TILE = 2.5;
-/** Cap on the delay, so flanks still move eventually instead of stalling. */
-export const SPEARHEAD_MAX_DELAY = 120;
+/**
+ * Cap on the delay: the flanks start within 4 seconds, so a spear widens
+ * into a front instead of stalling them.
+ */
+export const SPEARHEAD_MAX_DELAY = 40;
 export class AttackExecution implements Execution {
   private active: boolean = true;
   private toConquer = new FlatBinaryHeap();
@@ -344,7 +355,11 @@ export class AttackExecution implements Execution {
       return;
     }
 
-    const borderSize = this.attack.borderSize() + this.random.nextInt(0, 5);
+    // A spearhead spends the budget of at most SPEAR_BUDGET_FRONT tiles of
+    // its front, a broad attack its whole front's.
+    const borderSize =
+      attackBudgetFront(this.attack.borderSize(), this.focusTile !== null) +
+      this.random.nextInt(0, 5);
     // Plague: each tile The Infected takes from a player raises zombies.
     const infects =
       targetPlayer !== null &&
@@ -387,17 +402,22 @@ export class AttackExecution implements Execution {
         continue;
       }
       this.addNeighbors(tileToConquer);
-      // Forest, river and ford multipliers (engine-lib/game/TerrainFeatures),
-      // on top of attackLogic's (winter and mud included).
+      const input = this.attackLogicInput(
+        troopCount,
+        tileToConquer,
+        borderSize,
+      );
+      // Forest, river, ford, winter and mud on top of attackLogic, capped
+      // together (engine-lib/game/AttackEnvironment.ts).
       const { attackerTroopLoss, defenderTroopLoss, tickFraction } =
-        withTerrainFeatureCost(
-          this.mg
-            .config()
-            .attackLogic(
-              this.attackLogicInput(troopCount, tileToConquer, borderSize),
-            ),
-          this.map.terrainFeature(tileToConquer),
-          targetPlayer !== null,
+        withEnvironmentCost(
+          this.mg.config().attackLogic(input),
+          attackEnvironment(
+            this.mg,
+            tileToConquer,
+            targetPlayer !== null,
+            input.defenderHasDefensePost,
+          ),
         );
       tickBudget -= tickFraction;
       troopCount -= attackerTroopLoss;
@@ -424,12 +444,12 @@ export class AttackExecution implements Execution {
     borderSize: number,
   ): AttackLogicInput {
     const defender = this.target.isPlayer() ? this.target : null;
-    // A post owned by the defender (active, built) whose own level's range
-    // reaches the tile. Allocation-free: this runs for every tile of every
-    // attack on the map, and stops at the first covering post.
+    // Same test as scanning nearbyUnits() for a post owned by the defender
+    // (active, not under construction, within range), without building a
+    // result array per conquered tile — this runs for every tile of every
+    // attack on the map.
     const defenderHasDefensePost =
-      defender !== null &&
-      defensePostCovers(this.mg, this.map, tile, defender.smallID());
+      defender !== null && defensePostCovers(this.mg, tile, defender.smallID());
     return {
       terrain: this.map.terrainType(tile),
       attackTroops,
@@ -447,15 +467,13 @@ export class AttackExecution implements Execution {
               isTraitor: defender.isTraitor(),
               isDisconnectedTeammate:
                 defender.isDisconnected() && this._owner.isOnSameTeam(defender),
+              isCityState: defender.isCityState(),
             },
       defenderHasDefensePost,
       falloutRatio: this.mg.hasFallout(tile)
         ? this.mg.numTilesWithFallout() / this.mg.numLandTiles()
         : null,
       borderSize,
-      // weather-seasons hooks: winter on snow land, mud on enemy land (the
-      // same helper the client's attack forecast calls).
-      ...attackWeatherInput(this.mg, tile, defender !== null),
     };
   }
 
@@ -527,8 +545,13 @@ export class AttackExecution implements Execution {
   }
 
   private handleDeadDefender() {
-    if (!(this.target.isPlayer() && this.target.numTilesOwned() < 100)) return;
+    if (!this.target.isPlayer()) return;
     const target: Player = this.target;
+    // A city-state falls only once almost all of it is taken.
+    const minTiles = target.isCityState()
+      ? CITY_STATE_ELIMINATION_TILES
+      : ELIMINATION_TILES;
+    if (target.numTilesOwned() >= minTiles) return;
 
     this.mg.conquerPlayer(this._owner, target);
 
