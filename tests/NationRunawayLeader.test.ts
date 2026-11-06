@@ -98,8 +98,8 @@ describe("findRunawayLeader", () => {
   ])(
     "%s: spots a leader with 4.7x the runner-up's land: %s",
     async (difficulty, expected) => {
-      const { game, leader } = await setupStripes(difficulty);
-      expect(findRunawayLeader(game) === leader).toBe(expected);
+      const { game, leader, nation } = await setupStripes(difficulty);
+      expect(findRunawayLeader(game, nation) === leader).toBe(expected);
     },
   );
 
@@ -110,29 +110,29 @@ describe("findRunawayLeader", () => {
   ])(
     "%s: spots a leader with 2.5x the runner-up's land: %s",
     async (difficulty, expected) => {
-      const { game, leader } = await setupStripes(
+      const { game, leader, nation } = await setupStripes(
         difficulty,
         [10, 125, 15, 50],
       );
-      expect(findRunawayLeader(game) === leader).toBe(expected);
+      expect(findRunawayLeader(game, nation) === leader).toBe(expected);
     },
   );
 
   it("Impossible: 1.4x the runner-up's land is no runaway lead", async () => {
-    const { game } = await setupStripes(
+    const { game, nation } = await setupStripes(
       Difficulty.Impossible,
       [10, 100, 20, 70],
     );
-    expect(findRunawayLeader(game)).toBeNull();
+    expect(findRunawayLeader(game, nation)).toBeNull();
   });
 
   it("ignores team games", async () => {
-    const { game } = await setupStripes(
+    const { game, nation } = await setupStripes(
       Difficulty.Impossible,
       undefined,
       GameMode.Team,
     );
-    expect(findRunawayLeader(game)).toBeNull();
+    expect(findRunawayLeader(game, nation)).toBeNull();
   });
 });
 

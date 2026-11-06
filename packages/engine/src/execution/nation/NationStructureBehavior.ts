@@ -331,7 +331,7 @@ export class NationStructureBehavior {
    * Does not touch placementsCount or lastStructureTick.
    */
   private tryBuildDefensePost(): boolean {
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     if (difficulty === Difficulty.Easy) return false;
     if (difficulty === Difficulty.Medium && !this.random.chance(2))
       return false;
@@ -382,7 +382,7 @@ export class NationStructureBehavior {
    */
   private maybeBuildProactiveDefensePost(): boolean {
     const config = this.game.config();
-    const { difficulty } = config.gameConfig();
+    const difficulty = config.difficultyFor(this.player);
     const hostileTroopRatio =
       PROACTIVE_DEFENSE_POST_HOSTILE_TROOP_RATIO[difficulty];
     if (hostileTroopRatio === undefined) return false;
@@ -443,7 +443,7 @@ export class NationStructureBehavior {
   }
 
   private defensePostNeeded(): boolean {
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     if (difficulty === Difficulty.Easy) return false;
     const attacks = this.player.incomingAttacks();
     if (attacks.length === 0) return false;
@@ -634,7 +634,7 @@ export class NationStructureBehavior {
 
     // High-starting-gold Hard/Impossible nations build a SAM first so their
     // next structures get SAM coverage and aren't clustered under the same nuke target.
-    const { difficulty } = config.gameConfig();
+    const difficulty = config.difficultyFor(this.player);
     if (
       this.placementsCount === 0 &&
       (difficulty === Difficulty.Hard ||
@@ -766,7 +766,7 @@ export class NationStructureBehavior {
     const structure = this.findBestStructureToUpgrade(this.player.units(type));
     if (structure === null) return false;
 
-    const max = MAX_UPGRADES_AT_ONCE[config.gameConfig().difficulty];
+    const max = MAX_UPGRADES_AT_ONCE[config.difficultyFor(this.player)];
     let amount = 0;
     while (amount < max) {
       const cost = this.cost(type, amount);
@@ -824,7 +824,8 @@ export class NationStructureBehavior {
     hasCoastalTiles: boolean,
   ): number {
     const gameConfig = this.game.config();
-    const { difficulty, gameMode } = gameConfig.gameConfig();
+    const { gameMode } = gameConfig.gameConfig();
+    const difficulty = gameConfig.difficultyFor(this.player);
     const ratios = getStructureRatios(difficulty, gameMode);
     const config = ratios[type];
     if (config === undefined) {
@@ -897,7 +898,7 @@ export class NationStructureBehavior {
       // No room for a new one (e.g. a short coastline full of ports): upgrade one instead
       return (
         upgradable &&
-        game.config().gameConfig().difficulty !== Difficulty.Easy &&
+        game.config().difficultyFor(this.player) !== Difficulty.Easy &&
         this.maybeUpgradeStructure(structures)
       );
     }
@@ -928,7 +929,8 @@ export class NationStructureBehavior {
     }
 
     // Like humans, nations don't save up before their first few cities stand
-    const { difficulty, gameMode } = this.game.config().gameConfig();
+    const { gameMode } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     if (this.cityCount() < CITIES_BEFORE_SAVING[difficulty]) {
       return realCost;
     }
@@ -1030,7 +1032,7 @@ export class NationStructureBehavior {
 
   /** One level, or as many as the gold beyond the save-up target pays for and the structure ratios ask for. */
   private upgradeAmount(type: UnitType): number {
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     // Cities set the ratios, so only gold limits them
     const due =
       type === UnitType.City
@@ -1054,7 +1056,7 @@ export class NationStructureBehavior {
 
   /** Whether to upgrade a SAM instead of building one, because SAMs already cover every structure. */
   private shouldUpgradeSamInstead(): boolean {
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     const chance = SAM_UPGRADE_WHEN_COVERED_CHANCE[difficulty];
     const sams = this.player.units(UnitType.SAMLauncher);
     if (chance === 0 || sams.length === 0) {
@@ -1128,7 +1130,7 @@ export class NationStructureBehavior {
     }
 
     // Based on difficulty, chance to just pick a random structure
-    const { difficulty } = game.config().gameConfig();
+    const difficulty = game.config().difficultyFor(this.player);
     let randomChance: number;
     switch (difficulty) {
       case Difficulty.Easy:

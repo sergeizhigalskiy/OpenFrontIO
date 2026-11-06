@@ -361,7 +361,7 @@ export function respondToEmoji(
   }
 
   if (["🕊️", "🏳️", "❤️", "🥰", "👏"].includes(emojiString)) {
-    if (game.config().gameConfig().difficulty === Difficulty.Easy) {
+    if (game.config().difficultyFor(recipient) === Difficulty.Easy) {
       recipient.updateRelation(sender, 15);
     }
     game.addExecution(

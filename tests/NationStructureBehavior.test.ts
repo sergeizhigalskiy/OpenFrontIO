@@ -295,6 +295,7 @@ describe("NationStructureBehavior.tryBuildDefensePost", () => {
     return {
       config: () => ({
         gameConfig: () => ({ difficulty }),
+        difficultyFor: () => difficulty,
         isUnitDisabled: () => false,
         defensePostRange: () => 30,
       }),
@@ -619,7 +620,10 @@ describe("NationStructureBehavior.defensePostNeeded", () => {
 
   function makeGame(difficulty: Difficulty): any {
     return {
-      config: () => ({ gameConfig: () => ({ difficulty }) }),
+      config: () => ({
+        gameConfig: () => ({ difficulty }),
+        difficultyFor: () => difficulty,
+      }),
     };
   }
 
@@ -972,6 +976,7 @@ describe("NationStructureBehavior.doHandleStructures — crowded-map exception",
         gameConfig: () => ({
           difficulty: opts.difficulty ?? Difficulty.Medium,
         }),
+        difficultyFor: () => opts.difficulty ?? Difficulty.Medium,
         startingGold: () => 0n,
       }),
       sharedWaterComponents: () => null, // landlocked -> Factory preferred
@@ -1016,6 +1021,7 @@ describe("NationStructureBehavior.doHandleStructures — crowded-map exception",
     game.config = () => ({
       isUnitDisabled: () => false,
       gameConfig: () => ({ difficulty: Difficulty.Impossible }),
+      difficultyFor: () => Difficulty.Impossible,
       startingGold: () => 10_000_000n, // high starting gold
     });
     const behavior = makeBehavior(game, makeCrowdedPlayer());

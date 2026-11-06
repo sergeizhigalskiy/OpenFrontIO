@@ -139,7 +139,7 @@ export class NationExecution implements Execution {
       this.behaviorsInitialized &&
       this.player !== null &&
       this.player.isAlive() &&
-      this.mg.config().gameConfig().difficulty !== Difficulty.Easy &&
+      this.mg.config().difficultyFor(this.player) !== Difficulty.Easy &&
       !this.mg.config().gameConfig().tutorial &&
       this.player.unitsConstructed(UnitType.Port) &&
       !this.mg.config().isUnitDisabled(UnitType.Warship)
@@ -267,6 +267,8 @@ export class NationExecution implements Execution {
     this.mirvBehavior.considerMIRV();
     this.structureBehavior.handleStructures();
     this.warshipBehavior.maybeSpawnWarship();
+    // Medium and up send warships at a blockader; draws nothing from the PRNG.
+    this.warshipBehavior.defendBlockades();
     this.handleEmbargoesToHostileNations();
     this.attackBehavior.maybeAttack();
     this.warshipBehavior.counterWarshipInfestation();
@@ -385,7 +387,7 @@ export class NationExecution implements Execution {
     const player = this.player;
     if (player === null) return;
     const others = this.mg.players().filter((p) => p.id() !== player.id());
-    const difficulty = this.mg.config().gameConfig().difficulty;
+    const difficulty = this.mg.config().difficultyFor(player);
     const isHigherDifficulty =
       difficulty === Difficulty.Hard || difficulty === Difficulty.Impossible;
     const teamGame = this.mg.config().gameConfig().gameMode === GameMode.Team;

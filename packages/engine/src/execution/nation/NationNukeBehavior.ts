@@ -209,7 +209,7 @@ export class NationNukeBehavior {
     }
 
     const structures = nukeTarget.units(Structures.types);
-    const difficulty = this.game.config().gameConfig().difficulty;
+    const difficulty = this.game.config().difficultyFor(this.player);
     // Use more random tiles on Impossible difficulty to improve chances of finding a perfect SAM outranging spot
     const numRandomTiles = difficulty === Difficulty.Impossible ? 30 : 10;
     const randomTiles = randTerritoryTileArray(
@@ -253,7 +253,7 @@ export class NationNukeBehavior {
   /** Hydrogen bomb first; on Hard & Impossible, an atom bomb if no spot is worth a hydrogen bomb. */
   private nukeTypesToTry(atomOnly: boolean): NukeType[] {
     const config = this.game.config();
-    const difficulty = config.gameConfig().difficulty;
+    const difficulty = config.difficultyFor(this.player);
     const types: NukeType[] = [];
     if (
       !atomOnly &&
@@ -282,7 +282,7 @@ export class NationNukeBehavior {
     structures: Unit[],
     strike: boolean,
   ): TileRef | null {
-    const difficulty = this.game.config().gameConfig().difficulty;
+    const difficulty = this.game.config().difficultyFor(this.player);
     const range = this.game.config().nukeMagnitudes(nukeType).outer;
     const scored: { tile: TileRef; score: number }[] = [];
 
@@ -347,7 +347,7 @@ export class NationNukeBehavior {
   private chooseNukeTarget(): { target: Player; strike: boolean } | null {
     const target = this.findBestNukeTarget();
     if (target === null) return null;
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     let strike: boolean;
     switch (difficulty) {
       case Difficulty.Easy:
@@ -368,7 +368,7 @@ export class NationNukeBehavior {
 
   findBestNukeTarget(): Player | null {
     // On Hard & Impossible with only 2 players left, target the only other one
-    const { difficulty: diff } = this.game.config().gameConfig();
+    const diff = this.game.config().difficultyFor(this.player);
     if (
       (diff === Difficulty.Hard || diff === Difficulty.Impossible) &&
       this.game.players().length === 2
@@ -397,7 +397,8 @@ export class NationNukeBehavior {
     }
 
     // On impossible difficulty, prioritize nuking the crown if they have more than 50% of the map
-    const { difficulty, gameMode } = this.game.config().gameConfig();
+    const { gameMode } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     if (difficulty === Difficulty.Impossible && gameMode === GameMode.FFA) {
       const numTilesWithoutFallout =
         this.game.numLandTiles() - this.game.numTilesWithFallout();
@@ -488,7 +489,7 @@ export class NationNukeBehavior {
       !this.player.isFriendly(other) &&
       other.troops() >= myTroops * STRIKE_MIN_TROOP_RATIO;
 
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     switch (difficulty) {
       case Difficulty.Easy:
         return null;
@@ -525,7 +526,7 @@ export class NationNukeBehavior {
   }
 
   private followsUpStrikes(): boolean {
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     return (
       difficulty === Difficulty.Hard || difficulty === Difficulty.Impossible
     );
@@ -653,7 +654,8 @@ export class NationNukeBehavior {
   }
 
   private findFFACrownTarget(): Player | null {
-    const { difficulty, gameMode } = this.game.config().gameConfig();
+    const { gameMode } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     if (gameMode !== GameMode.FFA) {
       return null;
     }
@@ -686,7 +688,7 @@ export class NationNukeBehavior {
 
     // Below that, only a runaway leader that is far enough ahead of us.
     // Its neighbors react first, everyone else once the gap is twice as big.
-    if (findRunawayLeader(this.game) !== firstPlace) {
+    if (findRunawayLeader(this.game, this.player) !== firstPlace) {
       return null;
     }
 
@@ -720,7 +722,8 @@ export class NationNukeBehavior {
 
   /** Medium and up: the enemy attacking our teammates hardest, else the one they attack hardest. */
   private findTeammateFightTarget(): Player | null {
-    const { difficulty, gameMode } = this.game.config().gameConfig();
+    const { gameMode } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     if (gameMode !== GameMode.Team || difficulty === Difficulty.Easy) {
       return null;
     }
@@ -808,7 +811,7 @@ export class NationNukeBehavior {
     }
 
     // Hard & Impossible: one of the three players with the most structure levels
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     if (
       difficulty === Difficulty.Hard ||
       difficulty === Difficulty.Impossible
@@ -879,7 +882,7 @@ export class NationNukeBehavior {
 
     // On Hard & Impossible, ignore perceived cost when under heavy attack
     // The nation is probably going to get destroyed soon, so go all-in on nukes
-    const difficulty = this.game.config().gameConfig().difficulty;
+    const difficulty = this.game.config().difficultyFor(this.player);
     return (
       (difficulty === Difficulty.Hard ||
         difficulty === Difficulty.Impossible) &&
@@ -889,7 +892,8 @@ export class NationNukeBehavior {
 
   /** Hard & Impossible in FFA: the perceived price falls back to the real one within minutes of the last launch. */
   private forgetsNukePrices(): boolean {
-    const { difficulty, gameMode } = this.game.config().gameConfig();
+    const { gameMode } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     return (
       (difficulty === Difficulty.Hard ||
         difficulty === Difficulty.Impossible) &&
@@ -973,7 +977,7 @@ export class NationNukeBehavior {
   }
 
   private isValidNukeTile(t: TileRef, nukeTarget: Player | null): boolean {
-    const difficulty = this.game.config().gameConfig().difficulty;
+    const difficulty = this.game.config().difficultyFor(this.player);
 
     const owner = this.game.owner(t);
     if (owner === nukeTarget) return true;
@@ -1018,7 +1022,7 @@ export class NationNukeBehavior {
       })
       .reduce((prev, cur) => prev + cur, 0);
 
-    const difficulty = this.game.config().gameConfig().difficulty;
+    const difficulty = this.game.config().difficultyFor(this.player);
     // On Easy, ignore SAMs entirely.
     // On Medium, apply a simple local SAM penalty.
     // On Hard & Impossible we rely on trajectory-based interception checks instead. See maybeSendNuke().

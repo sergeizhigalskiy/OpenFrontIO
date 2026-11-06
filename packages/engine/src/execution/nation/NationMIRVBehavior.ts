@@ -107,7 +107,7 @@ export function mirvGetsThrough(
   target: Player,
 ): boolean {
   const minLeakShare =
-    MIN_MIRV_LEAK_SHARE[game.config().gameConfig().difficulty];
+    MIN_MIRV_LEAK_SHARE[game.config().difficultyFor(attacker)];
   return (
     minLeakShare === 0 || mirvLeakShare(game, attacker, target) >= minLeakShare
   );
@@ -183,7 +183,7 @@ export class NationMIRVBehavior {
   }
 
   private get hesitationOdds(): number {
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     switch (difficulty) {
       case Difficulty.Easy:
         return 2; // More likely to hesitate
@@ -203,7 +203,7 @@ export class NationMIRVBehavior {
   // alignment only: the win check divides by non-fallout land and its bar
   // sinks during overtime; this divides by all land and stays fixed.
   private get victoryDenialThresholdPercent(): number {
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     switch (difficulty) {
       case Difficulty.Easy:
         return 75; // Only react right before the game ends (80%)
@@ -219,7 +219,7 @@ export class NationMIRVBehavior {
   }
 
   private get steamrollCityGapMultiplier(): number {
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     switch (difficulty) {
       case Difficulty.Easy:
         return 2; // Needs larger gap to trigger
@@ -235,7 +235,7 @@ export class NationMIRVBehavior {
   }
 
   private get steamrollMinLeaderCities(): number {
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     switch (difficulty) {
       case Difficulty.Easy:
         return 20; // Needs more cities to trigger
@@ -387,7 +387,7 @@ export class NationMIRVBehavior {
 
   /** Hard & Impossible: the biggest bordering player about our size, wiped out by a MIRV and our attack when it lands. */
   private selectRivalTarget(): Player | null {
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     if (
       difficulty !== Difficulty.Hard &&
       difficulty !== Difficulty.Impossible

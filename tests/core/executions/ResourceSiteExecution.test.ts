@@ -500,7 +500,7 @@ describe("nations value targets holding mines", () => {
       for (const s of resourceSitesOf(game).slice(0, mines)) {
         bob.conquer(s.tile);
       }
-      return mineWeightedTroops(game, bob);
+      return mineWeightedTroops(game, alice, bob);
     };
     expect(await weighted(Difficulty.Hard, 0)).toBe(10_000);
     expect(await weighted(Difficulty.Easy, 2)).toBe(10_000);
@@ -517,12 +517,12 @@ describe("nations value targets holding mines", () => {
     await start({ difficulty: Difficulty.Hard }, "world");
     bob.setTroops(10_000);
     const [fishing] = sitesOfKind(ResourceSiteKind.FishingGrounds);
-    expect(mineWeightedTroops(game, bob)).toBe(10_000);
+    expect(mineWeightedTroops(game, alice, bob)).toBe(10_000);
     // The water tile itself can't be held; its coast can.
     bob.conquer(holderTile(fishing));
-    expect(mineWeightedTroops(game, bob)).toBe(9_000);
+    expect(mineWeightedTroops(game, alice, bob)).toBe(9_000);
     alice.conquer(holderTile(fishing));
-    expect(mineWeightedTroops(game, bob)).toBe(10_000);
+    expect(mineWeightedTroops(game, alice, bob)).toBe(10_000);
   });
 
   test("without sites the ranking is plain troops", async () => {
@@ -531,6 +531,6 @@ describe("nations value targets holding mines", () => {
     ]);
     bob = game.player("bob");
     bob.setTroops(1234);
-    expect(mineWeightedTroops(game, bob)).toBe(1234);
+    expect(mineWeightedTroops(game, bob, bob)).toBe(1234);
   });
 });

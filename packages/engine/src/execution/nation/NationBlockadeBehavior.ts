@@ -63,7 +63,7 @@ export function considerBlockade(game: Game, player: Player): void {
   if (!player.isAlive() || game.config().isUnitDisabled(UnitType.Warship)) {
     return;
   }
-  const min = minWarshipsToBlockade(game.config().gameConfig().difficulty);
+  const min = minWarshipsToBlockade(game.config().difficultyFor(player));
   if (min === null) return;
   const warships = player.units(UnitType.Warship);
   if (warships.length < min) return;

@@ -16,6 +16,7 @@ import {
 import { assertNever } from "@openfront/engine-lib/Util";
 import { z } from "zod";
 import { Game, Player, Unit } from "../../game/Game";
+import { portBlockader } from "../../game/PortBlockade";
 import type {
   SnapshotReader,
   SnapshotWriter,
@@ -25,6 +26,43 @@ import {
   EMOJI_WARSHIP_RETALIATION,
   NationEmojiBehavior,
 } from "./NationEmojiBehavior";
+
+/**
+ * Blockade defence (spec, Nation AI): the warships a nation sends at a
+ * warship blockading one of its ports, by difficulty. Easy sends none;
+ * Medium its nearest; Hard its two nearest, building one if it owns none;
+ * Impossible every spare one, building up to NATION_BLOCKADE_DEFENCE_BUILDS
+ * when it has fewer than that to send.
+ */
+export const NATION_BLOCKADE_DEFENCE_BUILDS = 2;
+
+export interface BlockadeDefence {
+  /** Warships sent at the blockader. */
+  send: number;
+  /** Built when the nation owns none. */
+  buildWithNone: number;
+  /** Built until this many are on their way. */
+  buildUpTo: number;
+}
+
+export function blockadeDefence(difficulty: Difficulty): BlockadeDefence {
+  switch (difficulty) {
+    case Difficulty.Easy:
+      return { send: 0, buildWithNone: 0, buildUpTo: 0 };
+    case Difficulty.Medium:
+      return { send: 1, buildWithNone: 0, buildUpTo: 0 };
+    case Difficulty.Hard:
+      return { send: 2, buildWithNone: 1, buildUpTo: 0 };
+    case Difficulty.Impossible:
+      return {
+        send: Infinity,
+        buildWithNone: 0,
+        buildUpTo: NATION_BLOCKADE_DEFENCE_BUILDS,
+      };
+    default:
+      assertNever(difficulty);
+  }
+}
 
 export class NationWarshipBehavior {
   // Track our transport ships we currently own
@@ -281,7 +319,7 @@ export class NationWarshipBehavior {
       return;
     }
 
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     // In Easy never retaliate. In Medium retaliate with 15% chance. Hard with 50%, Impossible with 80%.
     if (
       (difficulty === Difficulty.Medium && this.random.nextInt(0, 100) < 15) ||
@@ -305,11 +343,89 @@ export class NationWarshipBehavior {
     }
   }
 
+  /**
+   * Answers a blockade of one of our ports (blockadeDefence): the first
+   * blockader, in port order, that our warships don't cover yet and that we
+   * can send or build a ship at. Called on attack ticks; stateless and draws
+   * nothing from the PRNG.
+   */
+  defendBlockades(): void {
+    if (this.game.config().isUnitDisabled(UnitType.Warship)) return;
+    const plan = blockadeDefence(this.game.config().difficultyFor(this.player));
+    if (plan.send === 0) return;
+    for (const port of this.player.units(UnitType.Port)) {
+      if (port.isUnderConstruction()) continue;
+      const blockader = portBlockader(this.game, port);
+      if (blockader === null) continue;
+      const target = blockader.tile();
+      const covering = this.warshipsCovering(target);
+      if (covering.length >= plan.send) continue;
+      if (this.sendAtBlockader(target, covering, plan)) return;
+    }
+  }
+
+  // Whether it sent or ordered any warship at the blockader at `target`
+  private sendAtBlockader(
+    target: TileRef,
+    covering: Unit[],
+    plan: BlockadeDefence,
+  ): boolean {
+    const component = this.game.getWaterComponent(target);
+    const owned = this.player.units(UnitType.Warship);
+    // Ships on the blockader's water, out patrolling and not there yet,
+    // nearest first. Impossible sends only spare ones (no enemy around their
+    // own patrol tile), as clearSeaLane does.
+    const free = owned
+      .filter((w) => {
+        const state = w.warshipState();
+        return (
+          !covering.includes(w) &&
+          state.state === "patrolling" &&
+          this.game.getWaterComponent(w.tile()) === component &&
+          (plan.send !== Infinity ||
+            state.patrolTile === undefined ||
+            this.hostileWarshipsNear(state.patrolTile) === 0)
+        );
+      })
+      .sort(
+        (a, b) =>
+          this.game.manhattanDist(a.tile(), target) -
+            this.game.manhattanDist(b.tile(), target) || a.id() - b.id(),
+      );
+    const recruits = free.slice(0, Math.max(0, plan.send - covering.length));
+    for (const w of recruits) {
+      w.updateWarshipState({ patrolTile: target });
+    }
+    const builds = Math.max(
+      owned.length === 0 ? plan.buildWithNone : 0,
+      plan.buildUpTo - covering.length - recruits.length,
+    );
+    if (builds > 0 && this.canBuildWarshipsAt(target, builds)) {
+      for (let i = 0; i < builds; i++) {
+        this.game.addExecution(
+          new ConstructionExecution(this.player, UnitType.Warship, target),
+        );
+      }
+      return true;
+    }
+    return recruits.length > 0;
+  }
+
+  // Whether we may and can afford `count` more warships, sent at `target`
+  private canBuildWarshipsAt(target: TileRef, count: number): boolean {
+    if (this.player.units(UnitType.Warship).length + count > 10) return false;
+    // Each ship we own raises the price of the next
+    let total = 0n;
+    for (let i = 0; i < count; i++) total += this.cost(UnitType.Warship, i);
+    if (this.spareGold() < total) return false;
+    return this.player.canBuild(UnitType.Warship, target) !== false;
+  }
+
   // Send a squad at the fleet blocking our boats, all at once or not at all:
   // Hard as many ships as they have, Impossible one more
   clearSeaLane(blocker: Unit): void {
     if (this.game.config().isUnitDisabled(UnitType.Warship)) return;
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     const target = blocker.tile();
     const fleet = this.hostileWarshipsNear(target);
     let wanted: number;
@@ -446,7 +562,7 @@ export class NationWarshipBehavior {
     }
 
     // Only the smart nations can do this
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     if (
       difficulty !== Difficulty.Hard &&
       difficulty !== Difficulty.Impossible

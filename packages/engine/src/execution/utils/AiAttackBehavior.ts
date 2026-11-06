@@ -13,6 +13,7 @@ import {
   Versioned,
   zNum,
   zRef,
+  zTiles,
 } from "@openfront/engine-lib/snapshot/SnapshotType";
 import { assertNever } from "@openfront/engine-lib/Util";
 import { z } from "zod";
@@ -61,6 +62,7 @@ export abstract class AiAttackBehavior {
     w: SnapshotWriter,
     botAttackTroopsSent: number,
     followedLandings: Attack[],
+    nation: NationAttackMemory = EMPTY_NATION_MEMORY,
   ): Versioned {
     return w.versioned(AiAttackBehaviorSnapshot, {
       botAttackTroopsSent,
@@ -68,6 +70,13 @@ export abstract class AiAttackBehavior {
       triggerRatio: this.triggerRatio,
       reserveRatio: this.reserveRatio,
       expandRatio: this.expandRatio,
+      sitesHeld: w.tiles(nation.sitesHeld),
+      sitesLost: w.tiles(nation.sitesLost),
+      stallWatch: nation.stallWatch.map((s) => ({
+        attack: w.attack(s.attack),
+        tick: s.tick,
+        tiles: w.tiles(s.tiles),
+      })),
     });
   }
 
@@ -206,9 +215,12 @@ export abstract class AiAttackBehavior {
       return false;
     }
 
-    // The caller's spearhead first, else free land's own focus.
+    // The caller's spearhead first, else the target's or free land's own.
     const focus =
-      focusTile ?? (target.isPlayer() ? null : this.expansionFocus());
+      focusTile ??
+      (target.isPlayer()
+        ? this.playerAttackFocus(target)
+        : this.expansionFocus());
     this.game.addExecution(
       new AttackExecution(
         troops,
@@ -228,6 +240,15 @@ export abstract class AiAttackBehavior {
    * for high ground in rising tide, else for a nearby ruin.
    */
   protected expansionFocus(): TileRef | null {
+    return null;
+  }
+
+  /**
+   * The tile a land attack on `target` pushes toward first, or null to
+   * advance evenly. Asked only for an attack that goes ahead. Nations aim by
+   * difficulty (NationSpearheads); tribes never do.
+   */
+  protected playerAttackFocus(target: Player): TileRef | null {
     return null;
   }
 
@@ -412,7 +433,7 @@ export abstract class AiAttackBehavior {
     tried: TileRef,
     warships: Unit[],
   ): TileRef[] {
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     let count: number;
     switch (difficulty) {
       case Difficulty.Easy:
@@ -488,21 +509,56 @@ export abstract class AiAttackBehavior {
   }
 }
 
+/** One of a nation's attacks it watches for a stall: the tiles it fought over at `tick`. */
+export interface StallWatch {
+  attack: Attack;
+  tick: number;
+  tiles: TileRef[];
+}
+
+/** What a nation remembers between attack ticks (tribes: nothing). */
+export interface NationAttackMemory {
+  /** Resource sites (by tile) it held at its last look. */
+  sitesHeld: TileRef[];
+  /** Sites it held and a hostile player has taken since. */
+  sitesLost: TileRef[];
+  /** Impossible: its land attacks on players, as last seen. */
+  stallWatch: StallWatch[];
+}
+
+const EMPTY_NATION_MEMORY: NationAttackMemory = {
+  sitesHeld: [],
+  sitesLost: [],
+  stallWatch: [],
+};
+
 const AiAttackStateSchema = z.object({
   botAttackTroopsSent: zNum(),
   followedLandings: z.array(zRef()),
   triggerRatio: zNum(),
   reserveRatio: zNum(),
   expandRatio: zNum(),
+  sitesHeld: zTiles(),
+  sitesLost: zTiles(),
+  stallWatch: z.array(
+    z.object({ attack: zRef(), tick: zNum(), tiles: zTiles() }),
+  ),
 });
 type AiAttackState = z.infer<typeof AiAttackStateSchema>;
 
 export const AiAttackBehaviorSnapshot = snapshotType({
   name: "AiAttackBehavior",
-  version: 2,
+  version: 3,
   schema: AiAttackStateSchema,
   migrations: {
     // v1 nations never followed up landings
     1: (d) => ({ ...d, followedLandings: [] }),
+    // v2 nations remembered no sites and watched no attacks for a stall
+    2: (d) => ({
+      ...d,
+      sitesHeld: new Uint32Array(0),
+      sitesLost: new Uint32Array(0),
+      stallWatch: [],
+    }),
   },
 });

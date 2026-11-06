@@ -16,7 +16,9 @@ import {
 import { attackForecast } from "@openfront/engine-lib/game/AttackForecast";
 import { isBossRaid } from "@openfront/engine-lib/game/BossRaid";
 import { NATION_TROOP_DONATION_COOLDOWN_TICKS } from "@openfront/engine-lib/game/Convoys";
+import { resourceSiteHolderTile } from "@openfront/engine-lib/game/ResourceSites";
 import { terrainFeatureLossMultiplier } from "@openfront/engine-lib/game/TerrainFeatures";
+import { CITY_STATE_ELIMINATION_TILES } from "@openfront/engine-lib/game/WorldFeatures";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import { Versioned } from "@openfront/engine-lib/snapshot/SnapshotType";
 import {
@@ -37,8 +39,13 @@ import type {
 } from "../../snapshot/SnapshotContext";
 import { AttackExecution } from "../AttackExecution";
 import { DonateTroopsExecution } from "../DonateTroopExecution";
+import { resourceSitesOf } from "../ResourceSiteExecution";
 import { TransportShipExecution } from "../TransportShipExecution";
-import { AiAttackBehavior, BoatRoute } from "../utils/AiAttackBehavior";
+import {
+  AiAttackBehavior,
+  BoatRoute,
+  StallWatch,
+} from "../utils/AiAttackBehavior";
 import { bossFor, withBossStrategy } from "./BossRaidTargeting";
 import { planBotAttacks, walledInBots } from "./BotAnnexation";
 import { NationAllianceBehavior } from "./NationAllianceBehavior";
@@ -51,6 +58,18 @@ import {
   NationEmojiBehavior,
 } from "./NationEmojiBehavior";
 import { mineWeightedTroops } from "./NationResourceSiteTargeting";
+import {
+  cheapestFrontTile,
+  forecastHardness,
+  FrontSurvey,
+  NATION_ATTACK_FRONT_TILES,
+  NATION_POST_FRONT_WEIGHT,
+  postsCoverFront,
+  railCutToRetake,
+  sampleTiles,
+  spearheadFocus,
+  surveyFronts,
+} from "./NationSpearheads";
 import { fightSurvivalThreat } from "./NationSurvivalBehavior";
 import { findJuiciestTarget, findRunawayLeader } from "./NationUtils";
 import type { NationWarshipBehavior } from "./NationWarshipBehavior";
@@ -67,25 +86,34 @@ import {
   routeStormTiles,
 } from "./NationWeatherBehavior";
 import {
+  boxGapTo,
   cityStateAttackOdds,
   cityStateToAttack,
+  holdsPrize,
+  islandRuinToSeek,
+  prizeToSeek,
   ruinToSeek,
+  siteSeekRange,
 } from "./NationWorldFeatures";
 
 // Reusable neighbor buffer for hot loops; the simulation is single-threaded.
 const NEIGHBOR_SCRATCH: TileRef[] = [0, 0, 0, 0];
 
-/**
- * Attacks on players are sized by what the front costs: the smallest stack
- * worth sending takes about this many tiles at the attack forecast's loss
- * per tile (engine-lib AttackForecast).
- */
-export const NATION_ATTACK_FRONT_TILES = 150;
-/** Front tiles the forecast prices for that, spread over the first FRONT_COST_SCAN_TILES. */
+// Attacks on players are sized by what the front costs: the smallest stack
+// worth sending takes NATION_ATTACK_FRONT_TILES at the attack forecast's loss
+// per tile (engine-lib AttackForecast; see worthwhileStack).
+export { NATION_ATTACK_FRONT_TILES };
+/** Front tiles the forecast prices for that. */
 const FRONT_COST_SAMPLE_TILES = 8;
-const FRONT_COST_SCAN_TILES = 64;
-/** Our border tiles scanned at most for them, so a huge border stays cheap. */
-const FRONT_COST_SCAN_BORDER_TILES = 4096;
+/**
+ * Impossible re-aims a land attack on a player that is stalled: after this
+ * many ticks (5 s), at least NATION_STALL_SHARE of the tiles it was fighting
+ * over are still the target's.
+ */
+export const NATION_STALL_TICKS = 50;
+export const NATION_STALL_SHARE = 0.75;
+/** Tiles of an attack's front watched for a stall. */
+const STALL_WATCH_TILES = 16;
 
 // A landing weighed while planning a boat route (see boatRoute)
 interface LandingCandidate {
@@ -116,6 +144,15 @@ export class NationAttackBehavior extends AiAttackBehavior {
   private earlyLaunch = false;
   // Only set while boatRoute plans a route: every landing it weighed
   private landingCandidates: LandingCandidate[] | null = null;
+  // Only set during a maybeAttack call: our fronts (NationSpearheads)
+  private fronts: Map<number, FrontSurvey> | null = null;
+  // Only set while we retake a cut rail tile from this player: it answers
+  private retaking: Player | null = null;
+  // Resource sites (by tile) we held at our last look, and ones we lost
+  private sitesHeld: TileRef[] = [];
+  private sitesLost: TileRef[] = [];
+  // Impossible: our land attacks on players as last seen, for stalls
+  private stallWatch: StallWatch[] = [];
 
   constructor(
     random: PseudoRandom,
@@ -132,7 +169,16 @@ export class NationAttackBehavior extends AiAttackBehavior {
   }
 
   snapshot(w: SnapshotWriter): Versioned {
-    return this.writeRecord(w, this.botAttackTroopsSent, this.followedLandings);
+    return this.writeRecord(
+      w,
+      this.botAttackTroopsSent,
+      this.followedLandings,
+      {
+        sitesHeld: this.sitesHeld,
+        sitesLost: this.sitesLost,
+        stallWatch: this.stallWatch,
+      },
+    );
   }
 
   /** Fills a prototype-only shell; only assigns (see README). */
@@ -153,8 +199,17 @@ export class NationAttackBehavior extends AiAttackBehavior {
     this.landNeighbors = null;
     this.earlyLaunch = false;
     this.landingCandidates = null;
+    this.fronts = null;
+    this.retaking = null;
     this.botAttackTroopsSent = s.botAttackTroopsSent;
     this.followedLandings = s.followedLandings.map((i) => r.attack(i));
+    this.sitesHeld = Array.from(s.sitesHeld);
+    this.sitesLost = Array.from(s.sitesLost);
+    this.stallWatch = s.stallWatch.map((x) => ({
+      attack: r.attack(x.attack),
+      tick: x.tick,
+      tiles: Array.from(x.tiles),
+    }));
   }
 
   maybeAttack() {
@@ -162,7 +217,9 @@ export class NationAttackBehavior extends AiAttackBehavior {
     this.boatRoutes = routes;
     let landFront = false;
     try {
+      this.trackSites();
       this.chooseAttack();
+      this.reaimStalledAttacks();
       for (const neighbor of this.landNeighbors ?? []) {
         // A city-state never attacks, so it isn't a front.
         if (!this.player.isFriendly(neighbor) && !neighbor.isCityState()) {
@@ -173,8 +230,23 @@ export class NationAttackBehavior extends AiAttackBehavior {
       this.landNeighbors = null;
       this.boatRoutes = null;
       this.earlyLaunch = false;
+      this.fronts = null;
+      this.retaking = null;
     }
     this.clearBlockedLane(routes, landFront);
+  }
+
+  /** Our fronts against every player across our border, surveyed once per attack tick. */
+  private frontSurveys(): Map<number, FrontSurvey> {
+    if (this.fronts !== null) return this.fronts;
+    const fronts = surveyFronts(this.game, this.player);
+    // Kept only while maybeAttack runs; land doesn't change within a call.
+    if (this.boatRoutes !== null) this.fronts = fronts;
+    return fronts;
+  }
+
+  private frontWith(target: Player): FrontSurvey | undefined {
+    return this.frontSurveys().get(target.smallID());
   }
 
   // Called every tick. Hard & Impossible boats are beachheads: the moment one lands
@@ -225,6 +297,10 @@ export class NationAttackBehavior extends AiAttackBehavior {
     // usual checks in attackBestTarget.
     const attacked = this.findIncomingAttackPlayer() !== null;
     if (attacked && this.retaliatesAtOnce() && this.retaliate()) return;
+    // Retaking a cut tile of our rails comes next (Medium in attackBestTarget).
+    if (this.retaliatesAtOnce() && this.retakeRailCut()) return;
+    // Impossible boats to an island ruin; its other plans go on.
+    this.boatToIslandRuin();
     // Horde Night and the plague put their threat next (a no-op otherwise),
     // but never ahead of answering a player that is attacking us.
     if (
@@ -262,7 +338,10 @@ export class NationAttackBehavior extends AiAttackBehavior {
     for (const n of playerNeighbors) {
       if (n.isPlayer()) borderingPlayerSet.add(n);
     }
-    // Weakest first, a target holding resource sites counting as a bit weaker,
+    // Weakest first (rankWeight): Medium and up scale troops by the
+    // forecast's price of the front against open ground, Hard & Impossible
+    // ranking a front mostly under posts as NATION_POST_FRONT_WEIGHT times
+    // as strong. A target holding resource sites counts as a bit weaker,
     // and for Hard & Impossible one behind a snow front in winter or a mud
     // front as stronger (NationWeatherBehavior.frontHardness).
     // Weighed once per player up front: fishing grounds look for their coast.
@@ -271,7 +350,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
       : null;
     const weight = new Map<Player, number>();
     for (const p of borderingPlayerSet) {
-      let w = mineWeightedTroops(this.game, p);
+      let w = this.rankWeight(p);
       if (fronts !== null) {
         w *= frontHardness(this.game, this.player, fronts.get(p.smallID()));
       }
@@ -471,8 +550,10 @@ export class NationAttackBehavior extends AiAttackBehavior {
     // Save up troops until we reach the reserve ratio
     if (!this.hasReserveRatioTroops()) return;
 
-    // Medium: answer attacks without saving up to the trigger ratio first
+    // Medium: answer attacks without saving up to the trigger ratio first,
+    // then retake a cut tile of our rails
     if (difficulty === Difficulty.Medium && this.retaliate()) return;
+    if (difficulty === Difficulty.Medium && this.retakeRailCut()) return;
 
     // Maybe save up troops until we reach the trigger ratio. Impossible
     // launches early in the winter warning, where its front has no snow
@@ -606,6 +687,8 @@ export class NationAttackBehavior extends AiAttackBehavior {
       return target !== null ? this.sendAttack(target) : false;
     };
 
+    const retakeSite = (): boolean => this.retakeLostSite();
+
     const hated = (): boolean => {
       for (const relation of this.player.allRelationsSorted()) {
         if (relation.relation !== Relation.Hostile) continue;
@@ -680,16 +763,16 @@ export class NationAttackBehavior extends AiAttackBehavior {
         break;
       case Difficulty.Medium:
         // prettier-ignore
-        order = [bots, nuked, assist, betray, hated, afk, traitor, crown, weakest, island, donate];
+        order = [bots, nuked, assist, betray, retakeSite, hated, afk, traitor, crown, weakest, island, donate];
         break;
       case Difficulty.Hard:
         // Strong veryWeak and juicy strats after the distracting hated strat, to make the nations weaker than impossible
         // prettier-ignore
-        order = [bots, assist, betray, nuked, traitor, afk, hated, veryWeak, juicy, victim, crown, weakest, island, donate];
+        order = [bots, assist, betray, nuked, traitor, afk, retakeSite, hated, veryWeak, juicy, victim, crown, weakest, island, donate];
         break;
       case Difficulty.Impossible:
         // prettier-ignore
-        order = [bots, veryWeak, betray, assist, victim, crown, traitor, juicy, afk, nuked, hated, weakest, island, donate];
+        order = [bots, veryWeak, betray, assist, victim, crown, traitor, juicy, afk, nuked, retakeSite, hated, weakest, island, donate];
         break;
       default:
         assertNever(difficulty);
@@ -719,7 +802,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
   private retaliate(): boolean {
     const attacker = this.findIncomingAttackPlayer();
     if (attacker === null) return false;
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     if (
       (difficulty === Difficulty.Hard ||
         difficulty === Difficulty.Impossible) &&
@@ -747,6 +830,8 @@ export class NationAttackBehavior extends AiAttackBehavior {
    */
   private answers(target: Player | TerraNullius): boolean {
     if (!target.isPlayer() || this.player.isFriendly(target)) return false;
+    // Retaking a cut tile of our rails (retakeRailCut)
+    if (target === this.retaking) return true;
     for (const attack of this.player.incomingAttacks()) {
       if (attack.attacker() === target) return true;
     }
@@ -783,52 +868,27 @@ export class NationAttackBehavior extends AiAttackBehavior {
     return (loss / tiles.length) * NATION_ATTACK_FRONT_TILES;
   }
 
-  // Up to FRONT_COST_SAMPLE_TILES of target's land across our border, spread
-  // over the first FRONT_COST_SCAN_TILES found; else (a boat attack) the
-  // planned landing, or failing that one of its border tiles
+  // Up to FRONT_COST_SAMPLE_TILES of target's land across our border, evenly
+  // spread (frontWith); else (a boat attack) the planned landing, or failing
+  // that one of its border tiles
   private frontCostTiles(target: Player): TileRef[] {
+    const front = this.frontWith(target);
+    if (front !== undefined && front.tiles.length > 0) {
+      return sampleTiles(front.tiles, FRONT_COST_SAMPLE_TILES);
+    }
+    const landing = this.boatRoutes?.get(target)?.landing;
+    if (landing !== undefined) return [landing];
     const map = this.game.map();
-    const id = target.smallID();
-    const front: TileRef[] = [];
-    let scanned = 0;
-    for (const border of this.player.borderTiles()) {
-      if (++scanned > FRONT_COST_SCAN_BORDER_TILES) break;
-      const n = map.neighbors4(border, this.nbuf);
-      for (let i = 0; i < n; i++) {
-        const t = this.nbuf[i];
-        if (map.ownerID(t) === id && map.isLand(t) && !map.isImpassable(t)) {
-          front.push(t);
-        }
-      }
-      if (front.length >= FRONT_COST_SCAN_TILES) break;
+    for (const t of target.borderTiles()) {
+      if (map.isLand(t) && !map.isImpassable(t)) return [t];
     }
-    if (front.length === 0) {
-      const landing = this.boatRoutes?.get(target)?.landing;
-      if (landing !== undefined) return [landing];
-      for (const t of target.borderTiles()) {
-        if (map.isLand(t) && !map.isImpassable(t)) return [t];
-      }
-      return [];
-    }
-    const step = Math.max(
-      1,
-      Math.floor(front.length / FRONT_COST_SAMPLE_TILES),
-    );
-    const tiles: TileRef[] = [];
-    for (
-      let i = 0;
-      i < front.length && tiles.length < FRONT_COST_SAMPLE_TILES;
-      i += step
-    ) {
-      tiles.push(front[i]);
-    }
-    return tiles;
+    return [];
   }
 
   // Hard & Impossible keep their troops home while under attack, Medium only sometimes
   private holdsBoatsUnderAttack(): boolean {
     if (this.findIncomingAttackPlayer() === null) return false;
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     switch (difficulty) {
       case Difficulty.Easy:
         return false;
@@ -896,7 +956,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
   // the troops already attacking it, is worth it. Medium only joins attacks
   // already under way.
   private findCrownTarget(borderingEnemies: Player[]): Player | null {
-    const leader = findRunawayLeader(this.game);
+    const leader = findRunawayLeader(this.game, this.player);
     if (
       leader === null ||
       !borderingEnemies.includes(leader) ||
@@ -904,7 +964,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
     ) {
       return null;
     }
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     if (
       difficulty === Difficulty.Hard ||
       difficulty === Difficulty.Impossible
@@ -937,11 +997,14 @@ export class NationAttackBehavior extends AiAttackBehavior {
       const density = (p: Player) => p.troops() / p.numTilesOwned();
       ordered = bots.slice().sort((a, b) => density(a) - density(b));
     }
-    const ownsStructures = (p: Player) =>
-      p.units().some((u) => Structures.has(u.type()));
-    const sortedBots = ordered.sort(
-      (a, b) => Number(ownsStructures(b)) - Number(ownsStructures(a)),
-    );
+    // Bots holding structures first, then ones sitting on a ruin or site we go for
+    const rank = new Map<Player, number>();
+    for (const bot of ordered) {
+      const structures = bot.units().some((u) => Structures.has(u.type()));
+      const prize = holdsPrize(this.game, this.player, bot);
+      rank.set(bot, (structures ? 2 : 0) + (prize ? 1 : 0));
+    }
+    const sortedBots = ordered.sort((a, b) => rank.get(b)! - rank.get(a)!);
     const reducedBots = sortedBots.slice(0, this.getBotAttackMaxParallelism());
 
     for (const bot of reducedBots) {
@@ -981,13 +1044,14 @@ export class NationAttackBehavior extends AiAttackBehavior {
       (t) => this.reserveTroops(t),
     );
     if (target === null) return false;
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     if (!this.random.chance(cityStateAttackOdds(difficulty))) return false;
     return this.sendLandAttack(target);
   }
 
   // Free-land expansion pushes toward higher ground in rising tide
-  // (NationCataclysm; null in other games), else toward a nearby unclaimed ruin
+  // (NationCataclysm; null in other games), else toward the nearest unclaimed
+  // ruin or unpaid site on free land in range (NationWorldFeatures)
   protected override expansionFocus(): TileRef | null {
     return (
       highGroundFocusTile(this.game, this.player) ??
@@ -995,9 +1059,244 @@ export class NationAttackBehavior extends AiAttackBehavior {
     );
   }
 
+  // A tribe's ruin or unpaid site we go for; a player's (or city-state's)
+  // spearhead target by difficulty (NationSpearheads.spearheadFocus)
+  protected override playerAttackFocus(target: Player): TileRef | null {
+    if (target.type() === PlayerType.Bot && !target.isCityState()) {
+      return prizeToSeek(this.game, this.player, target.smallID());
+    }
+    return spearheadFocus(
+      this.game,
+      this.player,
+      target,
+      this.frontWith(target),
+      this.game.config().difficultyFor(this.player),
+    );
+  }
+
+  /**
+   * What we rank `p` by among the players we could attack, lowest first:
+   * its troops, discounted for the resource sites it holds; on Medium and
+   * up times how much more than open ground the forecast prices its front
+   * for the stack we could send (NationSpearheads.forecastHardness), Hard
+   * and Impossible doubling it when posts cover most of the front.
+   */
+  private rankWeight(p: Player): number {
+    const troops = mineWeightedTroops(this.game, this.player, p);
+    const difficulty = this.game.config().difficultyFor(this.player);
+    if (difficulty === Difficulty.Easy) return troops;
+    const front = this.frontWith(p);
+    const stack = Math.max(1, this.player.troops() - this.reserveTroops(p));
+    let w =
+      troops *
+      forecastHardness(this.game, this.player, p, front, stack, difficulty);
+    if (
+      (difficulty === Difficulty.Hard ||
+        difficulty === Difficulty.Impossible) &&
+      postsCoverFront(this.game, p, front)
+    ) {
+      w *= NATION_POST_FRONT_WEIGHT;
+    }
+    return w;
+  }
+
+  /**
+   * Medium and up retake a cut tile of our rails first: an attack on the
+   * hostile player holding it, spearheaded at it, that answers like hitting
+   * back (no weather or front-cost hold). Impossible takes back the most
+   * valuable cut (NationSpearheads.railCutToRetake).
+   */
+  private retakeRailCut(): boolean {
+    const difficulty = this.game.config().difficultyFor(this.player);
+    if (difficulty === Difficulty.Easy) return false;
+    const cut = railCutToRetake(
+      this.game,
+      this.player,
+      difficulty === Difficulty.Impossible,
+    );
+    if (cut === null) return false;
+    this.retaking = cut.holder;
+    try {
+      return this.sendLandAttack(cut.holder, undefined, cut.holder, cut.tile);
+    } finally {
+      this.retaking = null;
+    }
+  }
+
+  /**
+   * Medium and up remember the resource sites they hold, and which of them
+   * a hostile player took since (sitesLost), until they hold them again or
+   * the taker is no longer an enemy holding them.
+   */
+  private trackSites(): void {
+    const difficulty = this.game.config().difficultyFor(this.player);
+    const sites = resourceSitesOf(this.game);
+    if (difficulty === Difficulty.Easy || sites.length === 0) {
+      this.sitesHeld = [];
+      this.sitesLost = [];
+      return;
+    }
+    const map = this.game.map();
+    const own = this.player.smallID();
+    const held: TileRef[] = [];
+    const lost: TileRef[] = [];
+    for (const site of sites) {
+      const holderTile = resourceSiteHolderTile(map, site);
+      const id = holderTile === null ? 0 : map.ownerID(holderTile);
+      if (id === own) {
+        held.push(site.tile);
+        continue;
+      }
+      if (
+        !this.sitesHeld.includes(site.tile) &&
+        !this.sitesLost.includes(site.tile)
+      ) {
+        continue;
+      }
+      const holder = id === 0 ? null : this.game.playerBySmallID(id);
+      if (
+        holder !== null &&
+        holder.isPlayer() &&
+        !this.player.isFriendly(holder)
+      ) {
+        lost.push(site.tile);
+      }
+    }
+    this.sitesHeld = held;
+    this.sitesLost = lost;
+  }
+
+  /**
+   * Medium and up retake a resource site a hostile player took from us,
+   * within the range they go for sites, ranked where they hit hated enemies
+   * (and with the same guard): an attack spearheaded at the site.
+   */
+  private retakeLostSite(): boolean {
+    if (this.sitesLost.length === 0) return false;
+    const difficulty = this.game.config().difficultyFor(this.player);
+    const range = siteSeekRange(difficulty);
+    const gapTo = boxGapTo(this.game, this.player);
+    if (range === 0 || gapTo === null) return false;
+    const map = this.game.map();
+    for (const site of resourceSitesOf(this.game)) {
+      if (!this.sitesLost.includes(site.tile)) continue;
+      const tile = resourceSiteHolderTile(map, site);
+      if (tile === null || gapTo(tile) > range) continue;
+      const holder = this.game.owner(tile);
+      if (!holder.isPlayer() || this.player.isFriendly(holder)) continue;
+      if (this.isFFA() && holder.troops() > this.player.troops() * 3) continue;
+      if (this.bordersByLand(holder)) {
+        if (this.sendLandAttack(holder, undefined, undefined, tile)) {
+          return true;
+        }
+        continue;
+      }
+      if (this.canReach(holder) && this.sendAttack(holder)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Impossible boats to an unclaimed ruin on an island within
+   * ISLAND_RUIN_BOAT_RANGE (NationWorldFeatures.islandRuinToSeek), unless one
+   * of our boats already heads there.
+   */
+  private boatToIslandRuin(): void {
+    if (this.game.config().isUnitDisabled(UnitType.TransportShip)) return;
+    if (
+      this.player.unitCount(UnitType.TransportShip) >=
+      this.game.config().boatMaxNumber()
+    ) {
+      return;
+    }
+    const ruin = islandRuinToSeek(this.game, this.player);
+    if (ruin === null) return;
+    for (const boat of this.player.units(UnitType.TransportShip)) {
+      const dst = boat.targetTile();
+      if (dst !== undefined && this.game.manhattanDist(dst, ruin) <= 10) {
+        return;
+      }
+    }
+    const launch = canBuildTransportShip(this.game, this.player, ruin);
+    if (launch === false) return;
+    const sailed = this.sail(launch, ruin);
+    if (sailed.blocker !== null || sailed.stormy === true) return;
+    const owner = this.game.owner(ruin);
+    if (owner.isPlayer()) {
+      this.sendBeachhead(owner, ruin);
+    } else {
+      this.sendExpansionBoat(ruin);
+    }
+  }
+
+  /**
+   * Impossible re-aims a stalled land attack on a player: one whose front
+   * held NATION_STALL_SHARE of the tiles it fought over NATION_STALL_TICKS
+   * ago. A 1-troop attack spearheaded at the cheapest front tile
+   * (NationSpearheads.cheapestFrontTile) takes it over, as attacks on the
+   * same target merge. Other attacks are watched afresh.
+   */
+  private reaimStalledAttacks(): void {
+    if (
+      this.game.config().difficultyFor(this.player) !== Difficulty.Impossible
+    ) {
+      this.stallWatch = [];
+      return;
+    }
+    const now = this.game.ticks();
+    const watched: StallWatch[] = [];
+    for (const attack of this.player.outgoingAttacks()) {
+      const target = attack.target();
+      if (
+        attack.sourceTile() !== null ||
+        !target.isPlayer() ||
+        target.type() === PlayerType.Bot
+      ) {
+        continue;
+      }
+      const last = this.stallWatch.find((w) => w.attack === attack);
+      if (last !== undefined && now - last.tick < NATION_STALL_TICKS) {
+        watched.push(last);
+        continue;
+      }
+      if (last !== undefined && last.tiles.length > 0) {
+        const id = target.smallID();
+        const held = last.tiles.filter((t) => this.game.ownerID(t) === id);
+        if (held.length >= last.tiles.length * NATION_STALL_SHARE) {
+          const tile = cheapestFrontTile(
+            this.game,
+            this.player,
+            target,
+            this.frontWith(target),
+            attack.troops(),
+          );
+          if (tile !== null && this.player.troops() >= 1) {
+            this.game.addExecution(
+              new AttackExecution(
+                1,
+                this.player,
+                target.id(),
+                null,
+                true,
+                tile,
+              ),
+            );
+            continue;
+          }
+        }
+      }
+      watched.push({
+        attack,
+        tick: now,
+        tiles: sampleTiles([...attack.borderTiles()], STALL_WATCH_TILES),
+      });
+    }
+    this.stallWatch = watched;
+  }
+
   // Hard & Impossible take bots in an order that walls others in, annexing them for free
   private annexesBots(): boolean {
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     return (
       difficulty === Difficulty.Hard || difficulty === Difficulty.Impossible
     );
@@ -1019,7 +1318,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
   }
 
   private getBotAttackMaxParallelism(): number {
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     switch (difficulty) {
       case Difficulty.Easy:
         return 1;
@@ -1280,7 +1579,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
     }
 
     // Prevent attacking of humans on lower difficulties
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     if (difficulty === Difficulty.Easy && this.random.nextInt(0, 4) !== 0) {
       return false;
     }
@@ -1305,7 +1604,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
       return false;
     // Nations under attack may retaliate freely
     if (this.player.incomingAttacks().length > 0) return false;
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     return (
       (difficulty === Difficulty.Hard ||
         difficulty === Difficulty.Impossible) &&
@@ -1343,7 +1642,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
     if (this.game.config().gameConfig().gameMode === GameMode.Team)
       return Infinity;
 
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     let retainFraction: number;
     switch (difficulty) {
       case Difficulty.Hard:
@@ -1491,7 +1790,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
 
   // Hard & Impossible boat a tiny force and attack by land as soon as it lands
   private landsBeachheads(): boolean {
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     return (
       difficulty === Difficulty.Hard || difficulty === Difficulty.Impossible
     );
@@ -1549,7 +1848,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
     const landing =
       targetTransportTile(this.game, this.player, target) ?? target;
     const direct = this.game.manhattanDist(launch, landing);
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     if (difficulty === Difficulty.Easy) {
       return this.sailedRoute(target, [launch, landing], direct, null);
     }
@@ -1669,7 +1968,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
 
   // Hard & Impossible don't sail further than this to attack someone
   private maxBoatRoute(): number {
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     switch (difficulty) {
       case Difficulty.Easy:
       case Difficulty.Medium:
@@ -1713,7 +2012,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
     routes: Map<Player, BoatRoute | null>,
     landFront: boolean,
   ): void {
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     if (
       difficulty !== Difficulty.Hard &&
       difficulty !== Difficulty.Impossible
@@ -1738,7 +2037,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
   }
 
   private calculateBotAttackTroops(target: Player, maxTroops: number): number {
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     switch (difficulty) {
       case Difficulty.Easy:
         return maxTroops;
@@ -1769,10 +2068,12 @@ export class NationAttackBehavior extends AiAttackBehavior {
     }
   }
 
-  // Keeps the attack at its cheapest loss rate until the bot collapses below 100 tiles
+  // Keeps the attack at its cheapest loss rate until the bot collapses: below
+  // 100 tiles for a tribe, CITY_STATE_ELIMINATION_TILES for a city-state
   private botAttackTroopsNeeded(bot: Player): number {
     const stack = Math.max(1, bot.troops() / CHEAPEST_TROOP_RATIO);
-    const tiles = Math.max(0, bot.numTilesOwned() - 100);
+    const eliminated = bot.isCityState() ? CITY_STATE_ELIMINATION_TILES : 100;
+    const tiles = Math.max(0, bot.numTilesOwned() - eliminated);
     return Math.max(stack, tiles * this.botTileLoss(bot, stack));
   }
 
@@ -1782,7 +2083,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
     const terrains: TerrainType[] = [];
     const featureLoss: number[] = [];
     const box = bot.largestClusterBoundingBox;
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     if (difficulty === Difficulty.Impossible && box) {
       const width = box.max.x - box.min.x + 1;
       const height = box.max.y - box.min.y + 1;
@@ -1821,6 +2122,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
             troops: bot.troops(),
             isTraitor: bot.isTraitor(),
             isDisconnectedTeammate: false,
+            isCityState: bot.isCityState(),
           },
           defenderHasDefensePost: false,
           falloutRatio: null,
@@ -1867,7 +2169,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
     }
 
     // Skip donating based on difficulty
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     switch (difficulty) {
       case Difficulty.Easy:
         // Easy nations don't donate

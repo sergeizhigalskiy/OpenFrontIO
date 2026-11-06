@@ -99,7 +99,7 @@ export class NationAllianceBehavior {
     // Only easy nations are allowed to send alliance requests to bots
     const isAcceptablePlayerType = (p: Player) =>
       (p.type() === PlayerType.Bot &&
-        this.game.config().gameConfig().difficulty === Difficulty.Easy) ||
+        this.game.config().difficultyFor(this.player) === Difficulty.Easy) ||
       p.type() !== PlayerType.Bot;
 
     for (const enemy of borderingEnemies) {
@@ -189,7 +189,7 @@ export class NationAllianceBehavior {
   }
 
   private hasTooManyAlliances(otherPlayer: Player): boolean {
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     if (
       difficulty !== Difficulty.Hard &&
       difficulty !== Difficulty.Impossible
@@ -213,11 +213,11 @@ export class NationAllianceBehavior {
   }
 
   private isRunawayLeader(otherPlayer: Player): boolean {
-    return findRunawayLeader(this.game) === otherPlayer;
+    return findRunawayLeader(this.game, this.player) === otherPlayer;
   }
 
   private isConfused(): boolean {
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     switch (difficulty) {
       case Difficulty.Easy:
         return this.random.chance(10); // 10% chance to be confused on easy
@@ -234,7 +234,7 @@ export class NationAllianceBehavior {
 
   private isEarlygame(): boolean {
     const spawnTicks = this.game.config().numSpawnPhaseTurns();
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     switch (difficulty) {
       case Difficulty.Easy:
         // On easy, accept 90% in the first 5 minutes
@@ -266,7 +266,7 @@ export class NationAllianceBehavior {
   }
 
   private isAlliancePartnerThreat(otherPlayer: Player): boolean {
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     switch (difficulty) {
       case Difficulty.Easy:
         // On easy we are very dumb, we don't see anybody as a threat
@@ -304,7 +304,7 @@ export class NationAllianceBehavior {
       return false;
     }
 
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     switch (difficulty) {
       case Difficulty.Easy:
         return this.random.nextInt(0, 100) < 25; // 25% chance to reject on easy
@@ -320,7 +320,7 @@ export class NationAllianceBehavior {
   }
 
   private checkAlreadyEnoughAlliances(otherPlayer: Player): boolean {
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     switch (difficulty) {
       case Difficulty.Easy:
         return false; // On easy we never think we have enough alliances
@@ -354,7 +354,7 @@ export class NationAllianceBehavior {
   }
 
   private isAlliancePartnerFriendly(otherPlayer: Player): boolean {
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     switch (difficulty) {
       case Difficulty.Easy:
       case Difficulty.Medium:
@@ -376,7 +376,7 @@ export class NationAllianceBehavior {
 
   // It would make a lot of sense to use nextFloat here, but "there's a chance floats can cause desyncs"
   private isAlliancePartnerSimilarlyStrong(otherPlayer: Player): boolean {
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
     const troopPercentRangeByDifficulty = {
       [Difficulty.Easy]: [60, 70],
       [Difficulty.Medium]: [70, 80],
@@ -426,7 +426,7 @@ export class NationAllianceBehavior {
   ): boolean {
     if (!this.player.isAlliedWith(otherPlayer)) return false;
 
-    const { difficulty } = this.game.config().gameConfig();
+    const difficulty = this.game.config().difficultyFor(this.player);
 
     // Betray our juiciest ally (e.g. a MIRVed one), if it's safe to do so (everybody around us is weak)
     if (

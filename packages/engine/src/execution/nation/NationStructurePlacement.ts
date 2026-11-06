@@ -85,7 +85,7 @@ export class NationStructurePlacement {
         const comp = this.game.getWaterComponent(neighbor);
         if (comp === null || !shared.has(comp)) continue;
         // Skip tiny lakes that are too small for meaningful port use (not on Easy).
-        const { difficulty } = this.game.config().gameConfig();
+        const difficulty = this.game.config().difficultyFor(this.player);
         if (difficulty !== Difficulty.Easy) {
           const size = this.game.getWaterComponentSize(neighbor);
           if (size !== null && size < MIN_PORT_WATER_COMPONENT_SIZE) continue;
@@ -205,7 +205,7 @@ export class NationStructurePlacement {
     const { borderSpacing, structureSpacing } = this.spacingConstants();
     const stationRange = game.config().trainStationMaxRange();
     const stationRangeSquared = stationRange * stationRange;
-    const { difficulty } = game.config().gameConfig();
+    const difficulty = game.config().difficultyFor(player);
     const useConnectionScore = this.shouldUseConnectivityScore(difficulty);
 
     const reachableStations = useConnectionScore
@@ -406,7 +406,7 @@ export class NationStructurePlacement {
     const { borderSpacing, structureSpacing } = this.spacingConstants();
     const stationRange = game.config().trainStationMaxRange();
     const stationRangeSquared = stationRange * stationRange;
-    const { difficulty } = game.config().gameConfig();
+    const difficulty = game.config().difficultyFor(player);
     const useConnectionScore = this.shouldUseConnectivityScore(difficulty);
 
     const reachableStations = useConnectionScore
@@ -470,7 +470,7 @@ export class NationStructurePlacement {
     const otherUnits = player.units(UnitType.SAMLauncher);
     const { borderSpacing, structureSpacing } = this.spacingConstants();
 
-    const { difficulty } = game.config().gameConfig();
+    const difficulty = game.config().difficultyFor(player);
     const weightByLevel =
       difficulty === Difficulty.Hard || difficulty === Difficulty.Impossible;
 

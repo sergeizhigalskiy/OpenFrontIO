@@ -33,8 +33,7 @@ export function isSaveUpWithinReach(
   player: Player,
   target: Gold,
 ): boolean {
-  const horizon =
-    SAVE_UP_HORIZON_MINUTES[game.config().gameConfig().difficulty];
+  const horizon = SAVE_UP_HORIZON_MINUTES[game.config().difficultyFor(player)];
   const missing = Number(target - player.gold());
   if (horizon === Infinity || missing <= 0) return true;
   // Income grows about linearly over a game, so the current rate is about twice the average
@@ -50,8 +49,7 @@ export function isSaveUpWithinReach(
  */
 export function isSaveUpDue(game: Game, player: Player, target: Gold): boolean {
   if (target <= 0n) return false;
-  const horizon =
-    SAVE_UP_HORIZON_MINUTES[game.config().gameConfig().difficulty];
+  const horizon = SAVE_UP_HORIZON_MINUTES[game.config().difficultyFor(player)];
   return Number.isFinite(horizon) && isSaveUpWithinReach(game, player, target);
 }
 
@@ -174,8 +172,9 @@ function runawayLeadFactor(difficulty: Difficulty): number | null {
 
 // The FFA player (not a bot) owning the most land, if it is far enough ahead
 // of the runner-up that nations should stop helping it and start pressuring it
-export function findRunawayLeader(game: Game): Player | null {
-  const { difficulty, gameMode } = game.config().gameConfig();
+export function findRunawayLeader(game: Game, nation: Player): Player | null {
+  const { gameMode } = game.config().gameConfig();
+  const difficulty = game.config().difficultyFor(nation);
   if (gameMode !== GameMode.FFA) return null;
   const factor = runawayLeadFactor(difficulty);
   if (factor === null) return null;

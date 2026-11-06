@@ -69,8 +69,8 @@ describe("nations and ruins", () => {
     return { game, nation };
   }
 
-  test("harder nations look further for ruins; easy ones don't", () => {
-    expect(ruinSeekRange(Difficulty.Easy)).toBe(0);
+  test("harder nations look further for ruins, from 15 tiles on easy", () => {
+    expect(ruinSeekRange(Difficulty.Easy)).toBe(15);
     const ranges = DIFFICULTIES.map(ruinSeekRange);
     expect([...ranges].sort((a, b) => a - b)).toEqual(ranges);
   });
@@ -96,8 +96,9 @@ describe("nations and ruins", () => {
     game.addRuins([{ tile: game.ref(100, 100), reward: RuinReward.Gold }]);
     expect(ruinToSeek(game, nation)).toBeNull();
     const easy = await nationAt(Difficulty.Easy);
+    // 21 tiles past its land: beyond easy's 15.
     easy.game.addRuins([
-      { tile: easy.game.ref(42, 30), reward: RuinReward.Gold },
+      { tile: easy.game.ref(60, 30), reward: RuinReward.Gold },
     ]);
     expect(ruinToSeek(easy.game, easy.nation)).toBeNull();
   });
@@ -199,9 +200,12 @@ describe("nations and city-states", () => {
     expect(garrison).toBeGreaterThan(0);
     const pick = () => cityStateToAttack(game, nation, [cs], () => 0);
 
-    nation.setTroops(garrison * 1.5);
+    // Impossible needs 1.3x the garrison.
+    nation.setTroops(garrison * 1.25);
     expect(pick()).toBeNull();
-    nation.setTroops(garrison * cityStateStrengthRatio(Difficulty.Impossible));
+    nation.setTroops(
+      Math.ceil(garrison * cityStateStrengthRatio(Difficulty.Impossible)),
+    );
     expect(pick()).toBe(cs);
     // What it keeps home doesn't count.
     expect(cityStateToAttack(game, nation, [cs], () => garrison)).toBeNull();
@@ -215,7 +219,7 @@ describe("nations and city-states", () => {
       [Difficulty.Easy, false],
     ] as const) {
       const { game, cs, nation } = await walledIn(difficulty, 0);
-      nation.setTroops(cs.troops() * 3);
+      nation.setTroops(cs.troops() * 2.5);
       expect(
         cityStateToAttack(game, nation, [cs], () => 0) === cs,
         difficulty,
