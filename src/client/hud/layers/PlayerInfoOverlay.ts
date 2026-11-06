@@ -524,7 +524,11 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
     );
   }
 
-  /** Up to two short lines: loss per tile and speed. Under fog both read "?". */
+  /**
+   * Up to three short lines: loss per tile, speed, and a defense post's
+   * cover with its factors from the config. Under fog the loss and speed
+   * read "?"; the cover (a visible structure) stays.
+   */
   private renderAttackForecast(f: AttackForecast) {
     const fogged = this.forecastFogged();
     const speed =
@@ -535,6 +539,14 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
           : f.tilesPerSecond < 10
             ? f.tilesPerSecond.toFixed(1)
             : Math.round(f.tilesPerSecond).toString();
+    let cover = "";
+    if (f.defensePost) {
+      const config = this.game.config();
+      cover = translateText("attack_forecast.defense_post", {
+        loss: config.defensePostDefenseBonus(),
+        time: config.defensePostSpeedBonus(),
+      });
+    }
     return html`<div
       class="px-2 py-1 border-t border-gray-600 text-xs leading-tight"
       translate="no"
@@ -551,6 +563,7 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
             </div>`
           : ""
       }
+      ${cover !== "" ? html`<div class="text-red-400">${cover}</div>` : ""}
     </div>`;
   }
 

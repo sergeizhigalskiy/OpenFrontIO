@@ -207,6 +207,10 @@ export class PlayerExecution implements Execution {
       max: new Cell(lMaxX, lMaxY),
     };
 
+    // A city-state is never annexed by a ring or as a pocket: it has to be
+    // fought down below CITY_STATE_ELIMINATION_TILES (AttackExecution).
+    if (this.player.isCityState()) return;
+
     const clusterRemoved = new Uint8Array(clusters.length);
     // Cut-off pockets bigger than this stay with the owner (passes 1 and 2).
     const pocketLimit = this.pocketLimit();

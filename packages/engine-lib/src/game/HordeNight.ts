@@ -19,7 +19,7 @@
  *
  * All times are in ticks since the spawn phase ended (10 ticks a second).
  */
-import type { Team } from "@openfront/engine-api/game/GameTypes";
+import { PlayerType, type Team } from "@openfront/engine-api/game/GameTypes";
 
 /** Every human and nation plays on this team, so they are all friendly. */
 export const HORDE_DEFENDERS_TEAM: Team = "Defenders";
@@ -176,4 +176,35 @@ export function isHordeBand(player: { team(): Team | null }): boolean {
 /** A defending human or nation. */
 export function isHordeDefender(player: { team(): Team | null }): boolean {
   return player.team() === HORDE_DEFENDERS_TEAM;
+}
+
+// Horde boats: the transport ships of horde bands, sailing in from the map
+// edge or launched by a band ashore. Hard to stop at sea.
+
+/** A shell kills this percent of a horde boat's troops (rounded up), not the boat. */
+export const HORDE_BOAT_SHELL_LOSS_PERCENT = 10;
+/** A water tile a hostile warship covers costs this many plain tiles to a horde boat. */
+export const HORDE_BOAT_EXPOSED_TILE_COST = 8;
+/** A horde boat plans its route again this often while sailing: 2 s. */
+export const HORDE_BOAT_REPLAN_TICKS = 20;
+
+/** Troops one shell kills on a horde boat holding `troops`. */
+export function hordeBoatShellLoss(troops: number): number {
+  return Math.ceil((troops * HORDE_BOAT_SHELL_LOSS_PERCENT) / 100);
+}
+
+/**
+ * Whether a warship owned by `shooter` may fire at a horde boat sailing at
+ * `aimedAt`: its owner's own, and between humans each other's, so friends
+ * can defend each other. Nations leave boats sent at anyone else alone.
+ */
+export function mayShootHordeBoat(
+  shooter: { type(): PlayerType },
+  aimedAt: { type(): PlayerType } | null | undefined,
+): boolean {
+  if (aimedAt === null || aimedAt === undefined) return false;
+  if (shooter === aimedAt) return true;
+  return (
+    shooter.type() === PlayerType.Human && aimedAt.type() === PlayerType.Human
+  );
 }

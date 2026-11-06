@@ -1,5 +1,9 @@
 import { MessageType, UnitType } from "@openfront/engine-api/game/GameTypes";
-import { findPortBlockader } from "@openfront/engine-lib/game/TradeRoutes";
+import {
+  atWarBy,
+  findPortBlockader,
+  type WarFacts,
+} from "@openfront/engine-lib/game/TradeRoutes";
 import type { Game, Player, Unit } from "./Game";
 import { tradeFriendly } from "./RailCuts";
 
@@ -10,24 +14,29 @@ import { tradeFriendly } from "./RailCuts";
  */
 export function portBlockader(game: Game, port: Unit): Unit | null {
   if (game.unitCount(UnitType.Warship) === 0) return null;
-  return findPortBlockader(game, port.tile(), port.owner(), atWar);
+  return findPortBlockader(game, port.tile(), port.owner(), (a, b) =>
+    atWar(game, a, b),
+  );
 }
+
+/** The war rule's facts as the engine knows them. */
+const ENGINE_WAR_FACTS: WarFacts<Player> = {
+  friendly: tradeFriendly,
+  attacking: (attacker, target) =>
+    attacker
+      .outgoingAttacks()
+      .some((attack) => attack.isActive() && attack.target() === target),
+  lastHostileAct: (attacker, target) => attacker.lastHostileActTick(target),
+};
 
 /**
- * Whether `a` and `b` are at war, the blockade test: one of them has an
- * active attack on the other, and they aren't allied or teammates. The
- * engine keeps no other record of who fought whom; the nations' blockade AI
- * reads the same attacks (NationBlockadeBehavior).
+ * Whether `a` and `b` are at war now, the blockade test (engine-lib
+ * TradeRoutes.atWarBy): not allied or teammates, and one is attacking the
+ * other or launched a land attack, boat attack or nuke at it within the
+ * last WAR_MEMORY_TICKS. The client's blockade ring applies the same rule.
  */
-export function atWar(a: Player, b: Player): boolean {
-  if (tradeFriendly(a, b)) return false;
-  return attacking(a, b) || attacking(b, a);
-}
-
-function attacking(attacker: Player, target: Player): boolean {
-  return attacker
-    .outgoingAttacks()
-    .some((attack) => attack.isActive() && attack.target() === target);
+export function atWar(game: Game, a: Player, b: Player): boolean {
+  return atWarBy(ENGINE_WAR_FACTS, a, b, game.ticks());
 }
 
 /**

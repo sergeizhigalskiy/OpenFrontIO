@@ -311,9 +311,10 @@ function recordAttack(
 
 function expectForecastMatches(checks: Check[]) {
   expect(checks.length).toBeGreaterThan(20);
-  for (const { engine, forecast } of checks) {
+  for (const { input, engine, forecast } of checks) {
     expect(forecast.lossPerTile).toBe(engine.attackerTroopLoss);
     expect(forecast.tilesPerSecond).toBe(10 / engine.tickFraction);
+    expect(forecast.defensePost).toBe(input.defenderHasDefensePost);
   }
 }
 

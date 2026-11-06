@@ -63,6 +63,8 @@ export interface UnitParamsMap {
   [UnitType.TransportShip]: {
     troops?: number;
     targetTile?: TileRef;
+    // A horde band's boat: the player it sails at (execution/HordeBoats.ts).
+    targetPlayer?: Player;
   };
 
   [UnitType.Warship]: {
@@ -543,6 +545,14 @@ export interface Player extends PlayerLike {
   ): Attack;
   outgoingAttacks(): Attack[];
   incomingAttacks(): Attack[];
+  /**
+   * Notes that this player launched a land attack, a boat attack or a nuke
+   * at `target` this tick, for the blockades' war rule (engine-lib
+   * TradeRoutes). createAttack records land attacks itself.
+   */
+  recordHostileAct(target: Player): void;
+  /** The tick this player last launched one at `target`, if it is kept. */
+  lastHostileActTick(target: Player): Tick | undefined;
   orderRetreat(attackID: string): void;
   executeRetreat(attackID: string): void;
 

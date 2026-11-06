@@ -103,9 +103,12 @@ const KINDS_ON_THE_WIRE = [
 
 /** [players, mines, oil fields, fishing grounds] with ocean. */
 const COUNTS_WITH_OCEAN: [number, number, number, number][] = [
-  [0, 2, 1, 1],
-  // A duel.
-  [2, 2, 1, 1],
+  [0, 1, 0, 0],
+  // A duel: one mine and nothing else.
+  [2, 1, 0, 0],
+  [3, 1, 0, 0],
+  [4, 1, 0, 0],
+  [6, 2, 1, 1],
   // Iceland: 8 nations and a human.
   [9, 2, 1, 1],
   [20, 5, 2, 2],
@@ -130,10 +133,10 @@ describe("how many resource sites", () => {
     },
   );
 
-  test("without ocean there is no fishing and one more mine", () => {
-    for (const [players, mines, oil] of COUNTS_WITH_OCEAN) {
+  test("without ocean there is no fishing, and one more mine where fishing grounds would be", () => {
+    for (const [players, mines, oil, fishing] of COUNTS_WITH_OCEAN) {
       expect(resourceSiteCount(players, ResourceSiteKind.GoldMine, false)).toBe(
-        mines + 1,
+        mines + Math.min(1, fishing),
       );
       expect(resourceSiteCount(players, ResourceSiteKind.OilField, false)).toBe(
         oil,
@@ -141,6 +144,45 @@ describe("how many resource sites", () => {
       expect(
         resourceSiteCount(players, ResourceSiteKind.FishingGrounds, false),
       ).toBe(0);
+    }
+  });
+
+  test("a duel without ocean also gets one mine and nothing else", () => {
+    expect(resourceSiteCount(2, ResourceSiteKind.GoldMine, false)).toBe(1);
+    expect(resourceSiteCount(2, ResourceSiteKind.OilField, false)).toBe(0);
+    expect(resourceSiteCount(2, ResourceSiteKind.FishingGrounds, false)).toBe(
+      0,
+    );
+  });
+
+  test("7 players or more get what they got before small games were cut", () => {
+    // The counts before small games got fewer sites: mines 2 to 10, oil
+    // fields and fishing grounds 1 to 3.
+    const clamp = (n: number, min: number, max: number) =>
+      Math.min(max, Math.max(min, n));
+    const before = (
+      players: number,
+      kind: ResourceSiteKind,
+      ocean: boolean,
+    ) => {
+      const rare = clamp(Math.round(players / 12), 1, 3);
+      switch (kind) {
+        case ResourceSiteKind.GoldMine:
+          return clamp(Math.round(players / 4), 2, 10) + (ocean ? 0 : 1);
+        case ResourceSiteKind.OilField:
+          return rare;
+        case ResourceSiteKind.FishingGrounds:
+          return ocean ? rare : 0;
+      }
+    };
+    for (let players = 7; players <= 73; players++) {
+      for (const ocean of [true, false]) {
+        for (const kind of RESOURCE_SITE_KINDS) {
+          expect(resourceSiteCount(players, kind, ocean), `${players}`).toBe(
+            before(players, kind, ocean),
+          );
+        }
+      }
     }
   });
 
