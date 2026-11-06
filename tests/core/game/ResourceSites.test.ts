@@ -1,20 +1,20 @@
 import { GameMap } from "@openfront/engine-api/game/GameMap";
+import { PlayerType } from "@openfront/engine-api/game/GameTypes";
 import { MapManifest } from "@openfront/engine-api/game/MapFiles";
 import { GameMapImpl } from "@openfront/engine-lib/game/GameMapImpl";
 import {
   FISHING_GROUNDS_COAST_RADIUS,
   FISHING_GROUNDS_GOLD_PER_TICK,
   GOLD_MINE_GOLD_PER_TICK,
-  MAX_RARE_SITES,
-  MAX_RESOURCE_SITES,
-  MIN_RARE_SITES,
-  MIN_RESOURCE_SITES,
+  mapHasOcean,
   OIL_FIELD_GOLD_PER_TICK,
-  OIL_FIELD_SPAWN_DISTANCE,
   packResourceSites,
+  paidByResourceSites,
   placeResourceSites,
   RESOURCE_SITE_KINDS,
   RESOURCE_SITE_MIN_DISTANCE,
+  RESOURCE_SITE_SPAWN_DISTANCE,
+  RESOURCE_SITES_PAID_PER_PLAYER,
   ResourceSite,
   resourceSiteCount,
   resourceSiteHolderID,
@@ -22,6 +22,7 @@ import {
   ResourceSiteKind,
   resourceSiteNear,
   resourceSitePays,
+  resourceSitesGoldPerTick,
   resourceSitesHeldBy,
   resourceSiteStands,
   unpackResourceSites,
@@ -100,92 +101,143 @@ const KINDS_ON_THE_WIRE = [
   ResourceSiteKind.FishingGrounds,
 ];
 
-/**
- * The world map's gold mines for seed 42 and its nation spawns, as placed
- * before oil fields and fishing grounds existed.
- */
-const WORLD_SEED_42_MINES = [
-  1901633, 535523, 402448, 278266, 1993041, 368258, 513595, 613369, 201750,
-  1371588, 1875768,
+/** [players, mines, oil fields, fishing grounds] with ocean. */
+const COUNTS_WITH_OCEAN: [number, number, number, number][] = [
+  [0, 2, 1, 1],
+  // A duel.
+  [2, 2, 1, 1],
+  // Iceland: 8 nations and a human.
+  [9, 2, 1, 1],
+  [20, 5, 2, 2],
+  [40, 10, 3, 3],
+  // World: 72 nations and a human.
+  [73, 10, 3, 3],
 ];
 
-describe("resource site placement", () => {
-  test("about one mine per 60k land tiles, clamped to 6-24", () => {
-    expect(resourceSiteCount(10_000)).toBe(MIN_RESOURCE_SITES);
-    expect(resourceSiteCount(651_761)).toBe(11);
-    expect(resourceSiteCount(2_317_767)).toBe(MAX_RESOURCE_SITES);
-  });
+describe("how many resource sites", () => {
+  test.each(COUNTS_WITH_OCEAN)(
+    "%i players, with ocean: %i mines, %i oil fields, %i fishing grounds",
+    (players, mines, oil, fishing) => {
+      expect(resourceSiteCount(players, ResourceSiteKind.GoldMine, true)).toBe(
+        mines,
+      );
+      expect(resourceSiteCount(players, ResourceSiteKind.OilField, true)).toBe(
+        oil,
+      );
+      expect(
+        resourceSiteCount(players, ResourceSiteKind.FishingGrounds, true),
+      ).toBe(fishing);
+    },
+  );
 
-  test("about one oil field and one fishing ground per 180k land tiles, clamped to 2-8", () => {
-    expect(MIN_RARE_SITES).toBe(2);
-    expect(MAX_RARE_SITES).toBe(8);
-    for (const kind of [
-      ResourceSiteKind.OilField,
-      ResourceSiteKind.FishingGrounds,
-    ]) {
-      expect(resourceSiteCount(10_000, kind)).toBe(2);
-      expect(resourceSiteCount(540_000, kind)).toBe(3);
-      expect(resourceSiteCount(651_761, kind)).toBe(4);
-      expect(resourceSiteCount(2_317_767, kind)).toBe(8);
+  test("without ocean there is no fishing and one more mine", () => {
+    for (const [players, mines, oil] of COUNTS_WITH_OCEAN) {
+      expect(resourceSiteCount(players, ResourceSiteKind.GoldMine, false)).toBe(
+        mines + 1,
+      );
+      expect(resourceSiteCount(players, ResourceSiteKind.OilField, false)).toBe(
+        oil,
+      );
+      expect(
+        resourceSiteCount(players, ResourceSiteKind.FishingGrounds, false),
+      ).toBe(0);
     }
   });
 
+  test("lakes are not ocean", async () => {
+    expect(mapHasOcean((await loadMap("world")).map)).toBe(true);
+    expect(mapHasOcean((await loadMap("plains")).map)).toBe(false);
+    const lake = new GameMapImpl(2, 1, new Uint8Array([LAND, 0]), 1);
+    expect(mapHasOcean(lake)).toBe(false);
+  });
+});
+
+describe("resource site pay", () => {
+  test("a mine pays 30 gold a tick, an oil field 45, fishing grounds 30", () => {
+    expect(GOLD_MINE_GOLD_PER_TICK).toBe(30n);
+    expect(OIL_FIELD_GOLD_PER_TICK).toBe(45n);
+    expect(FISHING_GROUNDS_GOLD_PER_TICK).toBe(30n);
+  });
+
+  test("a holder is paid for their best 3 sites at most", () => {
+    expect(RESOURCE_SITES_PAID_PER_PLAYER).toBe(3);
+    const site = (kind: ResourceSiteKind, tile: number): ResourceSite => ({
+      tile,
+      kind,
+    });
+    const mine = (t: number) => site(ResourceSiteKind.GoldMine, t);
+    const oil = (t: number) => site(ResourceSiteKind.OilField, t);
+    const fishing = (t: number) => site(ResourceSiteKind.FishingGrounds, t);
+    expect(resourceSitesGoldPerTick([])).toBe(0n);
+    expect(resourceSitesGoldPerTick([mine(1)])).toBe(30n);
+    expect(resourceSitesGoldPerTick([mine(1), oil(2), fishing(3)])).toBe(105n);
+    // Four mines pay as three.
+    expect(resourceSitesGoldPerTick([mine(1), mine(2), mine(3), mine(4)])).toBe(
+      90n,
+    );
+    // The best three, whatever the order: two oil fields and a mine.
+    expect(
+      resourceSitesGoldPerTick([mine(1), fishing(2), oil(3), mine(4), oil(5)]),
+    ).toBe(120n);
+  });
+
+  test("only humans and nations are paid, never tribes or city-states", () => {
+    expect(paidByResourceSites(PlayerType.Human)).toBe(true);
+    expect(paidByResourceSites(PlayerType.Nation)).toBe(true);
+    expect(paidByResourceSites(PlayerType.Bot)).toBe(false);
+  });
+});
+
+describe("resource site placement", () => {
   test("kinds keep their wire order", () => {
     expect(RESOURCE_SITE_KINDS).toEqual(KINDS_ON_THE_WIRE);
   });
 
-  test("gold mines land on the same tiles as before the new kinds", async () => {
-    const { map, spawns } = await loadMap("world");
-    const sites = placeResourceSites(map, new PseudoRandom(42), spawns);
-    // Placed first, from the same draws.
-    const first = sites.slice(0, WORLD_SEED_42_MINES.length);
-    expect(first.every((s) => s.kind === ResourceSiteKind.GoldMine)).toBe(true);
-    expect(first.map((s) => s.tile)).toEqual(WORLD_SEED_42_MINES);
-    expect(ofKind(sites, ResourceSiteKind.GoldMine)).toHaveLength(
-      WORLD_SEED_42_MINES.length,
-    );
-  });
-
-  test("the world map gets every kind's count, spaced out and away from nation spawns", async () => {
+  test("the world map gets its players' count of every kind, 25 apart and 40 from every spawn", async () => {
     const { map, spawns } = await loadMap("world");
     expect(spawns.length).toBeGreaterThan(0);
-    const sites = placeResourceSites(map, new PseudoRandom(42), spawns);
-    for (const kind of RESOURCE_SITE_KINDS) {
-      expect(ofKind(sites, kind)).toHaveLength(
-        resourceSiteCount(map.numLandTiles(), kind),
+    expect(RESOURCE_SITE_SPAWN_DISTANCE).toBe(40);
+    expect(RESOURCE_SITE_MIN_DISTANCE).toBe(25);
+    // The nations and a human.
+    const players = spawns.length + 1;
+    for (const seed of [42, 7, 8]) {
+      const sites = placeResourceSites(
+        map,
+        new PseudoRandom(seed),
+        players,
+        spawns,
       );
-    }
-    const min2 = RESOURCE_SITE_MIN_DISTANCE * RESOURCE_SITE_MIN_DISTANCE;
-    for (const s of sites) {
-      for (const c of spawns) {
-        expect(dist2(map, s.tile, c.x, c.y)).toBeGreaterThanOrEqual(min2);
+      for (const kind of RESOURCE_SITE_KINDS) {
+        expect(ofKind(sites, kind)).toHaveLength(
+          resourceSiteCount(players, kind, true),
+        );
       }
-      for (const o of sites) {
-        if (o === s) continue;
-        expect(
-          dist2(map, s.tile, map.x(o.tile), map.y(o.tile)),
-        ).toBeGreaterThanOrEqual(min2);
+      for (const s of sites) {
+        for (const c of spawns) {
+          expect(dist2(map, s.tile, c.x, c.y)).toBeGreaterThanOrEqual(40 * 40);
+        }
+        for (const o of sites) {
+          if (o === s) continue;
+          expect(
+            dist2(map, s.tile, map.x(o.tile), map.y(o.tile)),
+          ).toBeGreaterThanOrEqual(25 * 25);
+        }
       }
     }
   });
 
-  test("mines and oil fields sit on passable land, oil fields 50 tiles from every spawn", async () => {
+  test("mines and oil fields sit on passable land", async () => {
     const { map, spawns } = await loadMap("world");
-    expect(OIL_FIELD_SPAWN_DISTANCE).toBe(50);
     for (const seed of [42, 7, 8]) {
-      const sites = placeResourceSites(map, new PseudoRandom(seed), spawns);
+      const sites = placeResourceSites(map, new PseudoRandom(seed), 62, spawns);
       const onLand = [
         ...ofKind(sites, ResourceSiteKind.GoldMine),
         ...ofKind(sites, ResourceSiteKind.OilField),
       ];
+      expect(onLand.length).toBeGreaterThan(0);
       for (const s of onLand) {
         expect(map.isLand(s.tile)).toBe(true);
         expect(map.isImpassable(s.tile)).toBe(false);
-      }
-      for (const s of ofKind(sites, ResourceSiteKind.OilField)) {
-        for (const c of spawns) {
-          expect(dist2(map, s.tile, c.x, c.y)).toBeGreaterThanOrEqual(50 * 50);
-        }
       }
     }
   });
@@ -193,7 +245,7 @@ describe("resource site placement", () => {
   test("fishing grounds sit on ocean 3 to 8 tiles off the nearest shore", async () => {
     const { map, spawns } = await loadMap("world");
     for (const seed of [42, 7, 8]) {
-      const sites = placeResourceSites(map, new PseudoRandom(seed), spawns);
+      const sites = placeResourceSites(map, new PseudoRandom(seed), 62, spawns);
       const fishing = ofKind(sites, ResourceSiteKind.FishingGrounds);
       expect(fishing.length).toBeGreaterThan(0);
       for (const s of fishing) {
@@ -202,13 +254,13 @@ describe("resource site placement", () => {
         const d2 = nearestLand2(map, s.tile, 9);
         expect(d2).toBeGreaterThanOrEqual(3 * 3);
         expect(d2).toBeLessThanOrEqual(8 * 8);
-        // Whoever takes that shore holds it from the start.
+        // Whoever takes that shore holds it.
         expect(resourceSiteHolderTile(map, s)).not.toBeNull();
       }
     }
   });
 
-  test("oil fields that can't keep 50 tiles from the spawns are left out, not placed closer", async () => {
+  test("sites that can't keep 40 tiles from the spawns are left out, not placed closer", async () => {
     const { map } = await loadMap("plains");
     // Every tile of the 100x100 map is within 36 tiles of one of these.
     const crowded = [
@@ -217,24 +269,21 @@ describe("resource site placement", () => {
       { x: 25, y: 75 },
       { x: 75, y: 75 },
     ];
-    const sites = placeResourceSites(map, new PseudoRandom(1), crowded);
-    expect(ofKind(sites, ResourceSiteKind.OilField)).toEqual([]);
-    expect(ofKind(sites, ResourceSiteKind.GoldMine).length).toBeGreaterThan(0);
+    expect(placeResourceSites(map, new PseudoRandom(1), 4, crowded)).toEqual(
+      [],
+    );
     // One spawn in the middle leaves only the corners.
     const middle = [{ x: 50, y: 50 }];
     for (const seed of [1, 2, 3]) {
-      const oil = ofKind(
-        placeResourceSites(map, new PseudoRandom(seed), middle),
-        ResourceSiteKind.OilField,
-      );
-      expect(oil.length).toBeLessThanOrEqual(2);
-      for (const s of oil) {
-        expect(dist2(map, s.tile, 50, 50)).toBeGreaterThanOrEqual(50 * 50);
+      const sites = placeResourceSites(map, new PseudoRandom(seed), 4, middle);
+      expect(sites.length).toBeGreaterThan(0);
+      for (const s of sites) {
+        expect(dist2(map, s.tile, 50, 50)).toBeGreaterThanOrEqual(40 * 40);
       }
     }
   });
 
-  test("no ocean near a coast, no fishing grounds: lakes don't count", () => {
+  test("no ocean near a coast, no fishing grounds and one more mine: lakes don't count", () => {
     const size = 200;
     const lakeCells: [number, number, number][] = [];
     const seaCells: [number, number, number][] = [];
@@ -246,14 +295,16 @@ describe("resource site placement", () => {
       }
     }
     const lake = oceanMap(size, lakeCells);
-    const lakeSites = placeResourceSites(lake, new PseudoRandom(1), []);
+    const lakeSites = placeResourceSites(lake, new PseudoRandom(1), 8, []);
     expect(ofKind(lakeSites, ResourceSiteKind.FishingGrounds)).toEqual([]);
-    expect(ofKind(lakeSites, ResourceSiteKind.GoldMine)).toHaveLength(6);
+    expect(ofKind(lakeSites, ResourceSiteKind.GoldMine)).toHaveLength(3);
+    expect(ofKind(lakeSites, ResourceSiteKind.OilField)).toHaveLength(1);
 
     const sea = oceanMap(size, seaCells);
-    const seaSites = placeResourceSites(sea, new PseudoRandom(1), []);
+    const seaSites = placeResourceSites(sea, new PseudoRandom(1), 8, []);
+    expect(ofKind(seaSites, ResourceSiteKind.GoldMine)).toHaveLength(2);
     const fishing = ofKind(seaSites, ResourceSiteKind.FishingGrounds);
-    expect(fishing.length).toBeGreaterThan(0);
+    expect(fishing).toHaveLength(1);
     for (const s of fishing) {
       expect(sea.isOcean(s.tile)).toBe(true);
       const d2 = nearestLand2(sea, s.tile, 9);
@@ -264,9 +315,9 @@ describe("resource site placement", () => {
 
   test("the same seed places the same sites, another seed others", async () => {
     const { map, spawns } = await loadMap("world");
-    const a = placeResourceSites(map, new PseudoRandom(7), spawns);
-    const b = placeResourceSites(map, new PseudoRandom(7), spawns);
-    const c = placeResourceSites(map, new PseudoRandom(8), spawns);
+    const a = placeResourceSites(map, new PseudoRandom(7), 62, spawns);
+    const b = placeResourceSites(map, new PseudoRandom(7), 62, spawns);
+    const c = placeResourceSites(map, new PseudoRandom(8), 62, spawns);
     expect(a).toEqual(b);
     expect(a).not.toEqual(c);
     for (const kind of RESOURCE_SITE_KINDS) {
@@ -274,33 +325,26 @@ describe("resource site placement", () => {
     }
   });
 
-  test("a large map is capped and a tiny one gets what fits", async () => {
+  test("the map's size doesn't change the count, and a tiny map gets what fits", async () => {
+    const small = await loadMap("plains");
     const big = await loadMap("big_plains");
-    const bigSites = placeResourceSites(big.map, new PseudoRandom(1), []);
-    expect(ofKind(bigSites, ResourceSiteKind.GoldMine)).toHaveLength(
-      MIN_RESOURCE_SITES,
-    );
-    expect(ofKind(bigSites, ResourceSiteKind.OilField)).toHaveLength(
-      MIN_RARE_SITES,
-    );
-    // All land: nowhere to fish.
-    expect(ofKind(bigSites, ResourceSiteKind.FishingGrounds)).toEqual([]);
+    for (const { map } of [small, big]) {
+      const sites = placeResourceSites(map, new PseudoRandom(1), 9, []);
+      // All land: one more mine, nowhere to fish.
+      expect(ofKind(sites, ResourceSiteKind.GoldMine)).toHaveLength(3);
+      expect(ofKind(sites, ResourceSiteKind.OilField)).toHaveLength(1);
+      expect(ofKind(sites, ResourceSiteKind.FishingGrounds)).toEqual([]);
+    }
     const tiny = await loadMap("half_land_half_ocean");
-    const sites = placeResourceSites(tiny.map, new PseudoRandom(1), []);
+    const sites = placeResourceSites(tiny.map, new PseudoRandom(1), 9, []);
     expect(sites).toHaveLength(1);
     expect(sites[0].kind).toBe(ResourceSiteKind.GoldMine);
     expect(tiny.map.isLand(sites[0].tile)).toBe(true);
   });
 
-  test("a mine pays three quarters of a human's 100 gold base, an oil field one and a half mines, fishing grounds a mine", () => {
-    expect(GOLD_MINE_GOLD_PER_TICK).toBe(75n);
-    expect(OIL_FIELD_GOLD_PER_TICK).toBe(112n);
-    expect(FISHING_GROUNDS_GOLD_PER_TICK).toBe(75n);
-  });
-
   test("sites survive the wire format and are found near the cursor", async () => {
     const { map } = await loadMap("big_plains");
-    const sites = placeResourceSites(map, new PseudoRandom(3), []);
+    const sites = placeResourceSites(map, new PseudoRandom(3), 9, []);
     expect(unpackResourceSites(packResourceSites(sites))).toEqual(sites);
     const every = KINDS_ON_THE_WIRE.map((kind, i) => ({ tile: i, kind }));
     expect(packResourceSites(every)).toEqual([0, 0, 1, 1, 2, 2]);

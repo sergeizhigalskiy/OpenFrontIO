@@ -17,6 +17,7 @@ import {
   bossGoldIncomePercent,
   isBossRaidBoss,
 } from "@openfront/engine-lib/game/BossRaid";
+import { CITY_STATE_CONQUEST_GOLD } from "@openfront/engine-lib/game/WorldFeatures";
 import {
   assertNever,
   sigmoid,
@@ -469,6 +470,8 @@ export class EngineConfig extends Config {
   }
 
   goldAdditionRate(player: PlayerLike): Gold {
+    // City-states earn nothing, so their bounty never grows (WorldFeatures).
+    if (player.isCityState()) return 0n;
     const multiplier = this.goldMultiplierFor(player);
     let baseRate: bigint;
     if (player.type() === PlayerType.Bot) {
@@ -483,6 +486,16 @@ export class EngineConfig extends Config {
   resourceSiteGold(player: PlayerLike, goldPerTick: Gold): Gold {
     return BigInt(
       Math.floor(Number(goldPerTick) * this.goldMultiplierFor(player)),
+    );
+  }
+
+  /**
+   * The bounty `conqueror` gets for eliminating a city-state:
+   * CITY_STATE_CONQUEST_GOLD times their gold multiplier.
+   */
+  cityStateBountyGold(conqueror: PlayerLike): Gold {
+    return BigInt(
+      Math.floor(CITY_STATE_CONQUEST_GOLD * this.goldMultiplierFor(conqueror)),
     );
   }
 

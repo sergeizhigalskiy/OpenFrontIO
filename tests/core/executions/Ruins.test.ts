@@ -4,12 +4,16 @@ import {
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
 import { GameUpdateType } from "@openfront/engine-api/game/GameUpdates";
+import { GameConfig } from "@openfront/engine-api/Schemas";
 import {
+  claimsRuins,
   LAND_TILES_PER_RUIN,
-  RUIN_GOLD_REWARD,
+  RUIN_GOLD_INCOME_TICKS,
   RUIN_MIN_SPACING,
   RUIN_MIN_SPAWN_DISTANCE,
+  RUIN_REWARD_KINDS,
   RUIN_TROOP_REWARD_PERCENT,
+  ruinGoldReward,
   RuinReward,
   ruinCount,
   ruinTroopReward,
@@ -17,21 +21,25 @@ import {
   RUINS_MIN_COUNT,
 } from "@openfront/engine-lib/game/WorldFeatures";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
-import { DefensePostExecution } from "@openfront/engine/execution/DefensePostExecution";
+import { readVersioned } from "@openfront/engine-lib/snapshot/SnapshotType";
 import {
   placeRuins,
   RuinsExecution,
 } from "@openfront/engine/execution/RuinsExecution";
 import { Game, Player } from "@openfront/engine/game/Game";
-import { setGold, structure } from "../../util/GameHelpers";
+import { GameSnapshot } from "@openfront/engine/game/GameImpl";
+import { snapshotGameData } from "@openfront/engine/snapshot/GameSnapshot";
+import { setGold } from "../../util/GameHelpers";
 import { setup } from "../../util/Setup";
 import { executeTicks } from "../../util/utils";
 
 // big_plains: 200x200 tiles of open land.
 const MAP = "big_plains";
 
-async function twoPlayers(): Promise<{ game: Game; a: Player; b: Player }> {
-  const game = await setup(MAP, {}, [
+async function twoPlayers(
+  config: Partial<GameConfig> = {},
+): Promise<{ game: Game; a: Player; b: Player }> {
+  const game = await setup(MAP, config, [
     new PlayerInfo("a", PlayerType.Human, "c_a", "a"),
     new PlayerInfo("b", PlayerType.Human, "c_b", "b"),
   ]);
@@ -43,14 +51,19 @@ function dist(game: Game, t1: number, t2: number): number {
 }
 
 describe("ruins: count and placement", () => {
-  test("the count scales with land, clamped to 15-30", () => {
-    expect(ruinCount(0)).toBe(RUINS_MIN_COUNT);
-    expect(ruinCount(400_000)).toBe(RUINS_MIN_COUNT);
-    expect(ruinCount(RUINS_MIN_COUNT * LAND_TILES_PER_RUIN)).toBe(15);
-    expect(ruinCount(20 * LAND_TILES_PER_RUIN)).toBe(20);
-    expect(ruinCount(25 * LAND_TILES_PER_RUIN + 1)).toBe(25);
-    expect(ruinCount(RUINS_MAX_COUNT * LAND_TILES_PER_RUIN)).toBe(30);
-    expect(ruinCount(10_000_000)).toBe(RUINS_MAX_COUNT);
+  test("one per 120,000 land tiles, clamped to 8-20", () => {
+    expect(LAND_TILES_PER_RUIN).toBe(120_000);
+    expect(RUINS_MIN_COUNT).toBe(8);
+    expect(RUINS_MAX_COUNT).toBe(20);
+    expect(ruinCount(0)).toBe(8);
+    // Iceland.
+    expect(ruinCount(1_069_645)).toBe(8);
+    expect(ruinCount(12 * 120_000)).toBe(12);
+    expect(ruinCount(15 * 120_000 - 1)).toBe(14);
+    // The full-size World map.
+    expect(ruinCount(2_317_767)).toBe(19);
+    expect(ruinCount(20 * 120_000)).toBe(20);
+    expect(ruinCount(10_000_000)).toBe(20);
   });
 
   test("ruins sit on free land, 25 tiles from every spawn and from each other", async () => {
@@ -79,8 +92,22 @@ describe("ruins: count and placement", () => {
         );
       }
     }
-    // Every reward kind turns up.
-    expect(new Set(ruins.map((r) => r.reward)).size).toBe(3);
+  });
+
+  test("a ruin holds gold or troops, never a defense post", async () => {
+    expect(RUIN_REWARD_KINDS).toBe(2);
+    expect(Object.keys(RuinReward).filter((k) => isNaN(Number(k)))).toEqual([
+      "Gold",
+      "Troops",
+    ]);
+    const { game } = await twoPlayers();
+    const seen = new Set<RuinReward>();
+    for (const seed of [1, 2, 3, 4]) {
+      for (const r of placeRuins(game, new PseudoRandom(seed))) {
+        seen.add(r.reward);
+      }
+    }
+    expect([...seen].sort()).toEqual([RuinReward.Gold, RuinReward.Troops]);
   });
 
   test("the same seed places the same ruins with the same rewards", async () => {
@@ -99,13 +126,16 @@ describe("ruins: count and placement", () => {
     expect(game.isLand(ruins[0].tile)).toBe(true);
   });
 
-  test("RuinsExecution waits for the spawn phase to end, then places them once", async () => {
+  test("RuinsExecution waits for the spawn phase to end and its spawns to land, then places them once", async () => {
     const game = await setup(MAP, {}, [], undefined, undefined, false);
     game.addExecution(new RuinsExecution("ruins_game"));
     executeTicks(game, 3);
     expect(game.ruins().size).toBe(0);
 
     game.endSpawnPhase();
+    // A spawn picked on the phase's last tick lands this tick.
+    expect(game.executeNextTick()[GameUpdateType.Ruins]).toHaveLength(0);
+    expect(game.ruins().size).toBe(0);
     const updates = game.executeNextTick();
     expect(game.ruins().size).toBe(ruinCount(game.numLandTiles()));
     // The view learns where they are, not what they hold.
@@ -121,27 +151,44 @@ describe("ruins: count and placement", () => {
 });
 
 describe("ruins: rewards", () => {
-  async function ruinNextTo(reward: RuinReward) {
-    const { game, a, b } = await twoPlayers();
+  async function ruinNextTo(reward: RuinReward, goldMultiplier?: number) {
+    const { game, a, b } = await twoPlayers(
+      goldMultiplier === undefined ? {} : { goldMultiplier },
+    );
     a.conquer(game.ref(100, 100));
     const tile = game.ref(101, 100);
     game.addRuins([{ tile, reward }]);
     return { game, a, b, tile };
   }
 
-  test("a gold burst pays 150,000 gold and tells the claimer", async () => {
+  test("a gold burst pays 60 s of the claimer's base income: 60,000 gold", async () => {
+    expect(RUIN_GOLD_INCOME_TICKS).toBe(600);
     const { game, a, tile } = await ruinNextTo(RuinReward.Gold);
+    expect(game.config().goldAdditionRate(a)).toBe(100n);
     setGold(a, 0n);
     const shown = vi.spyOn(game, "displayMessage");
     a.conquer(tile);
-    expect(a.gold()).toBe(BigInt(RUIN_GOLD_REWARD));
+    expect(a.gold()).toBe(60_000n);
     expect(shown).toHaveBeenCalledWith(
       "events_display.ruins_found_gold",
       expect.anything(),
       a.id(),
       undefined,
-      { gold: "150K" },
+      { gold: "60.0K" },
     );
+  });
+
+  test("the gold burst follows the gold multiplier", async () => {
+    for (const [multiplier, gold] of [
+      [2, 120_000n],
+      [0.5, 30_000n],
+    ] as const) {
+      const { a, tile } = await ruinNextTo(RuinReward.Gold, multiplier);
+      setGold(a, 0n);
+      a.conquer(tile);
+      expect(a.gold()).toBe(gold);
+    }
+    expect(ruinGoldReward(250n)).toBe(150_000n);
   });
 
   test("a troop burst adds 10% of max troops", async () => {
@@ -165,47 +212,39 @@ describe("ruins: rewards", () => {
     expect(ruinTroopReward(max + 50, max)).toBe(0);
   });
 
-  test("a defense post is built at once, free, on the ruin tile", async () => {
-    const { game, a, tile } = await ruinNextTo(RuinReward.DefensePost);
-    setGold(a, 0n);
-    const added = vi.spyOn(game, "addExecution");
-    a.conquer(tile);
-    const posts = a.units(UnitType.DefensePost);
-    expect(posts).toHaveLength(1);
-    expect(posts[0].tile()).toBe(tile);
-    expect(posts[0].level()).toBe(1);
-    expect(posts[0].isUnderConstruction()).toBe(false);
-    expect(a.gold()).toBe(0n);
-    // A gift, so the next post isn't dearer.
-    expect(a.unitsConstructed(UnitType.DefensePost)).toBe(0);
-    expect(added.mock.calls[0][0]).toBeInstanceOf(DefensePostExecution);
+  test("no ruin builds a free defense post", async () => {
+    for (const reward of [RuinReward.Gold, RuinReward.Troops]) {
+      const { a, tile } = await ruinNextTo(reward);
+      a.conquer(tile);
+      expect(a.units(UnitType.DefensePost)).toHaveLength(0);
+    }
   });
 
-  test("a defense post that can't stand there is a gold burst instead", async () => {
-    const { game, a, tile } = await ruinNextTo(RuinReward.DefensePost);
-    // A structure closer than the minimum spacing blocks it.
-    structure(game, a, UnitType.City, game.ref(100, 100));
-    setGold(a, 0n);
-    a.conquer(tile);
-    expect(a.units(UnitType.DefensePost)).toHaveLength(0);
-    expect(a.gold()).toBe(BigInt(RUIN_GOLD_REWARD));
-  });
-
-  test("with defense posts disabled, a defense post ruin pays gold", async () => {
-    const game = await setup(MAP, { disabledUnits: [UnitType.DefensePost] }, [
-      new PlayerInfo("a", PlayerType.Human, "c_a", "a"),
+  test("a saved game's defense post ruin loads as a gold ruin", async () => {
+    const { game } = await twoPlayers();
+    game.addRuins([
+      { tile: game.ref(5, 5), reward: RuinReward.Troops },
+      { tile: game.ref(60, 60), reward: RuinReward.Gold },
     ]);
-    const a = game.player("a");
-    a.conquer(game.ref(50, 50));
-    const tile = game.ref(51, 50);
-    game.addRuins([{ tile, reward: RuinReward.DefensePost }]);
-    setGold(a, 0n);
-    a.conquer(tile);
-    expect(a.gold()).toBe(BigInt(RUIN_GOLD_REWARD));
+    const d = { ...(snapshotGameData(game).game.d as Record<string, unknown>) };
+    d.ruins = [
+      { tile: game.ref(5, 5), reward: 2 },
+      { tile: game.ref(60, 60), reward: 1 },
+    ];
+    expect(readVersioned(GameSnapshot, { v: 4, d }).ruins).toEqual([
+      { tile: game.ref(5, 5), reward: RuinReward.Gold },
+      { tile: game.ref(60, 60), reward: RuinReward.Troops },
+    ]);
   });
 });
 
 describe("ruins: claiming", () => {
+  test("only humans and nations claim ruins", () => {
+    expect(claimsRuins(PlayerType.Human)).toBe(true);
+    expect(claimsRuins(PlayerType.Nation)).toBe(true);
+    expect(claimsRuins(PlayerType.Bot)).toBe(false);
+  });
+
   test("the first to take the tile from free land claims it, and it is gone", async () => {
     const { game, a, b } = await twoPlayers();
     const tile = game.ref(60, 60);
@@ -219,7 +258,7 @@ describe("ruins: claiming", () => {
     const sent = vi.spyOn(game, "addUpdate");
 
     a.conquer(tile);
-    expect(a.gold()).toBe(BigInt(RUIN_GOLD_REWARD));
+    expect(a.gold()).toBe(60_000n);
     expect(game.ruins().has(tile)).toBe(false);
     // The view is told the ruin is gone.
     expect(sent).toHaveBeenCalledWith({
@@ -236,17 +275,40 @@ describe("ruins: claiming", () => {
     expect(a.gold()).toBe(goldA);
   });
 
-  test("a nation or tribe expanding over it claims it like anyone", async () => {
+  test("a tribe taking the tile leaves the ruin standing; a nation taking it from the tribe claims it", async () => {
     const game = await setup(MAP);
     const tribe = game.addPlayer(
       new PlayerInfo("tribe", PlayerType.Bot, null, "tribe"),
     );
+    const nation = game.addPlayer(
+      new PlayerInfo("nation", PlayerType.Nation, null, "nation"),
+    );
     const tile = game.ref(10, 10);
     game.addRuins([{ tile, reward: RuinReward.Gold }]);
-    const before = tribe.gold();
+    setGold(tribe, 0n);
+    setGold(nation, 0n);
     tribe.conquer(tile);
-    expect(tribe.gold()).toBe(before + BigInt(RUIN_GOLD_REWARD));
+    expect(tribe.gold()).toBe(0n);
+    expect(game.ruins().get(tile)).toBe(RuinReward.Gold);
+
+    nation.conquer(tile);
+    expect(nation.gold()).toBe(60_000n);
     expect(game.ruins().size).toBe(0);
+  });
+
+  test("a human takes a ruin from a tribe too", async () => {
+    const { game, a } = await twoPlayers();
+    const tribe = game.addPlayer(
+      new PlayerInfo("tribe", PlayerType.Bot, null, "tribe"),
+    );
+    const tile = game.ref(10, 10);
+    game.addRuins([{ tile, reward: RuinReward.Troops }]);
+    tribe.conquer(tile);
+    expect(game.ruins().has(tile)).toBe(true);
+    a.setTroops(1_000);
+    a.conquer(tile);
+    expect(a.troops()).toBeGreaterThan(1_000);
+    expect(game.ruins().has(tile)).toBe(false);
   });
 
   test("a ruin whose land floods is gone, unclaimed", async () => {

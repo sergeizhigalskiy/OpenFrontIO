@@ -1,7 +1,6 @@
 /**
  * World features meet terrain features: nothing is built on a river or ford,
- * so a city-state's center (its city) and defense post, and a ruin's free
- * defense post, keep off them.
+ * so a city-state's center (its city) and defense post keep off them.
  */
 import { TileRef } from "@openfront/engine-api/game/GameMap";
 import {
@@ -14,7 +13,6 @@ import { TerrainFeature } from "@openfront/engine-api/game/TerrainFeature";
 import { CityStateExecution } from "@openfront/engine/execution/CityStateExecution";
 import { CityStateSpawner } from "@openfront/engine/execution/CityStateSpawner";
 import { Game } from "@openfront/engine/game/Game";
-import { canGrantDefensePost } from "@openfront/engine/game/WorldFeatures";
 import { vi } from "vitest";
 import { setup } from "../../util/Setup";
 import { executeTicks } from "../../util/utils";
@@ -58,20 +56,5 @@ describe("world features keep structures off rivers", () => {
       }
     }
     expect(execs[0]).toBeInstanceOf(CityStateExecution);
-  });
-
-  test("a ruin's free defense post can't go on a river or ford", async () => {
-    const game = await setup(MAP, {}, [
-      new PlayerInfo("a", PlayerType.Human, "c_a", "a"),
-    ]);
-    const a = game.player("a");
-    const dry = game.ref(51, 50);
-    const river = game.ref(50, 50);
-    a.conquer(dry);
-    a.conquer(river);
-    expect(canGrantDefensePost(game, a, river)).toBe(true);
-    riverColumns(game);
-    expect(canGrantDefensePost(game, a, dry)).toBe(true);
-    expect(canGrantDefensePost(game, a, river)).toBe(false);
   });
 });

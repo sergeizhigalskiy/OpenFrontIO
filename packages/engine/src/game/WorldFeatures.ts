@@ -1,19 +1,12 @@
 import { TileRef } from "@openfront/engine-api/game/GameMap";
-import {
-  MessageType,
-  Structures,
-  UnitType,
-} from "@openfront/engine-api/game/GameTypes";
+import { MessageType } from "@openfront/engine-api/game/GameTypes";
 import { GameUpdateType } from "@openfront/engine-api/game/GameUpdates";
 import { renderNumber, renderTroops } from "@openfront/engine-lib/Format";
-import { terrainFeatureAllowsStructures } from "@openfront/engine-lib/game/TerrainFeatures";
 import {
-  CITY_STATE_CONQUEST_GOLD,
-  RUIN_GOLD_REWARD,
+  ruinGoldReward,
   RuinReward,
   ruinTroopReward,
 } from "@openfront/engine-lib/game/WorldFeatures";
-import { DefensePostExecution } from "../execution/DefensePostExecution";
 import { Game, Player } from "./Game";
 
 /**
@@ -24,7 +17,7 @@ import { Game, Player } from "./Game";
 
 /**
  * Gives `claimer` what the ruin on `tile` held. GameImpl.conquer calls it the
- * moment `claimer` takes the tile from unclaimed land, after removing the
+ * moment a human or nation takes the tile (claimsRuins), after removing the
  * ruin.
  */
 export function claimRuin(
@@ -51,52 +44,12 @@ export function claimRuin(
     });
     return;
   }
-  if (
-    reward === RuinReward.DefensePost &&
-    canGrantDefensePost(game, claimer, tile)
-  ) {
-    const post = claimer.grantUnit(UnitType.DefensePost, tile, {});
-    game.addExecution(new DefensePostExecution(post));
-    ruinMessage(game, claimer, "events_display.ruins_found_defense_post");
-    return;
-  }
-  // A gold burst, and the fallback for a defense post that can't go here.
-  const gold = BigInt(RUIN_GOLD_REWARD);
+  // A gold burst: a minute of the claimer's base income.
+  const gold = ruinGoldReward(game.config().goldAdditionRate(claimer));
   claimer.addGold(gold, tile);
   ruinMessage(game, claimer, "events_display.ruins_found_gold", {
     gold: renderNumber(gold),
   });
-}
-
-/**
- * Whether a structure may legally stand on `tile` for `player`: the defense
- * post isn't disabled, `player` owns the tile, and no structure (finished or
- * not) is closer than the minimum structure spacing. The same spacing rule
- * as building one, for this exact tile and without the price.
- */
-export function canGrantDefensePost(
-  game: Game,
-  player: Player,
-  tile: TileRef,
-): boolean {
-  if (game.config().isUnitDisabled(UnitType.DefensePost)) return false;
-  if (
-    game.owner(tile) !== player ||
-    !game.isLand(tile) ||
-    game.isImpassable(tile) ||
-    // Nothing is built on a river or ford (terrain features).
-    !terrainFeatureAllowsStructures(game.terrainFeature(tile))
-  ) {
-    return false;
-  }
-  const minDist = game.config().structureMinDist();
-  const minDistSquared = minDist * minDist;
-  return !game
-    .nearbyUnits(tile, minDist, Structures.types, undefined, true)
-    .some(
-      ({ unit }) =>
-        game.euclideanDistSquared(unit.tile(), tile) < minDistSquared,
-    );
 }
 
 function ruinMessage(
@@ -116,8 +69,9 @@ function ruinMessage(
 
 /**
  * Pays the city-state bounty to whoever eliminates `cityState`, on top of
- * the normal conquest gold. GameImpl.conquerPlayer calls it; it pays once
- * however often the conquest is recorded.
+ * the normal conquest gold (none: a city-state earns no gold).
+ * GameImpl.conquerPlayer calls it; it pays once however often the conquest
+ * is recorded.
  */
 export function payCityStateBounty(
   game: Game,
@@ -125,7 +79,7 @@ export function payCityStateBounty(
   cityState: Player,
 ): void {
   if (conqueror === cityState || !cityState.takeCityStateBounty()) return;
-  const gold = BigInt(CITY_STATE_CONQUEST_GOLD);
+  const gold = game.config().cityStateBountyGold(conqueror);
   conqueror.addGold(gold);
   game.stats().goldWar(conqueror, cityState, gold);
   game.displayMessage(

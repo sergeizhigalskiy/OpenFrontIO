@@ -1,3 +1,5 @@
+import { PlayerType } from "@openfront/engine-api/game/GameTypes";
+
 /**
  * World features: ruins with loot and neutral city-states.
  *
@@ -5,14 +7,17 @@
  * unless set to false (and always off in the onboarding tutorial).
  *
  * Ruins sit on unclaimed land. They are placed when the spawn phase ends, and
- * the first player to take a ruin's tile from unclaimed land gets its reward,
- * which consumes it. The reward is rolled when the ruin is placed.
+ * the first human or nation to take a ruin's tile, from free land or from a
+ * tribe, gets its reward, which consumes it (claimsRuins). A tribe taking the
+ * tile leaves the ruin standing. The reward is rolled when the ruin is
+ * placed: gold worth RUIN_GOLD_INCOME_TICKS of the claimer's base income, or
+ * troops.
  *
  * A city-state is a tribe (PlayerType.Bot) that never expands, attacks,
- * allies, trades or takes donations. It starts with a disc of land around a
- * level-2 city and a defense post, and a dense garrison. Whoever eliminates
- * it gets a gold bounty on top of the normal conquest gold, and captures the
- * city, whose troop bonus then counts for them.
+ * allies, trades or takes donations, and earns no gold. It starts with a disc
+ * of land around a level-2 city and a defense post, and a dense garrison.
+ * Whoever eliminates it gets a fixed gold bounty, and captures the city,
+ * whose troop bonus then counts for them.
  *
  * Shared by the engine (placement, rewards, troop cap) and the client (hover
  * and labels), so every tunable number lives here. All math is integer, so
@@ -24,13 +29,13 @@
 // ---------------------------------------------------------------------------
 
 /** Fewest ruins a map gets (when there is room for them). */
-export const RUINS_MIN_COUNT = 15;
+export const RUINS_MIN_COUNT = 8;
 
 /** Most ruins a map gets. */
-export const RUINS_MAX_COUNT = 30;
+export const RUINS_MAX_COUNT = 20;
 
 /** One ruin per this many land tiles, clamped to the counts above. */
-export const LAND_TILES_PER_RUIN = 80_000;
+export const LAND_TILES_PER_RUIN = 120_000;
 
 /** A ruin is at least this many tiles (euclidean) from every spawn tile. */
 export const RUIN_MIN_SPAWN_DISTANCE = 25;
@@ -38,25 +43,27 @@ export const RUIN_MIN_SPAWN_DISTANCE = 25;
 /** ...and at least this many tiles from every other ruin. */
 export const RUIN_MIN_SPACING = 25;
 
-/** Gold a gold burst pays. */
-export const RUIN_GOLD_REWARD = 150_000;
+/**
+ * A gold burst pays this many ticks of the claimer's base income
+ * (EngineConfig.goldAdditionRate), so it follows the gold multiplier: 60 s,
+ * 60,000 gold for a human or nation at normal gold.
+ */
+export const RUIN_GOLD_INCOME_TICKS = 600;
 
 /** A troop burst adds this percent of the claimer's max troops. */
 export const RUIN_TROOP_REWARD_PERCENT = 10;
 
-/** What a ruin holds. Rolled when it is placed, hidden until claimed. */
+/**
+ * What a ruin holds. Rolled when it is placed, hidden until claimed. (A third
+ * kind, a free defense post, was dropped; snapshots map it to gold.)
+ */
 export enum RuinReward {
   Gold = 0,
   Troops = 1,
-  /**
-   * A free level-1 defense post on the ruin tile, built at once. A gold burst
-   * instead when no structure can go there.
-   */
-  DefensePost = 2,
 }
 
 /** How many RuinReward kinds a roll picks from (all equally likely). */
-export const RUIN_REWARD_KINDS = 3;
+export const RUIN_REWARD_KINDS = 2;
 
 /** Placement tries per ruin before the placer settles for fewer. */
 export const RUIN_PLACEMENT_TRIES_PER_RUIN = 400;
@@ -68,6 +75,23 @@ export function ruinCount(landTiles: number): number {
     RUINS_MIN_COUNT,
     RUINS_MAX_COUNT,
   );
+}
+
+/**
+ * Gold a gold burst pays a claimer whose base income is `incomePerTick`:
+ * RUIN_GOLD_INCOME_TICKS of it.
+ */
+export function ruinGoldReward(incomePerTick: bigint): bigint {
+  return incomePerTick * BigInt(RUIN_GOLD_INCOME_TICKS);
+}
+
+/**
+ * Whether a player of `type` claims a ruin by taking its tile: humans and
+ * nations do; a tribe (or a city-state or mode band) taking it leaves the
+ * ruin standing.
+ */
+export function claimsRuins(type: PlayerType): boolean {
+  return type === PlayerType.Human || type === PlayerType.Nation;
 }
 
 /**
@@ -83,17 +107,20 @@ export function ruinTroopReward(troops: number, maxTroops: number): number {
 // City-states
 // ---------------------------------------------------------------------------
 
-/** Fewest city-states a map gets (when there is room for them). */
-export const CITY_STATES_MIN_COUNT = 4;
+/** Fewest city-states a game gets (when there is room for them). */
+export const CITY_STATES_MIN_COUNT = 2;
 
 /**
- * Most city-states a map gets, unless its map places more by hand (each
+ * Most city-states a game gets, unless its map places more by hand (each
  * static custom_tribes entry is one, and they count toward the total).
  */
-export const CITY_STATES_MAX_COUNT = 8;
+export const CITY_STATES_MAX_COUNT = 6;
 
-/** One city-state per this many land tiles, clamped to the counts above. */
-export const LAND_TILES_PER_CITY_STATE = 300_000;
+/**
+ * One city-state per this many players (humans and nations), clamped to the
+ * counts above.
+ */
+export const PLAYERS_PER_CITY_STATE = 8;
 
 /**
  * A randomly placed city-state's center is at least this many tiles
@@ -119,8 +146,12 @@ export const CITY_STATE_CITY_LEVEL = 2;
  */
 export const CITY_STATE_GARRISON_MULTIPLIER = 3;
 
-/** Gold the player who eliminates a city-state gets on top of conquest gold. */
-export const CITY_STATE_CONQUEST_GOLD = 300_000;
+/**
+ * The bounty the player who eliminates a city-state gets, before their gold
+ * multiplier (EngineConfig.cityStateBountyGold): 2 minutes of base income.
+ * A city-state earns no gold, so the prize doesn't grow while it stands.
+ */
+export const CITY_STATE_CONQUEST_GOLD = 120_000;
 
 /** Names for city-states that a map does not name (custom_tribes static). */
 export const CITY_STATE_NAMES: readonly string[] = [
@@ -142,10 +173,10 @@ export const CITY_STATE_NAMES: readonly string[] = [
   "Westmarch",
 ];
 
-/** How many random city-states a map with `landTiles` land tiles gets. */
-export function cityStateCount(landTiles: number): number {
+/** How many city-states a game with `players` humans and nations gets. */
+export function cityStateCount(players: number): number {
   return clampCount(
-    Math.floor(landTiles / LAND_TILES_PER_CITY_STATE),
+    Math.round(players / PLAYERS_PER_CITY_STATE),
     CITY_STATES_MIN_COUNT,
     CITY_STATES_MAX_COUNT,
   );

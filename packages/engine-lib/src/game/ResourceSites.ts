@@ -1,4 +1,5 @@
 import { GameMap, TileRef } from "@openfront/engine-api/game/GameMap";
+import { PlayerType } from "@openfront/engine-api/game/GameTypes";
 import { PseudoRandom } from "../PseudoRandom";
 
 /**
@@ -6,12 +7,14 @@ import { PseudoRandom } from "../PseudoRandom";
  * A lobby setting (GameConfig.resourceSites).
  *
  * The rules, kept small on purpose:
- * - Sites are placed once, at game start, from the game's seed: per kind
- *   about one per `landTilesPerSite` land tiles, clamped to the kind's
- *   min/max, at least RESOURCE_SITE_MIN_DISTANCE tiles from each other and
- *   the kind's `spawnDistance` from the nations' spawn cells. Kinds are
- *   placed in RESOURCE_SITE_KINDS order from one random stream, so a kind
- *   added later never moves the ones before it.
+ * - Sites are placed once, when the spawn phase ends, from the game's seed,
+ *   so nobody sees them while picking a spawn. How many comes from the
+ *   number of players (humans and nations), not the map's size, so the pool
+ *   is about the same share of each player's base income on every map (see
+ *   resourceSiteCount). Each sits at least RESOURCE_SITE_MIN_DISTANCE tiles
+ *   from the others and RESOURCE_SITE_SPAWN_DISTANCE from every human and
+ *   nation spawn. Kinds are placed in RESOURCE_SITE_KINDS order from one
+ *   random stream, so a kind added later never moves the ones before it.
  * - Land kinds (gold mines, oil fields) sit on passable land and are held by
  *   whoever owns their tile: taken by attacking like any land, with nothing
  *   to build. Flooded by the rising tide or a water nuke, they pay no one.
@@ -19,8 +22,12 @@ import { PseudoRandom } from "../PseudoRandom";
  *   off a coast and are held by whoever owns the nearest coast tile within
  *   FISHING_GROUNDS_COAST_RADIUS, worked out from the map every time (see
  *   resourceSiteHolderTile), so they follow the coast when it changes.
- * - Each tick the holder gets the kind's goldPerTick, scaled by their gold
- *   multiplier like passive income.
+ * - From RESOURCE_SITE_FIRST_PAY_TICKS after the spawn phase, each tick pays
+ *   every human or nation holder for their best
+ *   RESOURCE_SITES_PAID_PER_PLAYER sites (resourceSitesGoldPerTick), scaled
+ *   by their gold multiplier like passive income. Holding more still keeps
+ *   them from everyone else. Tribes and city-states are never paid
+ *   (paidByResourceSites).
  *
  * A new kind is a new entry in RESOURCE_SITE_KINDS (append only: the index
  * travels in ResourceSitesUpdate and in snapshots) and its
@@ -55,38 +62,46 @@ export interface ResourceSiteInfo {
    * with its own tile.
    */
   onWater: boolean;
-  /** About one site of this kind per this many land tiles... */
-  landTilesPerSite: number;
-  /** ...clamped to this range. */
-  minSites: number;
-  maxSites: number;
-  /** Minimum distance (tiles) from every nation spawn cell. */
-  spawnDistance: number;
 }
 
 /**
- * Three quarters of a human's base passive income (100 gold per tick, see
- * EngineConfig.goldAdditionRate): holding a mine is worth most of a second
- * worker economy.
+ * 0.3x a human's base income (100 gold per tick, see
+ * EngineConfig.goldAdditionRate).
  */
-export const GOLD_MINE_GOLD_PER_TICK = 75n;
-/** One and a half mines, rounded down: the reward for reaching far out. */
-export const OIL_FIELD_GOLD_PER_TICK = (GOLD_MINE_GOLD_PER_TICK * 3n) / 2n;
+export const GOLD_MINE_GOLD_PER_TICK = 30n;
+/** 0.45x base income: the reward for reaching the rarer kind. */
+export const OIL_FIELD_GOLD_PER_TICK = 45n;
 /** A mine's worth. */
 export const FISHING_GROUNDS_GOLD_PER_TICK = GOLD_MINE_GOLD_PER_TICK;
 
-/** Gold mines: one for about this many land tiles. */
-export const LAND_TILES_PER_RESOURCE_SITE = 60_000;
-export const MIN_RESOURCE_SITES = 6;
-export const MAX_RESOURCE_SITES = 24;
-/** Oil fields and fishing grounds: one of each for about this many. */
-export const LAND_TILES_PER_RARE_SITE = 180_000;
-export const MIN_RARE_SITES = 2;
-export const MAX_RARE_SITES = 8;
-/** Minimum distance (tiles) between sites, and from nation spawn cells. */
+/**
+ * Each player is paid for at most this many of the sites they hold, their
+ * best ones: an oil field and two mines are 1.2x base income.
+ */
+export const RESOURCE_SITES_PAID_PER_PLAYER = 3;
+
+/** Gold mines: one per this many players (humans and nations)... */
+export const PLAYERS_PER_GOLD_MINE = 4;
+/** ...clamped to this range. */
+export const MIN_GOLD_MINES = 2;
+export const MAX_GOLD_MINES = 10;
+/**
+ * Oil fields, and fishing grounds on a map with ocean: one of each per this
+ * many players...
+ */
+export const PLAYERS_PER_RARE_SITE = 12;
+/** ...clamped to this range. */
+export const MIN_RARE_SITES = 1;
+export const MAX_RARE_SITES = 3;
+/** A map with no ocean gets this many more gold mines instead of fishing. */
+export const EXTRA_GOLD_MINES_WITHOUT_OCEAN = 1;
+
+/** Minimum distance (tiles) between sites. */
 export const RESOURCE_SITE_MIN_DISTANCE = 25;
-/** Oil fields keep twice that from the spawns. */
-export const OIL_FIELD_SPAWN_DISTANCE = 2 * RESOURCE_SITE_MIN_DISTANCE;
+/** Minimum distance (tiles) from every human and nation spawn. */
+export const RESOURCE_SITE_SPAWN_DISTANCE = 40;
+/** Sites first pay this many ticks after the spawn phase ends (60 s). */
+export const RESOURCE_SITE_FIRST_PAY_TICKS = 600;
 /** How far (tiles) off the nearest coast a fishing ground is placed. */
 export const FISHING_GROUNDS_MIN_SHORE_DISTANCE = 3;
 export const FISHING_GROUNDS_MAX_SHORE_DISTANCE = 8;
@@ -111,28 +126,16 @@ export const RESOURCE_SITE_INFO: Readonly<
     goldPerTick: GOLD_MINE_GOLD_PER_TICK,
     nameKey: "resource_sites.gold_mine",
     onWater: false,
-    landTilesPerSite: LAND_TILES_PER_RESOURCE_SITE,
-    minSites: MIN_RESOURCE_SITES,
-    maxSites: MAX_RESOURCE_SITES,
-    spawnDistance: RESOURCE_SITE_MIN_DISTANCE,
   },
   [ResourceSiteKind.OilField]: {
     goldPerTick: OIL_FIELD_GOLD_PER_TICK,
     nameKey: "resource_sites.oil_field",
     onWater: false,
-    landTilesPerSite: LAND_TILES_PER_RARE_SITE,
-    minSites: MIN_RARE_SITES,
-    maxSites: MAX_RARE_SITES,
-    spawnDistance: OIL_FIELD_SPAWN_DISTANCE,
   },
   [ResourceSiteKind.FishingGrounds]: {
     goldPerTick: FISHING_GROUNDS_GOLD_PER_TICK,
     nameKey: "resource_sites.fishing_grounds",
     onWater: true,
-    landTilesPerSite: LAND_TILES_PER_RARE_SITE,
-    minSites: MIN_RARE_SITES,
-    maxSites: MAX_RARE_SITES,
-    spawnDistance: RESOURCE_SITE_MIN_DISTANCE,
   },
 };
 
@@ -141,28 +144,64 @@ export interface ResourceSite {
   kind: ResourceSiteKind;
 }
 
-/** How many sites of `kind` a map with `numLandTiles` land tiles gets. */
+/**
+ * How many sites of `kind` a game with `players` humans and nations gets:
+ * gold mines one per PLAYERS_PER_GOLD_MINE (2 to 10), oil fields one per
+ * PLAYERS_PER_RARE_SITE (1 to 3), fishing grounds as many as oil fields when
+ * the map has ocean, otherwise EXTRA_GOLD_MINES_WITHOUT_OCEAN more mines.
+ */
 export function resourceSiteCount(
-  numLandTiles: number,
-  kind: ResourceSiteKind = ResourceSiteKind.GoldMine,
+  players: number,
+  kind: ResourceSiteKind,
+  hasOcean: boolean,
 ): number {
-  const info = RESOURCE_SITE_INFO[kind];
-  const wanted = Math.round(numLandTiles / info.landTilesPerSite);
-  return Math.max(info.minSites, Math.min(info.maxSites, wanted));
+  const rare = clamp(
+    Math.round(players / PLAYERS_PER_RARE_SITE),
+    MIN_RARE_SITES,
+    MAX_RARE_SITES,
+  );
+  switch (kind) {
+    case ResourceSiteKind.GoldMine:
+      return (
+        clamp(
+          Math.round(players / PLAYERS_PER_GOLD_MINE),
+          MIN_GOLD_MINES,
+          MAX_GOLD_MINES,
+        ) + (hasOcean ? 0 : EXTRA_GOLD_MINES_WITHOUT_OCEAN)
+      );
+    case ResourceSiteKind.OilField:
+      return rare;
+    case ResourceSiteKind.FishingGrounds:
+      return hasOcean ? rare : 0;
+  }
+}
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, n));
+}
+
+/** Whether `map` has any ocean (lakes don't count): fishing grounds' water. */
+export function mapHasOcean(map: GameMap): boolean {
+  const numTiles = map.width() * map.height();
+  for (let tile = 0; tile < numTiles; tile++) {
+    if (map.isOcean(tile)) return true;
+  }
+  return false;
 }
 
 /**
- * Places the sites for a new game. Deterministic: the same map, random
- * stream and spawn cells give the same sites. Kind by kind, in
- * RESOURCE_SITE_KINDS order: picks uniformly among the tiles the kind may
- * sit on (passable land, or ocean the right distance off a coast) and
- * rejects picks too close to a placed site or a spawn cell; a map too small
- * for the full count gets as many as fit.
+ * Places the sites for a game with `players` humans and nations.
+ * Deterministic: the same map, random stream, player count and spawns give
+ * the same sites. Kind by kind, in RESOURCE_SITE_KINDS order: picks
+ * uniformly among the tiles the kind may sit on (passable land, or ocean the
+ * right distance off a coast) and rejects picks too close to a placed site
+ * or a spawn; a map too small for the full count gets as many as fit.
  */
 export function placeResourceSites(
   map: GameMap,
   random: PseudoRandom,
-  spawnCells: readonly { x: number; y: number }[],
+  players: number,
+  spawns: readonly { x: number; y: number }[],
   blocked: (tile: TileRef) => boolean = () => false,
 ): ResourceSite[] {
   const land: TileRef[] = [];
@@ -171,10 +210,13 @@ export function placeResourceSites(
   });
   const sites: ResourceSite[] = [];
   if (land.length === 0) return sites;
+  const hasOcean = mapHasOcean(map);
 
   const siteDist2 = RESOURCE_SITE_MIN_DISTANCE * RESOURCE_SITE_MIN_DISTANCE;
-  const tooClose = (x: number, y: number, spawnDist2: number): boolean => {
-    for (const c of spawnCells) {
+  const spawnDist2 =
+    RESOURCE_SITE_SPAWN_DISTANCE * RESOURCE_SITE_SPAWN_DISTANCE;
+  const tooClose = (x: number, y: number): boolean => {
+    for (const c of spawns) {
       const dx = c.x - x;
       const dy = c.y - y;
       if (dx * dx + dy * dy < spawnDist2) return true;
@@ -192,8 +234,7 @@ export function placeResourceSites(
 
   for (const kind of RESOURCE_SITE_KINDS) {
     const info = RESOURCE_SITE_INFO[kind];
-    const wanted = resourceSiteCount(map.numLandTiles(), kind);
-    const spawnDist2 = info.spawnDistance * info.spawnDistance;
+    const wanted = resourceSiteCount(players, kind, hasOcean);
     const attempts =
       wanted *
       (info.onWater
@@ -209,7 +250,7 @@ export function placeResourceSites(
       const y = map.y(tile);
       // `blocked`: what earlier start features hold (StartPlacements).
       // Checked after the draw, so it shifts no other site.
-      if (tooClose(x, y, spawnDist2) || blocked(tile)) continue;
+      if (tooClose(x, y) || blocked(tile)) continue;
       if (info.onWater) {
         const shore = nearestCoastTile(
           map,
@@ -345,14 +386,29 @@ export function resourceSitesHeldBy(
 }
 
 /**
- * Gold per tick `sites` pay before the holder's gold multiplier (a client
- * that shows a rate multiplies it by the game's multiplier itself).
+ * Whether a player of `type` is paid for the sites it holds: humans and
+ * nations are; tribes and city-states (and every other tribe-type player)
+ * never are, so a site under their land pays no one.
+ */
+export function paidByResourceSites(type: PlayerType): boolean {
+  return type === PlayerType.Human || type === PlayerType.Nation;
+}
+
+/**
+ * Gold per tick `sites`, all held by one player, pay that player before
+ * their gold multiplier (a client that shows a rate multiplies it by the
+ * game's multiplier itself): their best RESOURCE_SITES_PAID_PER_PLAYER.
  */
 export function resourceSitesGoldPerTick(
   sites: readonly ResourceSite[],
 ): bigint {
+  const rates = sites
+    .map((s) => RESOURCE_SITE_INFO[s.kind].goldPerTick)
+    .sort((a, b) => (a > b ? -1 : a < b ? 1 : 0));
   let gold = 0n;
-  for (const s of sites) gold += RESOURCE_SITE_INFO[s.kind].goldPerTick;
+  for (const rate of rates.slice(0, RESOURCE_SITES_PAID_PER_PLAYER)) {
+    gold += rate;
+  }
   return gold;
 }
 

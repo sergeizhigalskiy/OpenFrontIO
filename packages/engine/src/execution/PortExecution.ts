@@ -1,5 +1,8 @@
 import { UnitType } from "@openfront/engine-api/game/GameTypes";
-import { BLOCKADE_CHECK_INTERVAL } from "@openfront/engine-lib/game/TradeRoutes";
+import {
+  BLOCKADE_CHECK_INTERVAL,
+  BLOCKADE_TRADE_SHIP_RATE_DIVISOR,
+} from "@openfront/engine-lib/game/TradeRoutes";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import {
   zInt,
@@ -25,7 +28,7 @@ export class PortExecution implements Execution {
   private random: PseudoRandom;
   private checkOffset: number;
   private tradeShipSpawnRejections = 0;
-  // Whether a hostile warship blockaded the port at the last check.
+  // Whether a warship at war blockaded the port at the last check.
   private blockaded = false;
 
   constructor(port: Unit) {
@@ -65,8 +68,14 @@ export class PortExecution implements Execution {
       return;
     }
 
-    // A blockaded port launches no trade ships (see PortBlockade.ts).
-    if (this.blockaded) {
+    // A blockaded port tries on one check in BLOCKADE_TRADE_SHIP_RATE_DIVISOR,
+    // so it launches trade ships at that fraction of its rate (TradeRoutes).
+    if (
+      this.blockaded &&
+      Math.floor((this.mg.ticks() + this.checkOffset) / 10) %
+        BLOCKADE_TRADE_SHIP_RATE_DIVISOR !==
+        0
+    ) {
       return;
     }
 
