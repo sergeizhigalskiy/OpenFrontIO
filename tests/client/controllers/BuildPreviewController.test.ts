@@ -1,6 +1,4 @@
 import { UnitType } from "@openfront/engine-api/game/GameTypes";
-import { DRONE_RANGE } from "@openfront/engine-lib/game/ConventionalWar";
-import { MINEFIELD_RADIUS } from "@openfront/engine-lib/game/NavalDefense";
 import { EventBus } from "@openfront/shared/EventBus";
 import { describe, expect, test, vi } from "vitest";
 import {
@@ -160,27 +158,6 @@ describe("BuildPreviewController confirm with the pointer off the map", () => {
     expect([data.tileX, data.tileY]).toEqual([3, 4]);
     expect([data.radiusTileX, data.radiusTileY]).toEqual([3, 4]);
     expect(data.snapToPlacement).toBe(false);
-  });
-
-  test("a blocked drone order says why, its range circle on the cursor", () => {
-    const { controller } = makeController(3, 4);
-    const buildable = (controller as any).ghostUnit.buildableUnit;
-    Object.assign(buildable, {
-      type: UnitType.Drone,
-      canBuild: false,
-      cost: 1n,
-      blocked: "drone_range",
-    });
-    const data = (controller as any).buildGhostPreviewData(43, false);
-    // (Tests load no translations: the text is its key.)
-    expect(data.blockedText).toBe("build_menu.blocked.drone_range");
-    // No airbase to center on: the player's land must reach the circle.
-    expect([data.radiusTileX, data.radiusTileY]).toEqual([3, 4]);
-    expect(data.rangeRadius).toBe(DRONE_RANGE);
-    delete buildable.blocked;
-    Object.assign(buildable, { canBuild: 42 });
-    const ok = (controller as any).buildGhostPreviewData(43, false);
-    expect(ok.blockedText).toBeUndefined();
   });
 
   test.each([false, true])(
@@ -471,87 +448,6 @@ describe("BuildPreviewController confirm with the pointer off the map", () => {
     c.ghostUnit.buildableUnit.canUpgrade = 7;
     c.requestConfirmStructure(new MouseUpEvent(0, 0));
     expect(emitted[0] instanceof BuildUnitIntentEvent).toBe(held);
-  });
-});
-
-describe("BuildPreviewController minefield preview", () => {
-  function makeMinefieldController(density: number, gold: bigint) {
-    const width = 10;
-    const game = {
-      isImpassable: () => false,
-      isValidCoord: (x: number, y: number) =>
-        x >= 0 && y >= 0 && x < width && y < width,
-      ref: (x: number, y: number) => y * width + x,
-      myPlayer: () => ({
-        gold: () => gold,
-        smallID: () => 1,
-        isAlive: () => true,
-      }),
-      x: (t: number) => t % width,
-      y: (t: number) => Math.floor(t / width),
-    };
-    const eventBus = new EventBus();
-    const emitted: unknown[] = [];
-    vi.spyOn(eventBus, "emit").mockImplementation((e) => {
-      emitted.push(e);
-    });
-    const controller = new BuildPreviewController(
-      game as any,
-      eventBus,
-      {
-        ghostStructure: UnitType.Minefield,
-        minefieldDensity: density,
-        upgradeMultiplier: 1,
-      } as any,
-      { screenToWorldCoordinates: () => ({ x: 3, y: 4 }) } as any,
-      { updateGhostPreview: () => {}, updateNukeTrajectory: () => {} } as any,
-      {
-        nukeAllianceSafetyDuration: () => 0,
-        cursorCostLabel: () => true,
-        snapBuildPreview: () => false,
-      } as any,
-    );
-    (controller as any).ghostUnit = {
-      buildableUnit: {
-        type: UnitType.Minefield,
-        canBuild: 43,
-        canUpgrade: false,
-        // The engine's price at the default 50% density.
-        cost: 60_000n,
-        overlappingRailroads: [],
-        ghostRailPaths: [],
-      },
-    };
-    (controller as any).ghostResolved = true;
-    (controller as any).resolvedGhostTile = 43;
-    return { controller, emitted };
-  }
-
-  test("shows the field's radius and the price of the chosen density", () => {
-    const { controller } = makeMinefieldController(20, 100_000n);
-    const ghost = (controller as any).buildGhostPreviewData(43, false);
-    expect(ghost.rangeRadius).toBe(MINEFIELD_RADIUS);
-    expect(ghost.cost).toBe(24_000);
-    expect(ghost.canAfford).toBe(true);
-  });
-
-  test("sends the chosen density with the build intent", () => {
-    const { controller, emitted } = makeMinefieldController(20, 100_000n);
-    (controller as any).requestConfirmStructure(new MouseUpEvent(0, 0));
-    const intent = emitted.find((e) => e instanceof BuildUnitIntentEvent) as
-      | BuildUnitIntentEvent
-      | undefined;
-    expect(intent?.unit).toBe(UnitType.Minefield);
-    expect(intent?.density).toBe(20);
-  });
-
-  test("sends nothing for a density the player can't pay for", () => {
-    const { controller, emitted } = makeMinefieldController(100, 100_000n);
-    const ghost = (controller as any).buildGhostPreviewData(43, false);
-    expect(ghost.cost).toBe(120_000);
-    expect(ghost.canAfford).toBe(false);
-    (controller as any).requestConfirmStructure(new MouseUpEvent(0, 0));
-    expect(emitted.some((e) => e instanceof BuildUnitIntentEvent)).toBe(false);
   });
 });
 

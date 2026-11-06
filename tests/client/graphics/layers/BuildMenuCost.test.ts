@@ -42,51 +42,6 @@ describe("BuildMenu.cost", () => {
   });
 });
 
-describe("BuildMenu minefield density", () => {
-  const minefield = {
-    type: UnitType.Minefield,
-    canBuild: 5,
-    canUpgrade: false,
-    // The engine's price at the default 50% density.
-    cost: 60_000n,
-  } as unknown as BuildableUnit;
-
-  it("prices a minefield at the slider's density", () => {
-    const menu = makeMenu();
-    menu.playerBuildables = [minefield];
-    menu.uiState = {} as any;
-    expect(menu.cost(item(UnitType.Minefield))).toBe(60_000n);
-    menu.uiState.minefieldDensity = 100;
-    expect(menu.cost(item(UnitType.Minefield))).toBe(120_000n);
-    menu.uiState.minefieldDensity = 10;
-    expect(menu.cost(item(UnitType.Minefield))).toBe(12_000n);
-  });
-
-  it("sends the chosen density with the build intent", () => {
-    const menu = makeMenu();
-    const emit = vi.fn();
-    menu.eventBus = { emit } as any;
-    menu.uiState = { minefieldDensity: 35 } as any;
-    menu.sendBuildOrUpgrade(minefield, 5);
-    expect(emit).toHaveBeenCalledTimes(1);
-    expect(emit.mock.calls[0][0]).toMatchObject({
-      unit: UnitType.Minefield,
-      tile: 5,
-      density: 35,
-    });
-  });
-
-  it("can't lay a density the player can't pay for", () => {
-    const menu = makeMenu();
-    menu.game = { myPlayer: () => ({ gold: () => 50_000n }) } as any;
-    menu.uiState = { minefieldDensity: 50 } as any;
-    menu.playerBuildables = [minefield];
-    expect(menu.canBuildOrUpgrade(item(UnitType.Minefield))).toBe(false);
-    menu.uiState.minefieldDensity = 40;
-    expect(menu.canBuildOrUpgrade(item(UnitType.Minefield))).toBe(true);
-  });
-});
-
 describe("BuildMenu hold-to-build availability", () => {
   it("uses the effective action for rendered buttons as the hold changes", async () => {
     const menu = makeMenu();

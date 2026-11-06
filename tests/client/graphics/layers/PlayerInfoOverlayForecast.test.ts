@@ -10,7 +10,6 @@ const forecastMock = vi.hoisted(() => ({
     lossPerTile: 123,
     tilesPerSecond: 4.25 as number | null,
     defensePostLevel: 0,
-    siegeReduced: false,
   },
   calls: [] as unknown[][],
   fronts: new Map<number, number>([
@@ -101,8 +100,6 @@ describe("PlayerInfoOverlay attack forecast", () => {
     cosmetics: {},
     id: () => "bob",
     smallID: () => 2,
-    // No conventional war capital (the card's capital-lost badge reads it).
-    state: {},
   };
   const terraNullius = { isPlayer: () => false, smallID: () => 0 };
 
@@ -152,7 +149,6 @@ describe("PlayerInfoOverlay attack forecast", () => {
       lossPerTile: 123,
       tilesPerSecond: 4.25,
       defensePostLevel: 0,
-      siegeReduced: false,
     };
     overlay = new PlayerInfoOverlay();
     overlay.eventBus = { on: vi.fn() } as never;
@@ -194,14 +190,10 @@ describe("PlayerInfoOverlay attack forecast", () => {
     expect(last[5]).toBe(12);
   });
 
-  it("names the covering defense post's level, and a siege camp's reduction", async () => {
+  it("names the covering defense post's level", async () => {
     forecastMock.result = { ...forecastMock.result, defensePostLevel: 2 };
-    let out = await hover(game(enemy, me()));
+    const out = await hover(game(enemy, me()));
     expect(out).toContain('attack_forecast.defense_post{"level":"2"}');
-    forecastMock.result = { ...forecastMock.result, siegeReduced: true };
-    overlay.maybeShow(10, 10);
-    out = flatten(overlay.render());
-    expect(out).toContain('attack_forecast.defense_post_reduced{"level":"2"}');
   });
 
   it("hides the troop-derived numbers under fog, not the post's cover", async () => {

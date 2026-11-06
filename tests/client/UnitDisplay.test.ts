@@ -1,10 +1,8 @@
 import {
-  BuildMenus,
   PlayerBuildableUnitType,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
 import { EventBus } from "@openfront/shared/EventBus";
-import { html, render } from "lit";
 import { describe, expect, test, vi } from "vitest";
 import type { UnitDisplay } from "../../src/client/hud/layers/UnitDisplay";
 import "../../src/client/hud/layers/UnitDisplay";
@@ -13,6 +11,25 @@ import {
   ToggleStructureEvent,
   TouchGhostPlacementSelectEvent,
 } from "../../src/client/InputHandler";
+
+/**
+ * The units the bar draws. Unit cut bridge: until the engine drops the
+ * removed units, BuildMenus still lists them, so the mocked config treats
+ * every other type as disabled. Once BuildMenus is upstream's list again this
+ * is all of it, and the file can go back to upstream (BuildMenus.types).
+ */
+const BAR_UNITS: readonly UnitType[] = [
+  UnitType.City,
+  UnitType.Factory,
+  UnitType.Port,
+  UnitType.DefensePost,
+  UnitType.MissileSilo,
+  UnitType.SAMLauncher,
+  UnitType.Warship,
+  UnitType.AtomBomb,
+  UnitType.HydrogenBomb,
+  UnitType.MIRV,
+];
 
 function makeDisplay(
   ghostStructure: UnitType | null = null,
@@ -40,7 +57,8 @@ function makeDisplay(
     myPlayer: () => player,
     inSpawnPhase: () => false,
     config: () => ({
-      isUnitDisabled: (unitType: UnitType) => disabledUnits.includes(unitType),
+      isUnitDisabled: (unitType: UnitType) =>
+        disabledUnits.includes(unitType) || !BAR_UNITS.includes(unitType),
       gameConfig: () => ({ tutorial }),
     }),
   } as any;
@@ -86,37 +104,6 @@ function dispatchTouch(target: EventTarget, type: string, identifier: number) {
   target.dispatchEvent(event);
 }
 
-describe("minefield density slider", () => {
-  test("shows while a minefield is being placed and stores the density", async () => {
-    const { display } = makeDisplay(UnitType.Minefield);
-    try {
-      await display.updateComplete;
-      const slider = display.querySelector<HTMLInputElement>(
-        ".minefield-density input[type=range]",
-      );
-      expect(slider).not.toBeNull();
-      expect(slider!.min).toBe("10");
-      expect(slider!.max).toBe("100");
-      expect(slider!.value).toBe("50");
-      slider!.value = "80";
-      slider!.dispatchEvent(new Event("input", { bubbles: true }));
-      expect(display.uiState.minefieldDensity).toBe(80);
-    } finally {
-      display.remove();
-    }
-  });
-
-  test("is hidden for every other unit", async () => {
-    const { display } = makeDisplay(UnitType.City);
-    try {
-      await display.updateComplete;
-      expect(display.querySelector(".minefield-density")).toBeNull();
-    } finally {
-      display.remove();
-    }
-  });
-});
-
 describe("mobile UnitDisplay layout", () => {
   test("keeps the quick-build items in one horizontally scrollable row", async () => {
     const { display } = makeDisplay();
@@ -138,12 +125,8 @@ describe("mobile UnitDisplay layout", () => {
       expect(grid?.classList.contains("max-[360px]:auto-cols-[44px]")).toBe(
         true,
       );
-      // Every build-menu unit the (mocked) config enables: coastal battery,
-      // minefield and the conventional war units included.
-      expect(grid?.children).toHaveLength(BuildMenus.types.length);
-      expect(grid?.style.getPropertyValue("--unit-display-columns")).toBe(
-        String(BuildMenus.types.length),
-      );
+      expect(grid?.children).toHaveLength(10);
+      expect(grid?.style.getPropertyValue("--unit-display-columns")).toBe("10");
     } finally {
       display.remove();
     }
@@ -155,9 +138,9 @@ describe("mobile UnitDisplay layout", () => {
       await display.updateComplete;
 
       const grid = display.querySelector<HTMLElement>(".unit-display-grid");
-      expect(grid?.children).toHaveLength(BuildMenus.types.length - 1);
+      expect(grid?.children).toHaveLength(BAR_UNITS.length - 1);
       expect(grid?.style.getPropertyValue("--unit-display-columns")).toBe(
-        String(BuildMenus.types.length - 1),
+        String(BAR_UNITS.length - 1),
       );
       expect(grid?.classList.contains("lg:grid-cols-none")).toBe(true);
       expect(grid?.classList.contains("lg:auto-cols-max")).toBe(true);
@@ -1155,42 +1138,6 @@ describe("mobile UnitDisplay layout", () => {
         null,
         "GUIclick",
       );
-    } finally {
-      display.remove();
-    }
-  });
-});
-
-describe("UnitDisplay air orders", () => {
-  test("the engine's tile-less reason decides; drones need no airbase", () => {
-    const { display } = makeDisplay();
-    try {
-      const air = (type: UnitType, blocked?: string) => ({
-        type,
-        canBuild: false,
-        canUpgrade: false,
-        cost: 1n,
-        overlappingRailroads: [],
-        ghostRailPaths: [],
-        ...(blocked === undefined ? {} : { blocked }),
-      });
-      (display as any).playerBuildables = [
-        air(UnitType.Drone),
-        air(UnitType.Airstrike, "no_airbase"),
-      ];
-      const canBuild = (type: UnitType) => (display as any).canBuild(type);
-      // No airbase, yet drones can go.
-      expect(canBuild(UnitType.Drone)).toBe(true);
-      expect(canBuild(UnitType.Airstrike)).toBe(false);
-      const host = document.createElement("div");
-      render(
-        html`${(display as any).renderBlockedReason(UnitType.Airstrike)}`,
-        host,
-      );
-      // (Tests load no translations: the text is its key.)
-      expect(host.textContent).toContain("build_menu.blocked.no_airbase");
-      (display as any).playerBuildables = [air(UnitType.Drone, "gold")];
-      expect(canBuild(UnitType.Drone)).toBe(false);
     } finally {
       display.remove();
     }

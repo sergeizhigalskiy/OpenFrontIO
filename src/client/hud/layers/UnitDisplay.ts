@@ -24,33 +24,19 @@ import { UserSettings } from "../../UserSettings";
 import { resolveKeybindLabel, translateText } from "../../Utils";
 import { GameView } from "../../view";
 import {
-  airbaseIcon,
-  airdropIcon,
-  airstrikeIcon,
   atomBombIcon,
-  ballisticMissileIcon,
-  canalIcon,
   cityIcon,
-  clusterMissileIcon,
-  coastalBatteryIcon,
-  cruiseMissileIcon,
   defensePostIcon,
-  droneIcon,
   factoryIcon,
-  flakGunIcon,
   goldCoinIcon,
   hydrogenBombIcon,
-  minefieldIcon,
   mirvIcon,
   missileSiloIcon,
   portIcon,
   samLauncherIcon,
-  siegeCampIcon,
   warshipIcon,
 } from "../HotbarIcons";
 import { TutorialHighlight, TutorialHighlightEvent } from "../Tutorial";
-import { airBlockedText, droneSwarmSlider } from "./AirOrders";
-import { displayedCost, minefieldDensitySlider } from "./MinefieldDensity";
 
 /** How long a build button has to be held before it shows its details (cost etc.) */
 const PEEK_HOLD_MS = 450;
@@ -73,11 +59,6 @@ export class UnitDisplay extends LitElement implements Controller {
   private _port = 0;
   private _defensePost = 0;
   private _samLauncher = 0;
-  private _coastalBatteries = 0;
-  private _minefields = 0;
-  private _airbases = 0;
-  private _flakGuns = 0;
-  private _siegeCamps = 0;
   private allDisabled = false;
   private enabledUnitCount = 0;
   private tutorialMode = false;
@@ -426,15 +407,10 @@ export class UnitDisplay extends LitElement implements Controller {
     tooltip.style.left = `${left - rootBounds.left + tooltipBounds.width / 2}px`;
   }
 
-  private buildable(item: UnitType): BuildableUnit | undefined {
-    return this.playerBuildables?.find((bu) => bu.type === item);
-  }
-
   private cost(item: UnitType): Gold {
     for (const bu of this.playerBuildables ?? []) {
       if (bu.type === item) {
-        // A minefield is priced at the density on the slider.
-        return displayedCost(bu.type, bu.cost, this.uiState);
+        return bu.cost;
       }
     }
     return 0n;
@@ -456,17 +432,6 @@ export class UnitDisplay extends LitElement implements Controller {
           this.cost(item) <= (player?.gold() ?? 0n) &&
           (player?.units(UnitType.Port).length ?? 0) > 0
         );
-      case UnitType.CruiseMissile:
-      case UnitType.BallisticMissile:
-      case UnitType.ClusterMissile:
-      case UnitType.Airstrike:
-      case UnitType.Airdrop:
-      case UnitType.Drone: {
-        // The engine's tile-less answer: gold, spawn protection and the
-        // launcher (no airbase for drones). blocked says which.
-        const unit = this.buildable(item);
-        return unit !== undefined && unit.blocked === undefined;
-      }
       default:
         return this.cost(item) <= (player?.gold() ?? 0n);
     }
@@ -495,62 +460,7 @@ export class UnitDisplay extends LitElement implements Controller {
     this._samLauncher = player.totalUnitLevels(UnitType.SAMLauncher);
     this._factories = player.totalUnitLevels(UnitType.Factory);
     this._warships = player.totalUnitLevels(UnitType.Warship);
-    this._coastalBatteries = player.totalUnitLevels(UnitType.CoastalBattery);
-    this._minefields = player.totalUnitLevels(UnitType.Minefield);
-    this._airbases = player.totalUnitLevels(UnitType.Airbase);
-    this._flakGuns = player.totalUnitLevels(UnitType.FlakGun);
-    this._siegeCamps = player.totalUnitLevels(UnitType.SiegeCamp);
     this.requestUpdate();
-  }
-
-  /** Conventional war only: isUnitDisplayed hides them otherwise. */
-  private renderConventionalWarItems() {
-    return html`
-      ${this.renderUnitItem(
-        airbaseIcon,
-        this._airbases,
-        UnitType.Airbase,
-        "airbase",
-        "",
-      )}
-      ${this.renderUnitItem(
-        flakGunIcon,
-        this._flakGuns,
-        UnitType.FlakGun,
-        "flak_gun",
-        "",
-      )}
-      ${this.renderUnitItem(
-        airstrikeIcon,
-        null,
-        UnitType.Airstrike,
-        "airstrike",
-        "",
-      )}
-      ${this.renderUnitItem(airdropIcon, null, UnitType.Airdrop, "airdrop", "")}
-      ${this.renderUnitItem(droneIcon, null, UnitType.Drone, "drone", "")}
-      ${this.renderUnitItem(
-        cruiseMissileIcon,
-        null,
-        UnitType.CruiseMissile,
-        "cruise_missile",
-        "",
-      )}
-      ${this.renderUnitItem(
-        ballisticMissileIcon,
-        null,
-        UnitType.BallisticMissile,
-        "ballistic_missile",
-        "",
-      )}
-      ${this.renderUnitItem(
-        clusterMissileIcon,
-        null,
-        UnitType.ClusterMissile,
-        "cluster_missile",
-        "",
-      )}
-    `;
   }
 
   render() {
@@ -640,28 +550,6 @@ export class UnitDisplay extends LitElement implements Controller {
               this.getHotkey("buildWarship", "Digit7"),
             )}
             ${this.renderUnitItem(
-              siegeCampIcon,
-              this._siegeCamps,
-              UnitType.SiegeCamp,
-              "siege_camp",
-              "",
-            )}
-            ${this.renderUnitItem(
-              coastalBatteryIcon,
-              this._coastalBatteries,
-              UnitType.CoastalBattery,
-              "coastal_battery",
-              "",
-            )}
-            ${this.renderUnitItem(
-              minefieldIcon,
-              this._minefields,
-              UnitType.Minefield,
-              "minefield",
-              "",
-            )}
-            ${this.renderUnitItem(canalIcon, null, UnitType.Canal, "canal", "")}
-            ${this.renderUnitItem(
               atomBombIcon,
               null,
               UnitType.AtomBomb,
@@ -682,34 +570,9 @@ export class UnitDisplay extends LitElement implements Controller {
               "mirv",
               this.getHotkey("buildMIRV", "Digit0"),
             )}
-            ${this.renderConventionalWarItems()}
           </div>
         </div>
         ${this.renderUnitTooltip()}
-        ${
-          this.uiState.ghostStructure === UnitType.Drone
-            ? html`<div
-                class="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 z-[90]"
-              >
-                ${droneSwarmSlider(
-                  this.uiState,
-                  this.cost(UnitType.Drone),
-                  () => this.requestUpdate(),
-                )}
-              </div>`
-            : nothing
-        }
-        ${
-          this.uiState.ghostStructure === UnitType.Minefield
-            ? html`<div
-                class="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 z-[90]"
-              >
-                ${minefieldDensitySlider(this.uiState, () =>
-                  this.requestUpdate(),
-                )}
-              </div>`
-            : nothing
-        }
       </div>
     `;
   }
@@ -854,14 +717,6 @@ export class UnitDisplay extends LitElement implements Controller {
     `;
   }
 
-  /** An air order's reason it can't be launched, in the tooltip. */
-  private renderBlockedReason(unitType: PlayerBuildableUnitType) {
-    const text = airBlockedText(this.buildable(unitType));
-    return text === null
-      ? null
-      : html`<div class="px-2 pb-1 text-red-400">${text}</div>`;
-  }
-
   private renderUnitTooltip() {
     // A peek wins over a hover: it is the one the player asked for by
     // holding the button.
@@ -899,7 +754,6 @@ export class UnitDisplay extends LitElement implements Controller {
         <div class="p-2">
           ${translateText("build_menu.desc." + tooltip.structureKey)}
         </div>
-        ${this.renderBlockedReason(tooltip.unitType)}
         ${
           tooltip.unitType === UnitType.Warship && Platform.hasKeyboard
             ? html`<div

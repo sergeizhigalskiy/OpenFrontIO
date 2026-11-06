@@ -13,7 +13,6 @@ import { Controller } from "../../Controller";
 import { AttackRatioEvent, isForwardedClick } from "../../InputHandler";
 import { UIState } from "../../UIState";
 import { USER_SETTINGS_CHANGED_EVENT, UserSettings } from "../../UserSettings";
-import { heldCapitalsGoldBonusPct } from "../../utilities/Capitals";
 import { getGamesPlayed, translateText } from "../../Utils";
 import { GameView } from "../../view";
 import { PlayerView } from "../../view/PlayerView";
@@ -53,10 +52,6 @@ export class ControlPanel extends LitElement implements Controller {
 
   @state()
   private _attackingTroops: number = 0;
-
-  /** Conventional war: percent of gold income from enemy capitals held. */
-  @state()
-  private _heldCapitalsGoldPct: number = 0;
 
   @state()
   private _goldGain: bigint | null = null;
@@ -149,9 +144,6 @@ export class ControlPanel extends LitElement implements Controller {
     // The season clock: winter slows troop growth.
     this.troopRate =
       config.troopIncreaseRate(player, this.game.ticksSinceStart()) * 10;
-    this._heldCapitalsGoldPct = config.conventionalWar()
-      ? heldCapitalsGoldBonusPct(this.game, player)
-      : 0;
 
     const helpEnabled = new UserSettings().helpMessages();
 
@@ -775,22 +767,8 @@ export class ControlPanel extends LitElement implements Controller {
       >
         <div class="lg:hidden">${this.renderMobile()}</div>
         <div class="hidden lg:block">${this.renderDesktop()}</div>
-        ${this.renderHeldCapitals()}
       </div>
     `;
-  }
-
-  /** Conventional war: the gold bonus for enemy capitals we hold. */
-  private renderHeldCapitals() {
-    if (this._heldCapitalsGoldPct <= 0) return nothing;
-    return html`<div
-      class="text-right text-xs font-bold text-yellow-300 tabular-nums mt-0.5"
-      translate="no"
-    >
-      ${translateText("control_panel.held_capitals_gold", {
-        percent: this._heldCapitalsGoldPct,
-      })}
-    </div>`;
   }
 
   createRenderRoot() {

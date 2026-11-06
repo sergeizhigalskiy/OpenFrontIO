@@ -146,12 +146,6 @@ export class BuildUnitIntentEvent implements GameEvent {
     public readonly tile: TileRef,
     public readonly rocketDirectionUp?: boolean,
     public readonly amount?: number,
-    /** Minefields only: the density percent to lay it with. */
-    public readonly density?: number,
-    /** Airdrops only: the troops to drop (the attack-ratio share). */
-    public readonly troops?: number,
-    /** Drones only: the swarm size. */
-    public readonly count?: number,
   ) {}
 }
 
@@ -923,15 +917,6 @@ export class Transport {
       tile: event.tile,
       rocketDirectionUp: event.rocketDirectionUp,
       amount: event.amount,
-      ...(event.unit === UnitType.Minefield && event.density !== undefined
-        ? { density: event.density }
-        : {}),
-      ...(event.unit === UnitType.Airdrop && event.troops !== undefined
-        ? { troops: event.troops }
-        : {}),
-      ...(event.unit === UnitType.Drone && event.count !== undefined
-        ? { count: event.count }
-        : {}),
     });
   }
 

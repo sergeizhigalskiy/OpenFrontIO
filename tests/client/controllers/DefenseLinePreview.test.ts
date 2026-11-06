@@ -1,8 +1,5 @@
 import { UnitType } from "@openfront/engine-api/game/GameTypes";
-import {
-  defensePostRange,
-  SIEGE_CAMP_RANGE,
-} from "@openfront/engine-lib/game/Siege";
+import { defensePostRange } from "@openfront/engine-lib/game/Siege";
 import { EventBus } from "@openfront/shared/EventBus";
 import { describe, expect, test } from "vitest";
 import { BuildPreviewController } from "../../../src/client/controllers/BuildPreviewController";
@@ -54,12 +51,6 @@ function ghostFor(type: UnitType, upgradeLevel: number | null) {
 }
 
 describe("defense line build previews", () => {
-  test("a siege camp shows the 45-tile radius of the posts it would reduce", () => {
-    const ghost = ghostFor(UnitType.SiegeCamp, null);
-    expect(ghost.rangeRadius).toBe(SIEGE_CAMP_RANGE);
-    expect(ghost.rangeRadius).toBe(45);
-  });
-
   test("a new defense post shows level 1's range", () => {
     expect(ghostFor(UnitType.DefensePost, null).rangeRadius).toBe(30);
   });
