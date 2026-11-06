@@ -170,6 +170,7 @@
     "title": "Account Settings"
   },
   "attack_forecast": {
+    "defense_post": "Covered by a defense post: {loss}x losses, {time}x slower",
     "loss": "You lose about {troops} troops per tile",
     "speed": "About {speed} tiles per second"
   },
