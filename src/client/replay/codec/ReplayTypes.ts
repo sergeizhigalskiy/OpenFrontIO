@@ -19,9 +19,10 @@ import type {
  * Stored replays are also keyed by build, so this only matters for dev
  * builds, which all share "DEV".
  *
- * v2: players carry capitalTile (conventional war).
+ * v2: players carry their capital's tile (conventional war).
+ * v3: the capital's tile dropped again. Never go back to 1 or 2.
  */
-export const REPLAY_VERSION = 2;
+export const REPLAY_VERSION = 3;
 
 /**
  * Frames per chunk. Each chunk starts with a keyframe, and keyframes are

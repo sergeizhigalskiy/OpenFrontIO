@@ -2,9 +2,8 @@
  * StructurePass — GPU-rendered structures with icon sprites.
  *
  * Renders a filled shape in player color with a white icon overlay, sampled
- * from a sprite atlas: the pre-built 6-column icon-atlas.png
- * (generate-sprite-atlases.mjs, not in this repo) followed by
- * icon-atlas-ext.png's columns (scripts/genUnitArt.ts).
+ * from the pre-built 6-column icon-atlas.png (generate-sprite-atlases.mjs,
+ * not in this repo).
  *
  * Two LODs based on zoom:
  *   - zoom > 0.5: full icon with circle background
@@ -18,16 +17,12 @@
 
 import type { GhostPreviewData, RendererConfig, UnitState } from "../../types";
 import {
-  UT_AIRBASE,
   UT_CITY,
-  UT_COASTAL_BATTERY,
   UT_DEFENSE_POST,
   UT_FACTORY,
-  UT_FLAK_GUN,
   UT_MISSILE_SILO,
   UT_PORT,
   UT_SAM_LAUNCHER,
-  UT_SIEGE_CAMP,
 } from "../../types";
 import { DynamicInstanceBuffer } from "../DynamicBuffer";
 import type { RenderSettings } from "../RenderSettings";
@@ -44,8 +39,6 @@ import structureFragSrc from "../shaders/structure/structure.frag.glsl?raw";
 import structureVertSrc from "../shaders/structure/structure.vert.glsl?raw";
 
 const iconAtlasUrl = assetUrl("atlases/icon-atlas.png");
-/** Glyphs for the structures after the silo (see STRUCTURE_ORDER). */
-const iconAtlasExtUrl = assetUrl("atlases/icon-atlas-ext.png");
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -62,12 +55,6 @@ export const STRUCTURE_ORDER = [
   UT_DEFENSE_POST,
   UT_SAM_LAUNCHER,
   UT_MISSILE_SILO,
-  // icon-atlas-ext.png, in the order scripts/genUnitArt.ts draws them. Their
-  // shapes are in structure.frag.glsl's shapeSDF.
-  UT_COASTAL_BATTERY,
-  UT_AIRBASE,
-  UT_FLAK_GUN,
-  UT_SIEGE_CAMP,
 ] as const;
 
 const ATLAS_COLS = STRUCTURE_ORDER.length;
@@ -296,7 +283,7 @@ export class StructurePass {
   }
 
   private async loadAtlas(): Promise<void> {
-    const images = await loadAtlasImages([iconAtlasUrl, iconAtlasExtUrl]);
+    const images = await loadAtlasImages([iconAtlasUrl]);
     const gl = this.gl;
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.atlasTex);

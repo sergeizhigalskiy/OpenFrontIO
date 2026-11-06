@@ -2,21 +2,19 @@
  * UnitPass — GPU-rendered mobile unit sprites.
  *
  * Renders all mobile (non-structure) units: boats, trains, troop convoys,
- * nukes, shells, SAM missiles, MIRV warheads, and the conventional war
- * planes, drones and missiles. Sprites are never rotated: the symmetric ones
- * don't need it, and the planes and missiles are drawn nose up (north).
- * Sprites are tiny grayscale PNGs colorized on the
- * GPU using the standard 3-band gray replacement (180/130/70). MIRV
- * Warhead uses a programmatic 3×3 white square (colorized to border
- * color); Shell is a single white pixel.
+ * nukes, shells, SAM missiles, and MIRV warheads. All unit types are
+ * rotationally symmetric — no rotation needed. Sprites are tiny grayscale
+ * PNGs colorized on the GPU using the standard 3-band gray replacement
+ * (180/130/70). MIRV Warhead uses a programmatic 3×3 white square
+ * (colorized to border color); Shell is a single white pixel.
  *
  * Two instanced draw calls per frame — ground units and missiles are
  * split into separate buffers for correct layer ordering:
  *   Ground/sea (boats, trains) → rendered below structures
- *   Missiles (nukes, shells, SAM, MIRV warheads, planes, drones) → rendered above structures
+ *   Missiles (nukes, shells, SAM, MIRV warheads) → rendered above structures
  *
  * Atlas layout (13px cells). Cols 0-11 are unit-atlas.png, pre-built by
- * generate-sprite-atlases.mjs (not in this repo); cols 12+ are
+ * generate-sprite-atlases.mjs (not in this repo); col 12 is
  * unit-atlas-ext.png, drawn by scripts/genUnitArt.ts and uploaded right after
  * it (uploadAtlasStrip):
  *   Col 0: Transport (5×5)
@@ -32,13 +30,6 @@
  *   Col 10: Train Carriage (5×5)
  *   Col 11: Train Carriage Loaded (5×5)
  *   Col 12: Convoy (7×5 truck)
- *   Col 13: Airstrike (11×11 bomber)
- *   Col 14: Airdrop (11×11 transport plane)
- *   Col 15: Drone (7×7 quadcopter)
- *   Col 16: Cruise Missile (7×11)
- *   Col 17: Ballistic Missile (7×11)
- *   Col 18: Cluster Missile (7×9)
- *   Col 19: Cluster Warhead (3×5)
  *
  * Data flow:
  *   FrameSnapshot.units → filter by typeToAtlasIdx → instance VBO → GPU
@@ -51,14 +42,7 @@ import type { RendererConfig, UnitState } from "../../types";
 import {
   SMOOTHED_NUKE_TYPES,
   TrainType,
-  UT_AIRDROP,
-  UT_AIRSTRIKE,
   UT_ATOM_BOMB,
-  UT_BALLISTIC_MISSILE,
-  UT_CLUSTER_MISSILE,
-  UT_CLUSTER_WARHEAD,
-  UT_CRUISE_MISSILE,
-  UT_DRONE,
   UT_HYDROGEN_BOMB,
   UT_MIRV,
   UT_MIRV_WARHEAD,
@@ -84,7 +68,7 @@ import {
 import { createProgram, shaderSrc } from "../utils/GlUtils";
 
 const unitAtlasUrl = assetUrl("atlases/unit-atlas.png");
-/** Sprites for the units after the trains (see UNIT_ORDER). */
+/** The convoy sprite, after the trains (see UNIT_ORDER). */
 const unitAtlasExtUrl = assetUrl("atlases/unit-atlas-ext.png");
 
 // ---------------------------------------------------------------------------
@@ -109,15 +93,8 @@ export const UNIT_ORDER = [
   "TrainEngine",
   "TrainCarriage",
   "TrainCarriageLoaded",
-  // unit-atlas-ext.png, in the order scripts/genUnitArt.ts draws them.
+  // unit-atlas-ext.png, drawn by scripts/genUnitArt.ts.
   UT_CONVOY,
-  UT_AIRSTRIKE,
-  UT_AIRDROP,
-  UT_DRONE,
-  UT_CRUISE_MISSILE,
-  UT_BALLISTIC_MISSILE,
-  UT_CLUSTER_MISSILE,
-  UT_CLUSTER_WARHEAD,
 ] as const;
 
 const ATLAS_COLS = UNIT_ORDER.length;
@@ -162,20 +139,6 @@ const TRAIN_ENGINE_COL = UNIT_ORDER.indexOf("TrainEngine");
 const TRAIN_CARRIAGE_COL = UNIT_ORDER.indexOf("TrainCarriage");
 const TRAIN_CARRIAGE_LOADED_COL = UNIT_ORDER.indexOf("TrainCarriageLoaded");
 
-/**
- * Conventional war flights. All fly, so all draw in the missile layer,
- * tinted in their owner's colors.
- */
-const AIR_TYPES: ReadonlySet<string> = new Set([
-  UT_AIRSTRIKE,
-  UT_AIRDROP,
-  UT_DRONE,
-  UT_CRUISE_MISSILE,
-  UT_BALLISTIC_MISSILE,
-  UT_CLUSTER_MISSILE,
-  UT_CLUSTER_WARHEAD,
-]);
-
 /** Nuke + warhead types — rendered with flickering hot colors */
 const FLICKER_TYPES: ReadonlySet<string> = new Set([
   UT_ATOM_BOMB,
@@ -195,7 +158,6 @@ const MISSILE_TYPES: ReadonlySet<string> = new Set([
   UT_SAM_MISSILE,
   UT_SHELL,
   UT_MIRV_WARHEAD,
-  ...AIR_TYPES,
 ]);
 
 /** Values per smoothing segment in the flat `smoothSegs` array:

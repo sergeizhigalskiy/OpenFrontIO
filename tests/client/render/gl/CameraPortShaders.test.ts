@@ -16,8 +16,6 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { CAMERA_INCLUDE } from "../../../../src/client/render/gl/camera/CameraBlock";
 import { BlockadePass } from "../../../../src/client/render/gl/passes/BlockadePass";
 import { BorderStampPass } from "../../../../src/client/render/gl/passes/BorderStampPass";
-import { CanalPass } from "../../../../src/client/render/gl/passes/CanalPass";
-import { CapitalPass } from "../../../../src/client/render/gl/passes/CapitalPass";
 import { DefenseCoveragePass } from "../../../../src/client/render/gl/passes/DefenseCoveragePass";
 import { TextProgram } from "../../../../src/client/render/gl/passes/name-pass/TextProgram";
 import { RailroadPass } from "../../../../src/client/render/gl/passes/RailroadPass";
@@ -107,8 +105,6 @@ const PASSES: PassCase[] = [
     build: (gl) => new WeatherPass(gl, MAP_W, MAP_H, tex),
     camera: true,
   },
-  // conventional war capitals
-  { name: "CapitalPass", build: (gl) => new CapitalPass(gl), camera: true },
   // trade-routes: blockade rings and cut rails
   { name: "BlockadePass", build: (gl) => new BlockadePass(gl), camera: true },
   {
@@ -144,20 +140,19 @@ const PASSES: PassCase[] = [
     },
     camera: true,
   },
-  // resources-canals: mine icons and canal digs
+  // resources: mine icons
   {
     name: "ResourceSitePass",
     build: (gl) => new ResourceSitePass(gl),
     camera: true,
   },
-  { name: "CanalPass", build: (gl) => new CanalPass(gl), camera: true },
   // defense-lines: stamped in tile space, read by the territory overlay
   {
     name: "DefenseCoveragePass",
     build: (gl) => new DefenseCoveragePass(gl, MAP_W, MAP_H, tex),
     camera: false,
   },
-  // unit-art: new structure shapes and unit sprites
+  // unit-art: structure shapes and unit sprites
   {
     name: "StructurePass",
     build: (gl) => new StructurePass(gl, header(), tex, tex, settings),

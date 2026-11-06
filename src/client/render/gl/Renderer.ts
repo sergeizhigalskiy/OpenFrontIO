@@ -37,8 +37,6 @@ import { BarPass } from "./passes/BarPass";
 import { BlockadeMarker, BlockadePass } from "./passes/BlockadePass";
 import { BorderComputePass } from "./passes/BorderComputePass";
 import { BorderStampPass } from "./passes/BorderStampPass";
-import { CanalMarker, CanalPass } from "./passes/CanalPass";
-import { CapitalMarker, CapitalPass } from "./passes/CapitalPass";
 import { CoordinateGridPass } from "./passes/CoordinateGridPass";
 import { CrosshairPass } from "./passes/CrosshairPass";
 import {
@@ -50,7 +48,6 @@ import { FalloutLightPass } from "./passes/FalloutLightPass";
 import { FxPass } from "./passes/fx-pass";
 import { LightmapPass } from "./passes/LightmapPass";
 import { MapLayerPass } from "./passes/MapLayerPass";
-import { MinefieldPass } from "./passes/MinefieldPass";
 import { MoveIndicatorPass } from "./passes/MoveIndicatorPass";
 import { NamePass } from "./passes/name-pass";
 import { NightCompositePass } from "./passes/NightCompositePass";
@@ -164,15 +161,12 @@ export class GPURenderer {
   private namePass: NamePass;
   private fxPass: FxPass;
   private rangeCirclePass: RangeCirclePass;
-  private minefieldPass: MinefieldPass;
-  private capitalPass: CapitalPass;
   private ruinsPass: RuinsPass;
   private volcanoPass: VolcanoPass;
   private tideWarningPass: TideWarningPass;
   private weatherPass: WeatherPass;
   private blockadePass: BlockadePass;
   private resourceSitePass: ResourceSitePass;
-  private canalPass: CanalPass;
   private samRadiusPass: SAMRadiusPass;
   private crosshairPass: CrosshairPass;
   private railroadPass: RailroadPass;
@@ -593,12 +587,6 @@ export class GPURenderer {
     // --- Range circle (ghost preview radius) ---
     this.rangeCirclePass = new RangeCirclePass(gl);
 
-    // --- Minefields (own and friendly only) ---
-    this.minefieldPass = new MinefieldPass(gl, mapW);
-
-    // --- Capital stars (conventional war) ---
-    this.capitalPass = new CapitalPass(gl);
-
     // --- Ruins icons (world features) ---
     this.ruinsPass = new RuinsPass(gl);
     // --- Volcano sites and the rising tide warning ---
@@ -609,9 +597,8 @@ export class GPURenderer {
     this.weatherPass = new WeatherPass(gl, mapW, mapH, this.terrainBytesTex!);
     // --- Blockade rings on ports (trade-route cutting) ---
     this.blockadePass = new BlockadePass(gl);
-    // --- Resource sites and canal digs (everyone sees both) ---
+    // --- Resource sites (everyone sees them) ---
     this.resourceSitePass = new ResourceSitePass(gl);
-    this.canalPass = new CanalPass(gl);
 
     // --- SAM radius overlay (dashed green circles during build mode) ---
     this.samRadiusPass = new SAMRadiusPass(gl, mapW, this.settings);
@@ -982,7 +969,6 @@ export class GPURenderer {
     this.frameTick++;
     this.unitPass.setFrameTick(this.frameTick);
     this.unitPass.updateUnits(units, gameTick);
-    this.minefieldPass.updateUnits(units);
     this.samRadiusPass.setTick(gameTick);
     this.barPass.updateBars(units, this.lastStructures, gameTick);
     this.reloadBarPass.update(units, gameTick);
@@ -1010,7 +996,6 @@ export class GPURenderer {
       }
       this.samRadiusPass.setAllies(friendly);
       this.unitPass.setAllies(friendly);
-      this.minefieldPass.setFriendly(friendly);
     }
   }
 
@@ -1141,13 +1126,12 @@ export class GPURenderer {
     // The multiplier badge (x5) rides on the cost label but must show even
     // when there is no cost line — e.g. infinite gold (cost 0) or the
     // cursor-cost-label setting turned off.
-    // An air order that can't go here says why in the same spot.
     const topText =
       data?.multiplier && data.multiplier > 1
         ? translateText("build_menu.upgrade_amount", {
             amount: data.multiplier.toString(),
           })
-        : data?.blockedText;
+        : undefined;
     const showCost = data !== null && data.showCost && data.cost > 0;
     this.worldTextPass.setGhostCostLabel(
       data && (showCost || topText !== undefined)
@@ -1179,11 +1163,6 @@ export class GPURenderer {
   updateSpawnOverlay(inSpawnPhase: boolean, centers: SpawnCenter[]): void {
     this.inSpawnPhase = inSpawnPhase;
     this.spawnOverlayPass.update(centers);
-  }
-
-  /** Conventional war: the capital stars to draw. */
-  updateCapitals(capitals: CapitalMarker[]): void {
-    this.capitalPass.update(capitals);
   }
 
   /** World features: the unclaimed ruins to draw. */
@@ -1230,16 +1209,6 @@ export class GPURenderer {
     this.resourceSitePass.update(sites);
   }
 
-  /** The canals being dug. */
-  updateCanals(canals: CanalMarker[]): void {
-    this.canalPass.update(canals);
-  }
-
-  /** The canal build preview's path under the cursor, or null. */
-  updateCanalGhost(ghost: CanalMarker | null): void {
-    this.canalPass.updateGhost(ghost);
-  }
-
   updateSmallPlayerGlow(set: Uint8Array | null): void {
     this.smallPlayerGlowPass.update(set);
   }
@@ -1273,7 +1242,6 @@ export class GPURenderer {
     if (id === this.localPlayerID) return;
     this.localPlayerID = id;
     this.samRadiusPass.setLocalPlayer(id);
-    this.minefieldPass.setLocalPlayer(id);
     this.structurePass.setLocalPlayer(id);
     this.affiliationPalette.setLocalPlayer(id);
     this.unitPass.setLocalPlayer(id);
@@ -1537,10 +1505,7 @@ export class GPURenderer {
     // Over the land the weather covers, under the ships sailing through it.
     // The strategic alt view stays effects-free.
     if (!this.altView) this.weatherPass.draw(cam);
-    // Under the ships that sail through them.
-    this.minefieldPass.draw(cam);
     this.tideWarningPass.draw(cam);
-    this.canalPass.draw(cam);
     if (pe.unit) this.unitPass.drawGround(cam);
     if (pe.falloutBloom) this.bloomPass.draw(cam, this.frameTick);
     this.samRadiusPass.draw(cam);
@@ -1550,7 +1515,6 @@ export class GPURenderer {
     if (pe.structure) this.structurePass.draw(cam, zoom);
     if (pe.structure) this.structureLevelPass.draw(cam, zoom);
     if (pe.structure && pe.bar) this.reloadBarPass.draw(cam, zoom);
-    this.capitalPass.draw(cam);
     this.ruinsPass.draw(cam, zoom);
     this.volcanoPass.draw(cam);
     this.blockadePass.draw(cam);
@@ -1705,15 +1669,12 @@ export class GPURenderer {
     this.smallPlayerGlowPass.dispose();
     this.railroadPass.dispose();
     this.rangeCirclePass.dispose();
-    this.minefieldPass.dispose();
-    this.capitalPass.dispose();
     this.ruinsPass.dispose();
     this.volcanoPass.dispose();
     this.tideWarningPass.dispose();
     this.weatherPass.dispose();
     this.blockadePass.dispose();
     this.resourceSitePass.dispose();
-    this.canalPass.dispose();
     this.samRadiusPass.dispose();
     this.crosshairPass.dispose();
     this.structurePass.dispose();

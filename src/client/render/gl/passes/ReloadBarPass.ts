@@ -1,11 +1,11 @@
 /**
  * ReloadBarPass — reload bars under the structures that fire and reload.
  *
- * SAM launchers, missile silos, flak guns, airbases and coastal batteries
- * get a row of pips just under their icon while any round is reloading: one
- * pip per round, ready rounds full, a reloading round filling as it reloads
- * (a one-round unit gets one bar). Nothing is drawn while every round is
- * ready, or at zooms where the structures are dots.
+ * SAM launchers and missile silos get a row of pips just under their icon
+ * while any round is reloading: one pip per round, ready rounds full, a
+ * reloading round filling as it reloads (a one-round unit gets one bar).
+ * Nothing is drawn while every round is ready, or at zooms where the
+ * structures are dots.
  *
  * Every player sees every unit's bar, as with the missile readiness bar
  * BarPass used to draw under silos and SAMs (it's the public missile timer

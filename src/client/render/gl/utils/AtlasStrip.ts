@@ -1,11 +1,10 @@
 /**
  * Sprite atlases uploaded side by side, left to right, into one texture.
  *
- * The art for the naval-defense and conventional-war units lives in small
- * extension atlases (unit-atlas-ext.png, icon-atlas-ext.png, drawn by
- * scripts/genUnitArt.ts) rather than in the base atlases, so the base PNGs
- * never need re-packing. A pass loads its base atlas and its extension and
- * uploads them as one strip, so its columns continue across the seam: the
+ * The convoy's sprite lives in a small extension atlas (unit-atlas-ext.png,
+ * drawn by scripts/genUnitArt.ts) rather than in the base atlas, so the base
+ * PNG never needs re-packing. UnitPass loads the base atlas and the extension
+ * and uploads them as one strip, so the columns continue across the seam: the
  * extension's first column comes right after the base atlas's last.
  */
 

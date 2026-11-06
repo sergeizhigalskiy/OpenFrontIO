@@ -1,19 +1,12 @@
 /**
- * Reload bars: which units get one, how many pips, how full each is, and the
- * hover card's "next in" time. All from a unit's missile timer queue (the
- * tick each round was fired) and the current tick.
+ * Reload bars: which units get one, how many pips and how full each is. All
+ * from a unit's missile timer queue (the tick each round was fired) and the
+ * current tick.
  */
 
-import {
-  AIRBASE_SORTIE_RECHARGE_TICKS,
-  FLAK_GUN_RELOAD_TICKS,
-  FLAK_ROUNDS,
-} from "@openfront/engine-lib/game/ConventionalWar";
-import { COASTAL_BATTERY_RELOAD_TICKS } from "@openfront/engine-lib/game/NavalDefense";
 import { describe, expect, it } from "vitest";
 import {
   MAX_RELOAD_PIPS,
-  nextReadySeconds,
   reloadBar,
   reloadPips,
   reloadSpec,
@@ -25,10 +18,7 @@ import {
 } from "../../../../../src/client/render/gl/passes/ReloadBarPass";
 import type { UnitState } from "../../../../../src/client/render/types";
 import {
-  UT_AIRBASE,
   UT_CITY,
-  UT_COASTAL_BATTERY,
-  UT_FLAK_GUN,
   UT_MISSILE_SILO,
   UT_SAM_LAUNCHER,
   UT_WARSHIP,
@@ -87,21 +77,6 @@ describe("reloadSpec", () => {
     });
   });
 
-  it("gives the new units their own rounds and reload times", () => {
-    expect(reloadSpec(UT_FLAK_GUN, 1, config)).toEqual({
-      rounds: FLAK_ROUNDS,
-      reloadTicks: FLAK_GUN_RELOAD_TICKS,
-    });
-    expect(reloadSpec(UT_AIRBASE, 1, config)).toEqual({
-      rounds: 1,
-      reloadTicks: AIRBASE_SORTIE_RECHARGE_TICKS,
-    });
-    expect(reloadSpec(UT_COASTAL_BATTERY, 1, config)).toEqual({
-      rounds: 1,
-      reloadTicks: COASTAL_BATTERY_RELOAD_TICKS,
-    });
-  });
-
   it("is null for units that don't reload", () => {
     expect(reloadSpec(UT_CITY, 3, config)).toBeNull();
     expect(reloadSpec(UT_WARSHIP, 1, config)).toBeNull();
@@ -131,13 +106,13 @@ describe("reloadState", () => {
     expect(s.nextReadyTicks).toBe(30);
   });
 
-  it("works for a flak gun's two rounds", () => {
-    const flak = { rounds: FLAK_ROUNDS, reloadTicks: FLAK_GUN_RELOAD_TICKS };
-    const one = reloadState([100], flak, 115);
+  it("works for two rounds fired apart", () => {
+    const two = { rounds: 2, reloadTicks: 30 };
+    const one = reloadState([100], two, 115);
     expect(one.ready).toBe(1);
     expect(one.reloading).toEqual([0.5]);
     expect(one.nextReadyTicks).toBe(15);
-    const both = reloadState([100, 110], flak, 115);
+    const both = reloadState([100, 110], two, 115);
     expect(both.ready).toBe(0);
     expect(both.reloading).toEqual([0.5, 5 / 30]);
   });
@@ -194,43 +169,22 @@ describe("reloadBar", () => {
     ).toBeNull();
   });
 
-  it("shows a flak gun with one round fired as one full and one filling pip", () => {
+  it("shows a level 2 silo with one round fired as one full and one filling pip", () => {
     const pips = reloadBar(
-      unit({ unitType: UT_FLAK_GUN, missileTimerQueue: [100] }),
+      unit({ unitType: UT_MISSILE_SILO, level: 2, missileTimerQueue: [100] }),
       110,
       config,
     );
     expect(pips).toHaveLength(2);
     expect(pips![0]).toEqual({ fill: 1, ready: true });
     expect(pips![1].ready).toBe(false);
-    expect(pips![1].fill).toBeCloseTo(10 / FLAK_GUN_RELOAD_TICKS);
+    expect(pips![1].fill).toBeCloseTo(10 / SILO_COOLDOWN);
   });
 
-  it("shows an airbase's sortie and a battery's shell as one bar", () => {
+  it("shows a level 1 SAM's reload as one bar", () => {
     expect(
-      reloadBar(
-        unit({ unitType: UT_AIRBASE, missileTimerQueue: [0] }),
-        AIRBASE_SORTIE_RECHARGE_TICKS / 2,
-        config,
-      ),
+      reloadBar(unit({ missileTimerQueue: [0] }), SAM_COOLDOWN / 2, config),
     ).toEqual([{ fill: 0.5, ready: false }]);
-    expect(
-      reloadBar(
-        unit({ unitType: UT_COASTAL_BATTERY, missileTimerQueue: [0] }),
-        COASTAL_BATTERY_RELOAD_TICKS / 2,
-        config,
-      ),
-    ).toEqual([{ fill: 0.5, ready: false }]);
-  });
-});
-
-describe("nextReadySeconds", () => {
-  it("turns ticks into seconds to one decimal", () => {
-    const s = reloadState([0], { rounds: 2, reloadTicks: 30 }, 9);
-    expect(nextReadySeconds(s, 100)).toBe("2.1");
-    expect(
-      nextReadySeconds(reloadState([], { rounds: 2, reloadTicks: 30 }, 9), 100),
-    ).toBe("0.0");
   });
 });
 
@@ -274,7 +228,7 @@ describe("reload bar layout", () => {
         unit({ id: 2, pos: 50 }), // all ready: no bar
         unit({
           id: 3,
-          unitType: UT_COASTAL_BATTERY,
+          unitType: UT_MISSILE_SILO,
           pos: 9 * mapW + 1,
           missileTimerQueue: [90],
         }),
@@ -291,7 +245,7 @@ describe("reload bar layout", () => {
     // SAM level 2: a ready pip, then one half-way.
     expect(at(0)).toEqual([7, 3, 0, 2, 1, 1]);
     expect(at(1)).toEqual([7, 3, 1, 2, 0.5, 0]);
-    // The battery's one bar, just fired.
+    // The level 1 silo's one bar, just fired.
     expect(at(2)).toEqual([1, 9, 0, 1, 0, 0]);
     // SAM level 3, every round about to load.
     expect(at(5)).toEqual([0, 0, 2, 3, 1, 0]);

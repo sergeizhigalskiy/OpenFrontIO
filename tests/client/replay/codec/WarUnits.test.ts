@@ -1,8 +1,7 @@
 /**
- * Replays of the units that fight and get hit: trains a strike catches
- * mid-run, conventional war's planes, drones and missiles, troop convoys,
- * and minefields and coastal batteries against warships. Each game is
- * checked against the live game every tick.
+ * Replays of the units that travel and get hit: trains a strike catches
+ * mid-run, and troop convoys over land and by sea. Each game is checked
+ * against the live game every tick.
  */
 
 import { TileRef } from "@openfront/engine-api/game/GameMap";
@@ -11,16 +10,12 @@ import {
   PlayerType,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
-import { CoastalBatteryExecution } from "@openfront/engine/execution/CoastalBatteryExecution";
-import { ConstructionExecution } from "@openfront/engine/execution/ConstructionExecution";
 import { DonateTroopsExecution } from "@openfront/engine/execution/DonateTroopExecution";
-import { MinefieldExecution } from "@openfront/engine/execution/MinefieldExecution";
 import { TrainExecution } from "@openfront/engine/execution/TrainExecution";
-import { WarshipExecution } from "@openfront/engine/execution/WarshipExecution";
 import { Game, Player, Unit } from "@openfront/engine/game/Game";
 import { Railroad } from "@openfront/engine/game/Railroad";
 import { TrainStation } from "@openfront/engine/game/TrainStation";
-import { conquerRect, order, structure } from "../../../util/ConventionalWar";
+import { conquerRect } from "../../../util/ConventionalWar";
 import { setup } from "../../../util/Setup";
 import { expectReplayMatches } from "../util/Expect";
 import { recordGame, TickScript } from "../util/RecordGame";
@@ -127,152 +122,61 @@ test("trains hit mid-run: cars outlive their engine, a train loses a car", async
   expectReplayMatches(rec);
 }, 60_000);
 
-test("conventional war: planes, drones, missiles and a convoy round-trip", async () => {
+test("troop convoys over land and by sea round-trip", async () => {
+  // World map: Mozambique's coast, with Madagascar about 40 tiles of sea to
+  // the east and unowned land between the sender and its inland ally.
   const game = await setup(
-    "big_plains",
-    {
-      conventionalWar: true,
-      infiniteGold: true,
-      instantBuild: true,
-      donateTroops: true,
-    },
-    humans("a", "b", "c"),
+    "world",
+    { donateTroops: true },
+    humans("sender", "inland", "island"),
   );
-  const [a, b, c] = ["a", "b", "c"].map((id) => game.player(id));
+  const [sender, inland, island] = ["sender", "inland", "island"].map((id) =>
+    game.player(id),
+  );
 
   const rec = await recordGame(game, {
     ticks: 160,
+    keyframeInterval: 50,
     skipInit: true,
+    // The map is 2M tiles; sample them now and then.
+    tileTruthEvery: 53,
     beforeTick: (g, t) => {
       if (t === 0) {
         g.addExecution(
           new TickScript(() => {
-            // a in the west, its ally c beside it, b in the east.
-            conquerRect(g, a, 0, 0, 80, 200);
-            conquerRect(g, c, 80, 0, 100, 200);
-            conquerRect(g, b, 100, 0, 200, 200);
-            a.createAllianceRequest(c)!.accept();
-            a.setTroops(200_000);
-            for (const y of [40, 100, 160]) {
-              structure(g, a, UnitType.Airbase, g.ref(60, y));
-            }
-            structure(g, a, UnitType.MissileSilo, g.ref(30, 100), 3);
-            structure(g, b, UnitType.FlakGun, g.ref(130, 100));
-            structure(g, b, UnitType.City, g.ref(160, 100));
-            structure(g, b, UnitType.City, g.ref(160, 160));
+            conquerRect(g, sender, 1110, 636, 1145, 650);
+            conquerRect(g, inland, 1060, 636, 1090, 650);
+            conquerRect(g, island, 1170, 636, 1190, 650);
+            sender.createAllianceRequest(inland)!.accept();
+            sender.createAllianceRequest(island)!.accept();
+            sender.setTroops(100_000);
+            inland.setTroops(0);
+            island.setTroops(0);
           }),
         );
       }
       if (t === 2) {
-        order(g, a, UnitType.Airstrike, g.ref(130, 40));
-        order(g, a, UnitType.Airdrop, g.ref(130, 160), { troops: 20_000 });
-        order(g, a, UnitType.Drone, g.ref(130, 100), { count: 2 });
-        order(g, a, UnitType.CruiseMissile, g.ref(160, 100));
-        order(g, a, UnitType.BallisticMissile, g.ref(160, 160));
-        order(g, a, UnitType.ClusterMissile, g.ref(150, 60));
-        g.addExecution(new DonateTroopsExecution(a, c.id(), 20_000));
-      }
-    },
-  });
-
-  const seen = typesSeen(rec.truth);
-  for (const type of [
-    UnitType.Airbase,
-    UnitType.FlakGun,
-    UnitType.Airstrike,
-    UnitType.Airdrop,
-    UnitType.Drone,
-    UnitType.CruiseMissile,
-    UnitType.BallisticMissile,
-    UnitType.ClusterMissile,
-    UnitType.ClusterWarhead,
-    UnitType.Convoy,
-  ]) {
-    expect(seen, type).toContain(type);
-  }
-  // And they finished: the flights landed or hit, the convoy arrived.
-  const last = typesSeen(rec.truth.slice(-1));
-  for (const type of [
-    UnitType.Airstrike,
-    UnitType.Airdrop,
-    UnitType.CruiseMissile,
-    UnitType.BallisticMissile,
-    UnitType.ClusterMissile,
-    UnitType.ClusterWarhead,
-    UnitType.Convoy,
-  ]) {
-    expect(last, type).not.toContain(type);
-  }
-
-  expectReplayMatches(rec);
-}, 60_000);
-
-test("normal game: minefields and coastal batteries against warships round-trip", async () => {
-  // half_land_half_ocean: 16x16, land at x 0-7, ocean at x 8-15.
-  const game = await setup(
-    "half_land_half_ocean",
-    { infiniteGold: true, instantBuild: true },
-    humans("a", "b"),
-  );
-  const [a, b] = ["a", "b"].map((id) => game.player(id));
-  let field: Unit | null = null;
-  let battery: Unit | null = null;
-
-  const rec = await recordGame(game, {
-    ticks: 220,
-    skipInit: true,
-    beforeTick: (g, t) => {
-      if (t === 0) {
         g.addExecution(
-          new TickScript(() => {
-            conquerRect(g, a, 4, 0, 8, 16);
-            conquerRect(g, b, 0, 0, 2, 16);
-            field = a.buildUnit(UnitType.Minefield, g.ref(12, 8), {
-              density: 100,
-            });
-            // Structures keep 15 tiles apart: a battery at each end.
-            battery = a.buildUnit(UnitType.CoastalBattery, g.ref(7, 15), {});
-            g.addExecution(
-              new MinefieldExecution(field),
-              new CoastalBatteryExecution(battery),
-              new ConstructionExecution(
-                a,
-                UnitType.CoastalBattery,
-                g.ref(7, 0),
-              ),
-            );
-          }),
-        );
-      }
-      // Past spawn immunity, so the warships fight.
-      if (t === 50) {
-        g.addExecution(
-          new TickScript(() => {
-            for (const tile of [g.ref(11, 3), g.ref(13, 12)]) {
-              g.addExecution(
-                new WarshipExecution(
-                  b.buildUnit(UnitType.Warship, tile, { patrolTile: tile }),
-                ),
-              );
-            }
-          }),
+          new DonateTroopsExecution(sender, inland.id(), 20_000),
+          new DonateTroopsExecution(sender, island.id(), 20_000),
         );
       }
     },
   });
 
-  const seen = typesSeen(rec.truth);
-  for (const type of [
-    UnitType.Minefield,
-    UnitType.CoastalBattery,
-    UnitType.Warship,
-    UnitType.Shell,
-  ]) {
-    expect(seen, type).toContain(type);
+  // Two convoys: the inland one stayed on land, the island one went to sea.
+  const atSea = new Map<number, boolean>();
+  for (const frame of rec.truth) {
+    for (const [id, u] of frame.units) {
+      if (u.unitType !== UnitType.Convoy) continue;
+      atSea.set(id, (atSea.get(id) ?? false) || game.isWater(u.pos));
+    }
   }
-  // It did fight: mines went off and the battery took hits.
-  expect(field!.health()).toBeLessThan(100);
-  expect(battery!.health()).toBeLessThan(battery!.maxHealth());
+  expect([...atSea.values()].sort()).toEqual([false, true]);
+  // And both arrived.
+  expect(typesSeen(rec.truth.slice(-1))).not.toContain(UnitType.Convoy);
+  expect(inland.troops()).toBeGreaterThanOrEqual(20_000);
+  expect(island.troops()).toBeGreaterThanOrEqual(20_000);
 
   expectReplayMatches(rec);
-}, 60_000);
+}, 120_000);

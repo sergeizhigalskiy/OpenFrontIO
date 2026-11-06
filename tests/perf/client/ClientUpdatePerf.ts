@@ -170,7 +170,6 @@ function createGlStub() {
     setLocalPlayerID: noop("setLocalPlayerID"),
     setLocalRailColor: noop("setLocalRailColor"),
     updateSpawnOverlay: noop("updateSpawnOverlay"),
-    updateCapitals: noop("updateCapitals"),
     updateRuins: noop("updateRuins"),
     updateWeather: noop("updateWeather"),
     setFogHiddenTroops: noop("setFogHiddenTroops"),

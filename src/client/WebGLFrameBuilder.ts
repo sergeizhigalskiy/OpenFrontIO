@@ -35,7 +35,6 @@ import {
 // Value import from the leaf module (not the ./render/gl barrel) so non-Vite
 // consumers don't pull in GPURenderer and its shaders — see note above.
 import type { BlockadeMarker } from "./render/gl/passes/BlockadePass";
-import type { CapitalMarker } from "./render/gl/passes/CapitalPass";
 import type { RuinMarker } from "./render/gl/passes/RuinsPass";
 import type { VolcanoMarker } from "./render/gl/passes/VolcanoPass";
 import {
@@ -171,8 +170,6 @@ export class WebGLFrameBuilder {
    * just first-seen — re-uploads only when the tile actually changes.
    */
   private readonly lastSpawnTile = new Map<number, number>();
-  /** The capitals last sent to the renderer (see syncCapitals). */
-  private lastCapitalsKey = "";
   /** The ruin list last sent to the renderer (see syncRuins). */
   private lastRuins: readonly number[] | null = null;
   /** Volcano and tide state versions last sent (see syncCataclysm). */
@@ -183,7 +180,7 @@ export class WebGLFrameBuilder {
   /** The blockaded ports last sent to the renderer (see syncBlockades). */
   private lastBlockadesKey = "";
   private lastBlockadeScanTick = -Infinity;
-  /** Resource sites and canal digs (see EconomyOverlaySync). */
+  /** Resource sites (see EconomyOverlaySync). */
   private readonly economy = new EconomyOverlaySync();
   /** Skin atlas allocated once on first syncPlayers — player set is locked at game start. */
   private skinsInitialized = false;
@@ -209,7 +206,6 @@ export class WebGLFrameBuilder {
     // texture starts zeroed, so the mirror must too or nothing re-uploads.
     this.effectPalette.fill(0);
     this.lastSpawnTile.clear();
-    this.lastCapitalsKey = "";
     this.lastRuins = null;
     this.lastVolcanoVersion = -1;
     this.lastTideVersion = -1;
@@ -279,7 +275,6 @@ export class WebGLFrameBuilder {
     this.syncPlayerSpawns(gameView);
     this.syncLocalPlayer(gameView);
     this.syncSpawnOverlay(gameView);
-    this.syncCapitals(gameView);
     this.syncRuins(gameView);
     this.syncCataclysm(gameView);
     this.syncWeather(gameView);
@@ -467,32 +462,6 @@ export class WebGLFrameBuilder {
       });
     }
     this.view.updateSpawnOverlay(inSpawnPhase, centers);
-  }
-
-  /**
-   * Conventional war: a star on every living player's capital, for everyone.
-   * Re-sent only when a capital moves or a player joins or falls.
-   */
-  private syncCapitals(gameView: GameView): void {
-    if (!gameView.config().conventionalWar()) return;
-    const capitals: CapitalMarker[] = [];
-    let key = "";
-    for (const p of gameView.players()) {
-      const tile = p.state.capitalTile;
-      if (tile === undefined || !p.isAlive()) continue;
-      key += `${p.smallID()}:${tile},`;
-      const c = p.territoryColor().toRgb();
-      capitals.push({
-        x: gameView.x(tile),
-        y: gameView.y(tile),
-        r: c.r / 255,
-        g: c.g / 255,
-        b: c.b / 255,
-      });
-    }
-    if (key === this.lastCapitalsKey) return;
-    this.lastCapitalsKey = key;
-    this.view.updateCapitals(capitals);
   }
 
   /**
