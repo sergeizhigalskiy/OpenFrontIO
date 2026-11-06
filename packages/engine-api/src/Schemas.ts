@@ -398,6 +398,10 @@ export const GameConfigSchema = z.object({
   // their tile (see engine-lib/game/ResourceSites.ts). Off when absent, so
   // older records replay unchanged; the lobbies and GameManager turn it on.
   resourceSites: z.boolean().optional(),
+  // Teams whose nations play one difficulty harder because the humans are
+  // stacked on other teams (engine-lib/game/TeamAssignment.ts). Not a lobby
+  // setting: the engine fills it in when it creates the game.
+  stackedTeams: z.array(z.string().max(64)).max(1000).optional(),
 });
 
 // What a host sends in update_game_config. maxPlayers is the private-lobby

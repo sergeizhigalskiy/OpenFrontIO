@@ -1,5 +1,6 @@
 import {
   ColoredTeams,
+  Difficulty,
   Duos,
   GameMode,
   HumansVsNations,
@@ -21,7 +22,12 @@ import {
   BOSS_RAID_RAIDER_TEAM,
   bossRaidHumanTeams,
 } from "@openfront/engine-lib/game/BossRaid";
-import { assignTeamsLobbyPreview } from "@openfront/engine-lib/game/TeamAssignment";
+import {
+  assignTeamsLobbyPreview,
+  harderDifficulty,
+  previewTeamNations,
+  TeamNationsPreview,
+} from "@openfront/engine-lib/game/TeamAssignment";
 import {
   type LevelBadge,
   unpackLevelBadge,
@@ -70,6 +76,9 @@ export class LobbyTeamView extends LitElement {
   @property({ type: Array }) clients: ClientInfo[] = [];
   @state() private teamPreview: TeamPreviewData[] = [];
   @state() private teamMaxSize: number = 0;
+  // Plain team games: the nations the game deals each team, and whether the
+  // teams are stacked (engine-lib TeamAssignment, the game's own rule).
+  @state() private nationPreview: TeamNationsPreview | null = null;
   @property({ type: String }) lobbyCreatorClientID: string = "";
   @property({ type: String }) currentClientID: string = "";
   @property({ attribute: "team-count" }) teamCount: TeamCountConfig = 2;
@@ -78,6 +87,8 @@ export class LobbyTeamView extends LitElement {
   @property({ type: Array }) nameReveals: string[] = [];
   @property({ type: Boolean }) anonymizeNames: boolean = false;
   @property({ type: Number }) nationCount: number = 0;
+  // The lobby's nation difficulty, for the nations each team is dealt.
+  @property({ type: String }) difficulty: Difficulty = Difficulty.Medium;
   @property({ type: Boolean }) isPublicGame: boolean = false;
   // Host team picking (src/server/HostTeamPins.ts): the lobby shows who is
   // pinned and who is left to auto balancing. Everyone sees it; only a view
@@ -161,6 +172,7 @@ export class LobbyTeamView extends LitElement {
       changedProperties.has("clients") ||
       changedProperties.has("teamCount") ||
       changedProperties.has("nationCount") ||
+      changedProperties.has("difficulty") ||
       changedProperties.has("isPublicGame") ||
       changedProperties.has("bossRaid")
     ) {
@@ -266,7 +278,9 @@ export class LobbyTeamView extends LitElement {
 
   private renderTeamMode() {
     const alwaysShown = (t: TeamPreviewData) =>
-      t.team === ColoredTeams.Nations || this.bossRaid !== null;
+      t.team === ColoredTeams.Nations ||
+      this.bossRaid !== null ||
+      this.nationsOn(t.team) > 0;
     const active = this.teamPreview.filter(
       (t) => t.players.length > 0 || alwaysShown(t),
     );
@@ -343,6 +357,16 @@ export class LobbyTeamView extends LitElement {
           <div class="font-semibold text-gray-200 mb-1 text-sm">
             ${translateText("host_modal.assigned_teams")}
           </div>
+          ${
+            (this.nationPreview?.stacked.length ?? 0) > 0
+              ? html`<div
+                  class="stacked-teams-note text-xs text-amber-300 mb-1.5"
+                  role="note"
+                >
+                  ${translateText("host_modal.stacked_teams")}
+                </div>`
+              : nothing
+          }
           ${
             this.pickError !== null
               ? html`<div
@@ -500,7 +524,7 @@ export class LobbyTeamView extends LitElement {
           >
         </div>
         <div class="p-2 ${isEmpty ? "" : "flex flex-col gap-1.5"}">
-          ${this.renderNationBoss(preview)}
+          ${this.renderNationBoss(preview)} ${this.renderTeamNations(preview)}
           ${
             isEmpty
               ? html`<div class="text-[11px] italic text-gray-400">
@@ -573,6 +597,38 @@ export class LobbyTeamView extends LitElement {
     `;
   }
 
+  /** Nations the game will deal `team` (plain team games only). */
+  private nationsOn(team: Team): number {
+    return this.nationPreview?.nations.get(team) ?? 0;
+  }
+
+  // The nations a team will get and the difficulty they play at: one step
+  // harder on a stacked game's short-handed teams.
+  private renderTeamNations(preview: TeamPreviewData) {
+    const count = this.nationsOn(preview.team);
+    if (count === 0 || this.nationPreview === null) return nothing;
+    const stacked = this.nationPreview.stacked.includes(preview.team);
+    const difficulty = stacked
+      ? harderDifficulty(this.difficulty)
+      : this.difficulty;
+    const key =
+      stacked && this.difficulty === Difficulty.Impossible
+        ? "host_modal.team_nations_growth"
+        : "host_modal.team_nations";
+    return html`<div
+      class="team-nations px-2 py-1 rounded-sm text-xs border ${
+        stacked
+          ? "text-amber-200 border-amber-500/40 bg-amber-500/10"
+          : "text-gray-300 border-white/10 bg-white/5"
+      }"
+    >
+      ${translateText(key, {
+        count,
+        difficulty: translateText(`difficulty.${difficulty.toLowerCase()}`),
+      })}
+    </div>`;
+  }
+
   private getTeamList(): Team[] {
     if (this.gameMode !== GameMode.Team) return [];
     if (this.bossRaid !== null) {
@@ -619,6 +675,7 @@ export class LobbyTeamView extends LitElement {
   }
 
   private computeTeamPreview(teams: Team[] = []) {
+    this.nationPreview = null;
     if (this.gameMode !== GameMode.Team) {
       this.teamPreview = [];
       this.teamMaxSize = 0;
@@ -683,6 +740,13 @@ export class LobbyTeamView extends LitElement {
       teams,
       this.teamCount,
       this.effectiveNationCount,
+    );
+    this.nationPreview = previewTeamNations(
+      players,
+      teams,
+      this.teamCount,
+      this.effectiveNationCount,
+      this.difficulty,
     );
     const buckets = new Map<Team, ClientInfo[]>();
     for (const t of teams) buckets.set(t, []);

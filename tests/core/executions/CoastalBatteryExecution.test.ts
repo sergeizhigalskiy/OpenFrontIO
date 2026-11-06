@@ -286,6 +286,8 @@ describe("coastal battery fire", () => {
   test("shells a hostile convoy only at sea", async () => {
     const { game, defender, attacker, ally } = await navalGame();
     attacker.createAllianceRequest(ally)!.accept();
+    // A convoy is hostile only to those friendly with neither end.
+    defender.breakAlliance(defender.allianceWith(ally)!);
     battery(game, defender);
     const atSea = attacker.buildUnit(UnitType.Convoy, game.ref(12, 8), {
       troops: 1000,
@@ -294,7 +296,7 @@ describe("coastal battery fire", () => {
     });
     let ticks = 0;
     while (atSea.troops() === 1000 && ticks++ < 60) game.executeNextTick();
-    expect(atSea.troops()).toBe(500);
+    expect(atSea.troops()).toBe(750);
   });
 
   test("does not fire while under construction", async () => {

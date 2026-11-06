@@ -32,6 +32,7 @@ import type {
   SnapshotReader,
   SnapshotWriter,
 } from "../snapshot/SnapshotContext";
+import { isConvoyHostile } from "./ConvoyExecution";
 import { ShellExecution } from "./ShellExecution";
 
 export class WarshipExecution implements Execution {
@@ -324,8 +325,12 @@ export class WarshipExecution implements Execution {
 
       const type = unit.type();
 
-      // Warships only reach troop convoys at sea.
-      if (type === UnitType.Convoy && !mg.isWater(unit.tile())) {
+      // Warships only reach troop convoys at sea, and only hostile ones:
+      // friendly with neither the sender nor the recipient.
+      if (
+        type === UnitType.Convoy &&
+        (!mg.isWater(unit.tile()) || !isConvoyHostile(unit, owner))
+      ) {
         continue;
       }
 

@@ -34,6 +34,7 @@ import {
 } from "@openfront/engine-api/game/GameUpdates";
 import { ReadonlyTileSet } from "@openfront/engine-api/game/ReadViews";
 import { ClientID } from "@openfront/engine-api/Schemas";
+import { CONVOY_MAX_IN_FLIGHT } from "@openfront/engine-lib/game/Convoys";
 import { andFN, manhattanDistFN } from "@openfront/engine-lib/game/GameMapImpl";
 import {
   MINEFIELD_MIN_DENSITY,
@@ -1201,6 +1202,10 @@ export class PlayerImpl implements Player {
     ) {
       return false;
     }
+    // At most CONVOY_MAX_IN_FLIGHT convoys on the road at once.
+    if (this.units(UnitType.Convoy).length >= CONVOY_MAX_IN_FLIGHT) {
+      return false;
+    }
     for (const donation of this.sentDonations) {
       if (donation.recipient === recipient) {
         if (
@@ -1216,6 +1221,11 @@ export class PlayerImpl implements Player {
 
   recordTroopDonation(recipient: Player): void {
     this.sentDonations.push(new Donation(recipient, this.mg.ticks()));
+  }
+
+  lastDonationTick(): Tick | null {
+    const last = this.sentDonations[this.sentDonations.length - 1];
+    return last === undefined ? null : last.tick;
   }
 
   receiveTroopDonation(sender: Player, troops: number): void {

@@ -42,6 +42,8 @@ export interface UnitLike {
   isActive(): boolean;
   isUnderConstruction(): boolean;
   level(): number;
+  // The troops a convoy carries still count as its owner's (Config growth).
+  troops(): number;
 }
 
 export interface GameLike extends GameMap {

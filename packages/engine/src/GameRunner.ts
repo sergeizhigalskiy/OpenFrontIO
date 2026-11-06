@@ -1,3 +1,4 @@
+import type { ConvoyRouteForecast } from "@openfront/engine-api/game/ConvoyForecast";
 import { TileRef } from "@openfront/engine-api/game/GameMap";
 import {
   AllPlayers,
@@ -30,6 +31,7 @@ import { VolcanoSitePosition } from "@openfront/engine-lib/game/Volcanoes";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import { simpleHash } from "@openfront/engine-lib/Util";
 import { EngineConfig } from "./configuration/EngineConfig";
+import { convoyRouteOptions } from "./execution/ConvoyRoute";
 import { DoomsdayClockExecution } from "./execution/DoomsdayClockExecution";
 import { Executor } from "./execution/ExecutionManager";
 import { HordeNightExecution } from "./execution/HordeNightExecution";
@@ -481,5 +483,32 @@ export class GameRunner {
       throw new Error(`player with id ${playerID} not found`);
     }
     return player.bestTransportShipSpawn(targetTile);
+  }
+
+  /**
+   * The routes a troop convoy from `senderID` to `recipientID` could take,
+   * priced for the donate panel (engine-lib/game/Convoys.ts picks one for
+   * the amount sent, as the convoy will). Overland first; empty with none.
+   */
+  public convoyForecast(
+    senderID: PlayerID,
+    recipientID: PlayerID,
+  ): ConvoyRouteForecast[] {
+    if (!this.game.hasPlayer(senderID) || !this.game.hasPlayer(recipientID)) {
+      return [];
+    }
+    const sender = this.game.player(senderID);
+    const recipient = this.game.player(recipientID);
+    if (sender === recipient || !sender.isAlive() || !recipient.isAlive()) {
+      return [];
+    }
+    return convoyRouteOptions(this.game, sender, recipient).map((o) => ({
+      mode: o.mode,
+      length: o.length,
+      hostileTiles: o.hostileTiles,
+      shells: o.shells,
+      steps: o.steps,
+      crossed: o.crossed,
+    }));
   }
 }

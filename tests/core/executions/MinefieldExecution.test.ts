@@ -454,6 +454,8 @@ describe("minefield hits", () => {
       infiniteGold: true,
     });
     attacker.createAllianceRequest(ally)!.accept();
+    // A convoy is hostile only to those friendly with neither end.
+    defender.breakAlliance(defender.allianceWith(ally)!);
     const path = crossing(game);
     let sunk = 0;
     for (let i = 0; i < 10; i++) {

@@ -596,6 +596,8 @@ export interface Player extends PlayerLike {
    * receiveTroopDonation.
    */
   recordTroopDonation(recipient: Player): void;
+  /** The tick of this player's latest gold or troop donation, if any. */
+  lastDonationTick(): Tick | null;
   /** Gives this player `troops` that `sender` donated, and reports it. */
   receiveTroopDonation(sender: Player, troops: number): void;
   donateGold(recipient: Player, gold: Gold): boolean;

@@ -1,6 +1,8 @@
 import {
   ColoredTeams,
+  Difficulty,
   Duos,
+  GameMode,
   HumansVsNations,
   PlayerInfo,
   PlayerType,
@@ -8,15 +10,67 @@ import {
   Team,
   Trios,
 } from "@openfront/engine-api/game/GameTypes";
-import { ClientID, TeamCountConfig } from "@openfront/engine-api/Schemas";
+import {
+  ClientID,
+  GameConfig,
+  TeamCountConfig,
+} from "@openfront/engine-api/Schemas";
 import { PseudoRandom } from "../PseudoRandom";
-import { simpleHash } from "../Util";
+import { assertNever, simpleHash } from "../Util";
+import { isBossRaid } from "./BossRaid";
 
+/**
+ * Team strength in points, for dealing nations to teams: a human is worth
+ * HUMAN_TEAM_POINTS, a nation NATION_TEAM_POINTS of its difficulty.
+ */
+export const HUMAN_TEAM_POINTS = 3;
+export const NATION_TEAM_POINTS: Readonly<Record<Difficulty, number>> = {
+  [Difficulty.Easy]: 0.5,
+  [Difficulty.Medium]: 0.75,
+  [Difficulty.Hard]: 1,
+  [Difficulty.Impossible]: 1.25,
+};
+
+/**
+ * The team size limit counts humans; a team takes up to this many more seats,
+ * for nations only.
+ */
+export const NATION_EXTRA_SEATS = 3;
+
+/**
+ * Troop growth of a stacked game's short-handed Impossible nations, in
+ * percent: they can't play a step harder, so they grow faster (Config).
+ */
+export const STACKED_IMPOSSIBLE_GROWTH_PERCENT = 110;
+
+/** One difficulty step up; Impossible stays Impossible. */
+export function harderDifficulty(difficulty: Difficulty): Difficulty {
+  switch (difficulty) {
+    case Difficulty.Easy:
+      return Difficulty.Medium;
+    case Difficulty.Medium:
+      return Difficulty.Hard;
+    case Difficulty.Hard:
+    case Difficulty.Impossible:
+      return Difficulty.Impossible;
+    default:
+      assertNever(difficulty);
+  }
+}
+
+/**
+ * Seats `players` on `teams`: pinned players first, then clans, friend
+ * groups and everyone else (humans) up to `maxTeamSize` a team, then nations
+ * one at a time on the team with the fewest points (HUMAN_TEAM_POINTS,
+ * NATION_TEAM_POINTS of `nationDifficulty`), up to NATION_EXTRA_SEATS past
+ * the size limit.
+ */
 export function assignTeams(
   players: PlayerInfo[],
   teams: Team[],
   isDuosTriosQuads: boolean,
   maxTeamSize: number = getMaxTeamSize(players.length, teams.length),
+  nationDifficulty: Difficulty = Difficulty.Hard,
 ): Map<PlayerInfo, Team | "kicked"> {
   const result = new Map<PlayerInfo, Team | "kicked">();
   const teamPlayerCount = new Map<Team, number>();
@@ -169,11 +223,149 @@ export function assignTeams(
   for (const group of friendGroups(otherPlayers, friendGraph, teamByClientID)) {
     group.forEach((p, i) => placePlayer(p, group.length - i));
   }
-  for (const p of nationPlayers) {
-    placePlayer(p, 1);
+
+  // Nations are dealt one at a time to the weakest team by points (ties: the
+  // team with fewer seats, then the first), so a team holding the humans
+  // gets fewer of them. Only humans count toward the size limit; a team
+  // takes up to NATION_EXTRA_SEATS more seats for nations.
+  const nationPoints = NATION_TEAM_POINTS[nationDifficulty];
+  const teamPoints = new Map<Team, number>();
+  for (const [p, team] of result) {
+    if (team === "kicked") continue;
+    const points =
+      p.playerType === PlayerType.Human
+        ? HUMAN_TEAM_POINTS
+        : p.playerType === PlayerType.Nation
+          ? nationPoints
+          : 0;
+    teamPoints.set(team, (teamPoints.get(team) ?? 0) + points);
+  }
+  const seatLimit = maxTeamSize + NATION_EXTRA_SEATS;
+  for (const nation of nationPlayers) {
+    let bestTeam: Team | null = null;
+    let bestPoints = Infinity;
+    let bestSeats = Infinity;
+    for (const t of teams) {
+      const seats = teamPlayerCount.get(t) ?? 0;
+      if (seats >= seatLimit) continue;
+      const points = teamPoints.get(t) ?? 0;
+      if (points < bestPoints || (points === bestPoints && seats < bestSeats)) {
+        bestTeam = t;
+        bestPoints = points;
+        bestSeats = seats;
+      }
+    }
+    if (bestTeam === null) {
+      result.set(nation, "kicked");
+      continue;
+    }
+    result.set(nation, bestTeam);
+    teamPlayerCount.set(bestTeam, bestSeats + 1);
+    teamPoints.set(bestTeam, bestPoints + nationPoints);
   }
 
   return result;
+}
+
+/**
+ * The short-handed teams of a stacked game: when the teams' human counts
+ * differ by more than one, each team with at least two humans fewer than the
+ * team with the most. Their nations play one difficulty harder
+ * (Config.difficultyFor), Impossible ones with STACKED_IMPOSSIBLE_GROWTH_PERCENT
+ * growth instead. Sorted, so the order never depends on how the counts were
+ * gathered.
+ */
+export function stackedTeams(humansByTeam: ReadonlyMap<Team, number>): Team[] {
+  let most = 0;
+  let fewest = Infinity;
+  for (const humans of humansByTeam.values()) {
+    most = Math.max(most, humans);
+    fewest = Math.min(fewest, humans);
+  }
+  if (humansByTeam.size < 2 || most - fewest <= 1) return [];
+  const short: Team[] = [];
+  for (const [team, humans] of humansByTeam) {
+    if (most - humans > 1) short.push(team);
+  }
+  return short.sort();
+}
+
+/**
+ * The short-handed teams of a game with these players (stackedTeams), over
+ * the teams anyone but tribes is on. Only plain Team games: Humans vs
+ * Nations, Boss Raid and Horde Night lay out their own sides.
+ */
+export function stackedTeamsOf(
+  config: Pick<GameConfig, "gameMode" | "playerTeams" | "bossRaid"> & {
+    hordeNight?: { enabled?: boolean };
+  },
+  players: Iterable<{ team(): Team | null; type(): PlayerType }>,
+): Team[] {
+  if (
+    config.gameMode !== GameMode.Team ||
+    config.playerTeams === HumansVsNations ||
+    isBossRaid(config) ||
+    config.hordeNight?.enabled === true
+  ) {
+    return [];
+  }
+  const humansByTeam = new Map<Team, number>();
+  for (const p of players) {
+    const team = p.team();
+    if (team === null || team === ColoredTeams.Bot) continue;
+    if (p.type() === PlayerType.Bot) continue;
+    const humans = p.type() === PlayerType.Human ? 1 : 0;
+    humansByTeam.set(team, (humansByTeam.get(team) ?? 0) + humans);
+  }
+  return stackedTeams(humansByTeam);
+}
+
+/** What the lobby shows of the nations each team will get. */
+export interface TeamNationsPreview {
+  /** Nations dealt to each team. */
+  nations: Map<Team, number>;
+  /** The short-handed teams of a stacked game (stackedTeams). */
+  stacked: Team[];
+}
+
+/**
+ * The nations the game will deal each team, and whether the teams are
+ * stacked, by the same rules the game runs (assignTeams, stackedTeams): the
+ * lobby's humans plus `nationCount` nations of `difficulty`. Which nation
+ * lands where depends on the nations' ids; how many does not.
+ */
+export function previewTeamNations(
+  humans: PlayerInfo[],
+  teams: Team[],
+  teamCount: TeamCountConfig,
+  nationCount: number,
+  difficulty: Difficulty,
+): TeamNationsPreview {
+  const nations = Array.from(
+    { length: Math.max(0, nationCount) },
+    (_, i) =>
+      new PlayerInfo(`Nation ${i + 1}`, PlayerType.Nation, null, `N${i}`),
+  );
+  const assignment = assignTeams(
+    [...humans, ...nations],
+    teams,
+    teamCount === Duos || teamCount === Trios || teamCount === Quads,
+    getMaxTeamSize(humans.length + nations.length, teams.length),
+    difficulty,
+  );
+  const nationsByTeam = new Map<Team, number>(teams.map((t) => [t, 0]));
+  const humansByTeam = new Map<Team, number>();
+  for (const [p, team] of assignment) {
+    if (team === "kicked") continue;
+    const isNation = p.playerType === PlayerType.Nation;
+    if (isNation) nationsByTeam.set(team, (nationsByTeam.get(team) ?? 0) + 1);
+    humansByTeam.set(
+      team,
+      (humansByTeam.get(team) ?? 0) +
+        (p.playerType === PlayerType.Human ? 1 : 0),
+    );
+  }
+  return { nations: nationsByTeam, stacked: stackedTeams(humansByTeam) };
 }
 
 // Splits players into groups connected by friend edges, each group in the

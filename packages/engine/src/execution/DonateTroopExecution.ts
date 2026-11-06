@@ -20,12 +20,13 @@ import type {
   SnapshotReader,
   SnapshotWriter,
 } from "../snapshot/SnapshotContext";
-import { ConvoyExecution, planConvoyRoute } from "./ConvoyExecution";
+import { ConvoyExecution } from "./ConvoyExecution";
+import { planConvoyRoute } from "./ConvoyRoute";
 
 /**
  * Sends troops to an ally. The troops leave the sender at once but travel as
- * a convoy unit (ConvoyExecution), which can be ambushed on the way; the
- * recipient only gets what arrives.
+ * a convoy unit (ConvoyExecution) along the route that loses the fewest of
+ * them (ConvoyRoute.ts); the recipient only gets what arrives.
  */
 export class DonateTroopsExecution implements Execution {
   private recipient: Player;
@@ -77,7 +78,7 @@ export class DonateTroopsExecution implements Execution {
     const troops = Math.floor(Math.min(this.troops, this.sender.troops()));
     if (troops <= 0) return;
 
-    const route = planConvoyRoute(this.mg, this.sender, this.recipient);
+    const route = planConvoyRoute(this.mg, this.sender, this.recipient, troops);
     if (route === null) {
       this.mg.displayMessage(
         "events_display.convoy_no_route",

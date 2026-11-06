@@ -57,6 +57,7 @@ import {
 import {
   assignTeams,
   resolveTeamsList,
+  stackedTeamsOf,
 } from "@openfront/engine-lib/game/TeamAssignment";
 import { TerraNulliusImpl } from "@openfront/engine-lib/game/TerraNulliusImpl";
 import { UnitGrid } from "@openfront/engine-lib/game/UnitGrid";
@@ -232,6 +233,11 @@ export class GameImpl implements Game {
         this.populateTeams();
       }
       this.addPlayers();
+      // Stacked teams: nations on short-handed teams play a step harder.
+      // Stored in the config, so a restored game keeps them.
+      this._config.setStackedTeams(
+        stackedTeamsOf(this._config.gameConfig(), this.allPlayers()),
+      );
     }
 
     console.log(
@@ -306,6 +312,8 @@ export class GameImpl implements Game {
       allPlayers,
       this.playerTeams,
       isDuosTriosQuads,
+      undefined,
+      this._config.gameConfig().difficulty,
     );
     for (const [playerInfo, team] of playerToTeam.entries()) {
       if (team === "kicked") {
