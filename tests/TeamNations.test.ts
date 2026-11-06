@@ -1,11 +1,14 @@
 import {
   ColoredTeams,
   Difficulty,
+  Duos,
   GameMode,
   HumansVsNations,
   PlayerInfo,
   PlayerType,
+  Quads,
   Team,
+  Trios,
 } from "@openfront/engine-api/game/GameTypes";
 import {
   assignTeams,
@@ -17,6 +20,7 @@ import {
   resolveTeamsList,
   STACKED_IMPOSSIBLE_GROWTH_PERCENT,
   stackedTeams,
+  stackedTeamsApply,
   stackedTeamsOf,
 } from "@openfront/engine-lib/game/TeamAssignment";
 import { Game, Player } from "@openfront/engine/game/Game";
@@ -199,6 +203,63 @@ describe("stacked teams", () => {
       stackedTeamsOf({ ...team, hordeNight: { enabled: true } }, players),
     ).toEqual([]);
     expect(stackedTeamsOf({ gameMode: GameMode.FFA }, players)).toEqual([]);
+  });
+
+  test("only with a set number of teams, 2 to 7", () => {
+    const players = [
+      { team: () => RED, type: () => PlayerType.Human },
+      { team: () => RED, type: () => PlayerType.Human },
+      { team: () => BLUE, type: () => PlayerType.Nation },
+    ];
+    for (const playerTeams of [2, 7]) {
+      expect(
+        stackedTeamsOf({ gameMode: GameMode.Team, playerTeams }, players),
+      ).toEqual([BLUE]);
+    }
+    expect(
+      stackedTeamsOf({ gameMode: GameMode.Team, playerTeams: 8 }, players),
+    ).toEqual([]);
+    for (const playerTeams of [Duos, Trios, Quads]) {
+      expect(stackedTeamsApply(playerTeams)).toBe(false);
+      expect(
+        stackedTeamsOf({ gameMode: GameMode.Team, playerTeams }, players),
+      ).toEqual([]);
+    }
+  });
+
+  test("two humans on one Duos team mark nothing as stacked", async () => {
+    // Two friends party up; the nations pair off on teams of their own.
+    const humans = [human(0), human(1)];
+    const nations = Array.from({ length: 6 }, (_, i) => nation(i));
+    const game = await setup(
+      "big_plains",
+      {
+        gameMode: GameMode.Team,
+        playerTeams: Duos,
+        difficulty: Difficulty.Hard,
+      },
+      [...humans, ...nations],
+    );
+    const humanTeams = new Set(
+      game
+        .allPlayers()
+        .filter((p) => p.type() === PlayerType.Human)
+        .map((p) => p.team()),
+    );
+    expect(humanTeams.size).toBe(1);
+    expect(game.config().gameConfig().stackedTeams ?? []).toEqual([]);
+    for (const p of game.allPlayers()) {
+      if (p.type() !== PlayerType.Nation) continue;
+      expect(game.config().difficultyFor(p)).toBe(Difficulty.Hard);
+    }
+    const preview = previewTeamNations(
+      humans,
+      resolveTeamsList(Duos, 8),
+      Duos,
+      6,
+      Difficulty.Hard,
+    );
+    expect(preview.stacked).toEqual([]);
   });
 });
 

@@ -290,10 +290,31 @@ export function stackedTeams(humansByTeam: ReadonlyMap<Team, number>): Team[] {
   return short.sort();
 }
 
+/** Fewest and most teams of a game the stacked-teams rule applies to. */
+export const STACKED_TEAMS_MIN_TEAMS = 2;
+export const STACKED_TEAMS_MAX_TEAMS = 7;
+
+/**
+ * Whether a team setting can make stacked teams: only a set number of teams
+ * (2 to 7, host-pinned or not). Duos, Trios and Quads fix the team size, so
+ * teams of nations only are normal there, and Humans vs Nations lays out its
+ * own sides.
+ */
+export function stackedTeamsApply(
+  playerTeams: TeamCountConfig | undefined,
+): boolean {
+  return (
+    typeof playerTeams === "number" &&
+    playerTeams >= STACKED_TEAMS_MIN_TEAMS &&
+    playerTeams <= STACKED_TEAMS_MAX_TEAMS
+  );
+}
+
 /**
  * The short-handed teams of a game with these players (stackedTeams), over
- * the teams anyone but tribes is on. Only plain Team games: Humans vs
- * Nations, Boss Raid and Horde Night lay out their own sides.
+ * the teams anyone but tribes is on. Only plain Team games with a set number
+ * of teams (stackedTeamsApply): Boss Raid and Horde Night lay out their own
+ * sides.
  */
 export function stackedTeamsOf(
   config: Pick<GameConfig, "gameMode" | "playerTeams" | "bossRaid"> & {
@@ -303,7 +324,7 @@ export function stackedTeamsOf(
 ): Team[] {
   if (
     config.gameMode !== GameMode.Team ||
-    config.playerTeams === HumansVsNations ||
+    !stackedTeamsApply(config.playerTeams) ||
     isBossRaid(config) ||
     config.hordeNight?.enabled === true
   ) {
@@ -365,7 +386,10 @@ export function previewTeamNations(
         (p.playerType === PlayerType.Human ? 1 : 0),
     );
   }
-  return { nations: nationsByTeam, stacked: stackedTeams(humansByTeam) };
+  return {
+    nations: nationsByTeam,
+    stacked: stackedTeamsApply(teamCount) ? stackedTeams(humansByTeam) : [],
+  };
 }
 
 // Splits players into groups connected by friend edges, each group in the
