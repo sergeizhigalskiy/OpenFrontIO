@@ -43,7 +43,6 @@ export const LobbyPresetConfigSchema = z.object({
   customAlliances: z.boolean().optional(),
   customAllianceMinutes: z.number().int().min(0).max(15).optional(),
   waterNukes: z.boolean().optional(),
-  conventionalWar: z.boolean().optional(),
   ruins: z.boolean().optional(),
   cityStates: z.boolean().optional(),
   volcanoes: z.boolean().optional(),
@@ -87,6 +86,27 @@ export const LobbyPresetSchema = z.object({
 
 export type LobbyPreset = z.infer<typeof LobbyPresetSchema>;
 
+const KNOWN_UNIT_TYPES: ReadonlySet<unknown> = new Set(Object.values(UnitType));
+
+/**
+ * Drops disabledUnits entries that are no longer a UnitType, so a preset saved
+ * before a unit was removed from the game still loads with its other settings.
+ */
+function dropUnknownUnits(item: unknown): unknown {
+  if (!item || typeof item !== "object") return item;
+  const config = (item as { config?: unknown }).config;
+  if (!config || typeof config !== "object") return item;
+  const units = (config as { disabledUnits?: unknown }).disabledUnits;
+  if (!Array.isArray(units)) return item;
+  return {
+    ...item,
+    config: {
+      ...config,
+      disabledUnits: units.filter((unit) => KNOWN_UNIT_TYPES.has(unit)),
+    },
+  };
+}
+
 /**
  * Safely parses raw JSON from storage into an array of validated LobbyPreset objects.
  * Returns an empty array if parsing fails, input is null/empty, or no valid presets exist.
@@ -98,7 +118,7 @@ export function parseLobbyPresetsJson(rawJson: string | null): LobbyPreset[] {
     if (!Array.isArray(parsed)) return [];
     const valid: LobbyPreset[] = [];
     for (const item of parsed) {
-      const result = LobbyPresetSchema.safeParse(item);
+      const result = LobbyPresetSchema.safeParse(dropUnknownUnits(item));
       if (result.success) {
         valid.push(result.data);
       }

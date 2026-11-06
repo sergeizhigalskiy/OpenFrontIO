@@ -30,7 +30,6 @@ const COPIED_KEYS = [
   "trusted",
   "doomsdayClock",
   "overtime",
-  "conventionalWar",
   "ruins",
   "cityStates",
   "volcanoes",

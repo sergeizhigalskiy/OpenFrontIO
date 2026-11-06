@@ -139,7 +139,6 @@ export class HostLobbyModal extends BaseModal {
   @state() private whitelistEnabled: boolean = false;
   @state() private allowedPublicIds: string = "";
   @state() private waterNukes: boolean = false;
-  @state() private conventionalWar: boolean = false;
   // Boss Raid mode (engine-lib/game/BossRaid.ts): a Team game, so gameMode
   // stays Team while it is on. Its timer is the lobby's max timer.
   @state() private bossRaid: boolean = false;
@@ -827,10 +826,6 @@ export class HostLobbyModal extends BaseModal {
                     checked: this.waterNukes,
                   },
                   {
-                    labelKey: "game_settings.conventional_war",
-                    checked: this.conventionalWar,
-                  },
-                  {
                     labelKey: "game_settings.ruins",
                     checked: this.ruins,
                   },
@@ -1229,7 +1224,6 @@ export class HostLobbyModal extends BaseModal {
     this.whitelistEnabled = false;
     this.allowedPublicIds = "";
     this.waterNukes = false;
-    this.conventionalWar = false;
     this.bossRaid = false;
     this.bossRaidBoss = BOSS_RAID_NATION_BOSS;
     this.ruins = true;
@@ -1429,10 +1423,6 @@ export class HostLobbyModal extends BaseModal {
         break;
       case "game_settings.water_nukes":
         this.waterNukes = checked;
-        void this.putGameConfig();
-        break;
-      case "game_settings.conventional_war":
-        this.conventionalWar = checked;
         void this.putGameConfig();
         break;
       case "game_settings.ruins":
@@ -2028,7 +2018,6 @@ export class HostLobbyModal extends BaseModal {
       customAlliances: this.customAlliances,
       customAllianceMinutes: this.customAllianceMinutes,
       waterNukes: this.waterNukes,
-      conventionalWar: this.conventionalWar,
       ruins: this.ruins,
       cityStates: this.cityStates,
       volcanoes: this.volcanoes,
@@ -2086,7 +2075,6 @@ export class HostLobbyModal extends BaseModal {
     this.customAlliances = config.customAlliances ?? false;
     this.customAllianceMinutes = config.customAllianceMinutes;
     this.waterNukes = config.waterNukes ?? false;
-    this.conventionalWar = config.conventionalWar ?? false;
     this.ruins = config.ruins ?? true;
     this.cityStates = config.cityStates ?? true;
     this.volcanoes = config.volcanoes ?? false;
@@ -2294,7 +2282,6 @@ export class HostLobbyModal extends BaseModal {
               ? (this.parseAllowedPublicIds() ?? [])
               : [],
             waterNukes: this.waterNukes ? true : null,
-            conventionalWar: this.conventionalWar,
             bossRaid: this.bossRaidOn() ? { boss: this.bossRaidBoss } : null,
             ruins: this.ruins,
             cityStates: this.cityStates,
