@@ -377,13 +377,24 @@ describe("Nation structure upgrades", () => {
     },
   );
 
-  it("Easy does not", () => {
-    const { behavior, built, upgraded } = withPort(Difficulty.Easy, {
+  // Easy only spends banked gold on it: what it holds above 3x the next
+  // port's 250k (NationBankedGold.test.ts).
+  it("Easy does not, until its banked gold passes 3x the next port's price", () => {
+    const held = withPort(Difficulty.Easy, {
       shortCoast: true,
+      gold: 999_999n,
     });
-    expect(behavior.handleStructures()).toBe(false);
-    expect(upgraded()).toEqual([]);
-    expect(built()).toEqual([]);
+    expect(held.behavior.handleStructures()).toBe(false);
+    expect(held.upgraded()).toEqual([]);
+    expect(held.built()).toEqual([]);
+
+    const banked = withPort(Difficulty.Easy, {
+      shortCoast: true,
+      gold: 1_000_000n,
+    });
+    expect(banked.behavior.handleStructures()).toBe(true);
+    expect(banked.upgraded()).toEqual([banked.port.id()]);
+    expect(banked.built()).toEqual([]);
   });
 
   it("builds a new port while the coast has room", () => {

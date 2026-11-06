@@ -43,6 +43,18 @@ export function isSaveUpWithinReach(
   return missing <= incomePerMinute * horizon;
 }
 
+/**
+ * Whether the nation will buy its save-up `target` soon: Hard and Impossible
+ * save up within a horizon, and this target is within it. Easy and Medium
+ * save with no horizon, so their savings never count as due.
+ */
+export function isSaveUpDue(game: Game, player: Player, target: Gold): boolean {
+  if (target <= 0n) return false;
+  const horizon =
+    SAVE_UP_HORIZON_MINUTES[game.config().gameConfig().difficulty];
+  return Number.isFinite(horizon) && isSaveUpWithinReach(game, player, target);
+}
+
 export function randTerritoryTileArray(
   random: PseudoRandom,
   mg: Game,
