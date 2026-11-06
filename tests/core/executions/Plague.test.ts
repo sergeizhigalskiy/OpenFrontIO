@@ -434,12 +434,9 @@ describe("plague nation AI", () => {
     ]);
   });
 
-  test("heavily infected-bordered, it attacks nobody else; lightly, it may", async () => {
-    // Impossible counts 100 shared tiles as heavy, Medium needs 300.
-    for (const [difficulty, heavy] of [
-      [Difficulty.Impossible, true],
-      [Difficulty.Medium, false],
-    ] as const) {
+  test("with nothing to spare it holds nothing back for The Infected", async () => {
+    // It used to attack nobody else once heavily infected-bordered.
+    for (const difficulty of [Difficulty.Medium, Difficulty.Impossible]) {
       const game = await plagueGame(PLAINS, [nation("n"), nation("m")], {
         difficulty,
       });
@@ -449,10 +446,10 @@ describe("plague nation AI", () => {
       // The infected front: a column of 100 of n's tiles.
       const infected = infectedOn(game, [0, 0, 1, 100]);
       expect(sharedBorderTiles(game, n, infected)).toBe(100);
-      // Nothing to spare above the reserve: no attack on The Infected.
+      // Nothing to spare above the reserve: no attack, and the turn goes on.
       n.setTroops(1);
       expect(fightSurvivalThreat(game, n, new PseudoRandom(3), 0.5, 0.5)).toBe(
-        heavy,
+        false,
       );
       executeTicks(game, 1);
       expect(n.outgoingAttacks().length).toBe(0);

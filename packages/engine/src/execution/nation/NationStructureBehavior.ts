@@ -27,7 +27,11 @@ import { UpgradeStructureExecution } from "../UpgradeStructureExecution";
 import { isCataclysmHazard } from "./NationCataclysm";
 import { isMirvWorthSavingFor } from "./NationMIRVBehavior";
 import { NationStructurePlacement } from "./NationStructurePlacement";
-import { hasHighStartingGold, isSaveUpWithinReach } from "./NationUtils";
+import {
+  hasHighStartingGold,
+  isSaveUpDue,
+  isSaveUpWithinReach,
+} from "./NationUtils";
 
 /**
  * Configuration for how many structures of each type a nation should build
@@ -141,6 +145,27 @@ const MAX_UPGRADES_AT_ONCE: Record<Difficulty, number> = {
   [Difficulty.Hard]: Infinity,
   [Difficulty.Impossible]: Infinity,
 };
+
+/**
+ * Banked gold above this many times the price of the nation's next build
+ * goes into city and port upgrades, so its treasury isn't a jackpot for
+ * whoever conquers it (conquest hands over all of it).
+ */
+export const BANKED_GOLD_NEXT_BUILD_MULTIPLE = 3n;
+
+/** What banked gold upgrades, the cheaper first. */
+const BANKED_GOLD_UPGRADE_TYPES: readonly UnitType[] = [
+  UnitType.City,
+  UnitType.Port,
+];
+
+/** Non-city structures in build priority order; cities come after them. */
+const BUILD_ORDER: readonly UnitType[] = [
+  UnitType.Port,
+  UnitType.Factory,
+  UnitType.SAMLauncher,
+  UnitType.MissileSilo,
+];
 
 /** Structures counted for that density; cheap defense posts would push nations into upgrading early */
 const DENSITY_STRUCTURE_TYPES: readonly UnitType[] = Structures.types.filter(
@@ -302,7 +327,7 @@ export class NationStructureBehavior {
     if (this.isInPostSaveUpBlockedPhase()) {
       return false;
     }
-    const built = this.doHandleStructures();
+    const built = this.doHandleStructures() || this.maybeSpendBankedGold();
     if (built) {
       this.lastStructureTick = this.game.ticks();
       this.placementsCount++;
@@ -702,44 +727,7 @@ export class NationStructureBehavior {
       return true;
     }
 
-    // Build order for non-city structures (priority order)
-    const buildOrder: UnitType[] = [
-      UnitType.Port,
-      UnitType.Factory,
-      UnitType.SAMLauncher,
-      UnitType.MissileSilo,
-    ];
-
-    const nukesEnabled =
-      !config.isUnitDisabled(UnitType.AtomBomb) ||
-      !config.isUnitDisabled(UnitType.HydrogenBomb) ||
-      !config.isUnitDisabled(UnitType.MIRV);
-
-    for (const structureType of buildOrder) {
-      // Skip disabled structure types
-      if (config.isUnitDisabled(structureType)) {
-        continue;
-      }
-
-      // Skip ports if no coastal tiles
-      if (structureType === UnitType.Port && !hasCoastalTiles) {
-        continue;
-      }
-
-      // Skip missile silos and SAM launchers if all nukes are disabled
-      if (
-        !nukesEnabled &&
-        (structureType === UnitType.MissileSilo ||
-          structureType === UnitType.SAMLauncher)
-      ) {
-        continue;
-      }
-
-      // Skip SAM launchers if missile silos are disabled
-      if (!missileSilosEnabled && structureType === UnitType.SAMLauncher) {
-        continue;
-      }
-
+    for (const structureType of this.buildOrder(hasCoastalTiles)) {
       if (
         this.shouldBuildStructure(structureType, cityCount, hasCoastalTiles)
       ) {
@@ -754,6 +742,93 @@ export class NationStructureBehavior {
     }
 
     return false;
+  }
+
+  /** BUILD_ORDER without the structures this game or this nation can't use. */
+  private buildOrder(hasCoastalTiles: boolean): UnitType[] {
+    const config = this.game.config();
+    const missileSilosEnabled = !config.isUnitDisabled(UnitType.MissileSilo);
+    const nukesEnabled =
+      !config.isUnitDisabled(UnitType.AtomBomb) ||
+      !config.isUnitDisabled(UnitType.HydrogenBomb) ||
+      !config.isUnitDisabled(UnitType.MIRV);
+    return BUILD_ORDER.filter(
+      (type) =>
+        !config.isUnitDisabled(type) &&
+        // Ports need coastal tiles
+        (type !== UnitType.Port || hasCoastalTiles) &&
+        // Missile silos and SAM launchers need nukes
+        (nukesEnabled ||
+          (type !== UnitType.MissileSilo && type !== UnitType.SAMLauncher)) &&
+        // SAM launchers need missile silos
+        (missileSilosEnabled || type !== UnitType.SAMLauncher),
+    );
+  }
+
+  /** What doHandleStructures builds next: the first structure due, else a city. Null if neither. */
+  private nextBuild(): UnitType | null {
+    const cityCount = this.cityCount();
+    const hasCoastalTiles = this.placement.hasCoastalTiles();
+    for (const type of this.buildOrder(hasCoastalTiles)) {
+      if (this.shouldBuildStructure(type, cityCount, hasCoastalTiles)) {
+        return type;
+      }
+    }
+    return this.game.config().isUnitDisabled(UnitType.City)
+      ? null
+      : UnitType.City;
+  }
+
+  /**
+   * Spends banked gold above BANKED_GOLD_NEXT_BUILD_MULTIPLE times the next
+   * build's real price on city and port upgrades: the cheaper of the two it
+   * can upgrade, as many levels as that gold pays for. A Hard or Impossible
+   * nation keeps the nuke money it saves up within its horizon (isSaveUpDue).
+   * Runs after doHandleStructures, which starts the placement round.
+   */
+  private maybeSpendBankedGold(): boolean {
+    const next = this.nextBuild();
+    if (next === null) return false;
+    let keep = this.cost(next) * BANKED_GOLD_NEXT_BUILD_MULTIPLE;
+    const saveUpTarget = this.getSaveUpTarget();
+    if (
+      saveUpTarget > keep &&
+      isSaveUpDue(this.game, this.player, saveUpTarget)
+    ) {
+      keep = saveUpTarget;
+    }
+    let spare = this.player.gold() - keep;
+    if (spare <= 0n) return false;
+
+    const config = this.game.config();
+    let type: UnitType | null = null;
+    let price = 0n;
+    for (const t of BANKED_GOLD_UPGRADE_TYPES) {
+      if (config.isUnitDisabled(t)) continue;
+      const cost = this.cost(t);
+      if (cost > spare || (type !== null && cost >= price)) continue;
+      if (!this.player.units(t).some((u) => this.player.canUpgradeUnit(u))) {
+        continue;
+      }
+      type = t;
+      price = cost;
+    }
+    if (type === null) return false;
+    const structure = this.findBestStructureToUpgrade(this.player.units(type));
+    if (structure === null) return false;
+
+    const max = MAX_UPGRADES_AT_ONCE[config.gameConfig().difficulty];
+    let amount = 0;
+    while (amount < max) {
+      const cost = this.cost(type, amount);
+      if (cost > spare) break;
+      spare -= cost;
+      amount++;
+    }
+    this.game.addExecution(
+      new UpgradeStructureExecution(this.player, structure.id(), amount),
+    );
+    return true;
   }
 
   // Cities owned, or a territory-based equivalent when cities are disabled

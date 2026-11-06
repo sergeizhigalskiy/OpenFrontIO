@@ -13,6 +13,7 @@ import {
   TerraNullius,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
+import { attackForecast } from "@openfront/engine-lib/game/AttackForecast";
 import { isBossRaid } from "@openfront/engine-lib/game/BossRaid";
 import { terrainFeatureLossMultiplier } from "@openfront/engine-lib/game/TerrainFeatures";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
@@ -53,8 +54,16 @@ import { fightSurvivalThreat } from "./NationSurvivalBehavior";
 import { findJuiciestTarget, findRunawayLeader } from "./NationUtils";
 import type { NationWarshipBehavior } from "./NationWarshipBehavior";
 import {
-  holdsOffWinterAttack,
-  routeCrossesStorm,
+  avoidsStorm,
+  frontHardness,
+  frontWeather,
+  frontWeatherByOwner,
+  holdsForWeather,
+  isSnowFront,
+  launchesEarlyBeforeWinter,
+  NATION_SHORT_STORM_TILES,
+  ranksFrontsByWeather,
+  routeStormTiles,
 } from "./NationWeatherBehavior";
 import {
   cityStateAttackOdds,
@@ -64,6 +73,26 @@ import {
 
 // Reusable neighbor buffer for hot loops; the simulation is single-threaded.
 const NEIGHBOR_SCRATCH: TileRef[] = [0, 0, 0, 0];
+
+/**
+ * Attacks on players are sized by what the front costs: the smallest stack
+ * worth sending takes about this many tiles at the attack forecast's loss
+ * per tile (engine-lib AttackForecast).
+ */
+export const NATION_ATTACK_FRONT_TILES = 150;
+/** Front tiles the forecast prices for that, spread over the first FRONT_COST_SCAN_TILES. */
+const FRONT_COST_SAMPLE_TILES = 8;
+const FRONT_COST_SCAN_TILES = 64;
+/** Our border tiles scanned at most for them, so a huge border stays cheap. */
+const FRONT_COST_SCAN_BORDER_TILES = 4096;
+
+// A landing weighed while planning a boat route (see boatRoute)
+interface LandingCandidate {
+  landing: TileRef;
+  length: number;
+  blocker: Unit | null;
+  stormTiles: number;
+}
 
 type Box = { min: Cell; max: Cell } | null | undefined;
 
@@ -81,6 +110,11 @@ export class NationAttackBehavior extends AiAttackBehavior {
   private followedLandings: Attack[] = [];
   // Only set during a maybeAttack call: our land neighbors
   private landNeighbors: Set<Player> | null = null;
+  // Only set during a maybeAttack call: Impossible launches before a winter
+  // without saving up to the trigger ratio (launchesEarlyBeforeWinter)
+  private earlyLaunch = false;
+  // Only set while boatRoute plans a route: every landing it weighed
+  private landingCandidates: LandingCandidate[] | null = null;
 
   constructor(
     random: PseudoRandom,
@@ -114,8 +148,10 @@ export class NationAttackBehavior extends AiAttackBehavior {
     this.allianceBehavior = allianceBehavior;
     this.emojiBehavior = emojiBehavior;
     this.warshipBehavior = warshipBehavior;
-    // Only set during a maybeAttack call, so always null between ticks.
+    // Only set during a maybeAttack call or a route plan, so always clear between ticks.
     this.landNeighbors = null;
+    this.earlyLaunch = false;
+    this.landingCandidates = null;
     this.botAttackTroopsSent = s.botAttackTroopsSent;
     this.followedLandings = s.followedLandings.map((i) => r.attack(i));
   }
@@ -135,6 +171,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
     } finally {
       this.landNeighbors = null;
       this.boatRoutes = null;
+      this.earlyLaunch = false;
     }
     this.clearBlockedLane(routes, landFront);
   }
@@ -181,8 +218,16 @@ export class NationAttackBehavior extends AiAttackBehavior {
   }
 
   private chooseAttack() {
-    // Horde Night and the plague put their threat first (a no-op otherwise).
+    // Answering an attack comes first, in every mode: Hard & Impossible hit
+    // back at once, even below the reserve and trigger ratios, before free
+    // land, boats or a survival threat. Medium and Easy answer through their
+    // usual checks in attackBestTarget.
+    const attacked = this.findIncomingAttackPlayer() !== null;
+    if (attacked && this.retaliatesAtOnce() && this.retaliate()) return;
+    // Horde Night and the plague put their threat next (a no-op otherwise),
+    // but never ahead of answering a player that is attacking us.
     if (
+      !attacked &&
       fightSurvivalThreat(
         this.game,
         this.player,
@@ -216,11 +261,20 @@ export class NationAttackBehavior extends AiAttackBehavior {
     for (const n of playerNeighbors) {
       if (n.isPlayer()) borderingPlayerSet.add(n);
     }
-    // Weakest first, a target holding resource sites counting as a bit weaker.
+    // Weakest first, a target holding resource sites counting as a bit weaker,
+    // and for Hard & Impossible one behind a snow front in winter or a mud
+    // front as stronger (NationWeatherBehavior.frontHardness).
     // Weighed once per player up front: fishing grounds look for their coast.
+    const fronts = ranksFrontsByWeather(this.game, this.player)
+      ? frontWeatherByOwner(this.game, this.player)
+      : null;
     const weight = new Map<Player, number>();
     for (const p of borderingPlayerSet) {
-      weight.set(p, mineWeightedTroops(this.game, p));
+      let w = mineWeightedTroops(this.game, p);
+      if (fronts !== null) {
+        w *= frontHardness(this.game, this.player, fronts.get(p.smallID()));
+      }
+      weight.set(p, w);
     }
     const borderingPlayers = [...borderingPlayerSet].sort(
       (a, b) => weight.get(a)! - weight.get(b)!,
@@ -396,14 +450,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
   ) {
     const difficulty = this.game.config().difficultyFor(this.player);
 
-    // Hard & Impossible: answer attacks right away, even below the reserve and trigger ratios
-    if (
-      (difficulty === Difficulty.Hard ||
-        difficulty === Difficulty.Impossible) &&
-      this.retaliate()
-    ) {
-      return;
-    }
+    // Hard & Impossible answered attacks already, first thing in chooseAttack
 
     // A walled-in bot costs next to nothing to annex, so don't save up for it
     this.annexWalledInBots();
@@ -426,8 +473,16 @@ export class NationAttackBehavior extends AiAttackBehavior {
     // Medium: answer attacks without saving up to the trigger ratio first
     if (difficulty === Difficulty.Medium && this.retaliate()) return;
 
-    // Maybe save up troops until we reach the trigger ratio
-    if (!this.hasTriggerRatioTroops() && !this.random.chance(10)) return;
+    // Maybe save up troops until we reach the trigger ratio. Impossible
+    // launches early in the winter warning, where its front has no snow
+    // (calculateAttackTroops checks the front).
+    if (!this.hasTriggerRatioTroops()) {
+      if (launchesEarlyBeforeWinter(this.game, this.player)) {
+        this.earlyLaunch = true;
+      } else if (!this.random.chance(10)) {
+        return;
+      }
+    }
 
     // Get attack strategies in priority order based on difficulty
     const strategies = this.getAttackStrategies(
@@ -673,6 +728,99 @@ export class NationAttackBehavior extends AiAttackBehavior {
       return this.sendRetaliation(attacker);
     }
     return this.sendAttack(attacker, true);
+  }
+
+  // Hard & Impossible answer attacks right away, ahead of everything else
+  private retaliatesAtOnce(): boolean {
+    const difficulty = this.game.config().difficultyFor(this.player);
+    return (
+      difficulty === Difficulty.Hard || difficulty === Difficulty.Impossible
+    );
+  }
+
+  /**
+   * Whether attacking `target` answers an attack, which no weather or
+   * front-cost hold may stop: it is attacking us; we are retaking land it
+   * took (our relation turned hostile, as an attack, nuke or betrayal on us
+   * leaves it for a minute or two); or it is at war with an ally of ours.
+   */
+  private answers(target: Player | TerraNullius): boolean {
+    if (!target.isPlayer() || this.player.isFriendly(target)) return false;
+    for (const attack of this.player.incomingAttacks()) {
+      if (attack.attacker() === target) return true;
+    }
+    if (this.player.relation(target) === Relation.Hostile) return true;
+    for (const ally of this.player.allies()) {
+      if (ally.targets().includes(target)) return true;
+      for (const attack of ally.incomingAttacks()) {
+        if (attack.attacker() === target) return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * The smallest stack worth sending at `target`: the attack forecast's loss
+   * per tile on our front with `troops`, times NATION_ATTACK_FRONT_TILES.
+   * 0 when there is no front to price.
+   */
+  private worthwhileStack(target: Player, troops: number): number {
+    const tiles = this.frontCostTiles(target);
+    if (tiles.length === 0) return 0;
+    let loss = 0;
+    for (const tile of tiles) {
+      loss += attackForecast(
+        this.game,
+        this.player,
+        target,
+        tile,
+        troops,
+        null,
+      ).lossPerTile;
+    }
+    return (loss / tiles.length) * NATION_ATTACK_FRONT_TILES;
+  }
+
+  // Up to FRONT_COST_SAMPLE_TILES of target's land across our border, spread
+  // over the first FRONT_COST_SCAN_TILES found; else (a boat attack) the
+  // planned landing, or failing that one of its border tiles
+  private frontCostTiles(target: Player): TileRef[] {
+    const map = this.game.map();
+    const id = target.smallID();
+    const front: TileRef[] = [];
+    let scanned = 0;
+    for (const border of this.player.borderTiles()) {
+      if (++scanned > FRONT_COST_SCAN_BORDER_TILES) break;
+      const n = map.neighbors4(border, this.nbuf);
+      for (let i = 0; i < n; i++) {
+        const t = this.nbuf[i];
+        if (map.ownerID(t) === id && map.isLand(t) && !map.isImpassable(t)) {
+          front.push(t);
+        }
+      }
+      if (front.length >= FRONT_COST_SCAN_TILES) break;
+    }
+    if (front.length === 0) {
+      const landing = this.boatRoutes?.get(target)?.landing;
+      if (landing !== undefined) return [landing];
+      for (const t of target.borderTiles()) {
+        if (map.isLand(t) && !map.isImpassable(t)) return [t];
+      }
+      return [];
+    }
+    const step = Math.max(
+      1,
+      Math.floor(front.length / FRONT_COST_SAMPLE_TILES),
+    );
+    const tiles: TileRef[] = [];
+    for (
+      let i = 0;
+      i < front.length && tiles.length < FRONT_COST_SAMPLE_TILES;
+      i += step
+    ) {
+      tiles.push(front[i]);
+    }
+    return tiles;
   }
 
   // Hard & Impossible keep their troops home while under attack, Medium only sometimes
@@ -1264,9 +1412,35 @@ export class NationAttackBehavior extends AiAttackBehavior {
       return null;
     }
 
-    // weather-seasons hook: hold off big attacks into snow land in winter.
-    if (holdsOffWinterAttack(this.game, this.player, target, troops)) {
-      return null;
+    // Holds below are for offensive attacks only: hitting back, retaking
+    // land or joining an ally's war always goes ahead.
+    const answers = this.answers(target);
+    if (!answers) {
+      // The weather by difficulty: winter, mud (NationWeatherBehavior).
+      if (holdsForWeather(this.game, this.player, target, troops)) {
+        return null;
+      }
+      // Launching early before a winter only where the front has no snow.
+      if (
+        this.earlyLaunch &&
+        isSnowFront(frontWeather(this.game, this.player, target))
+      ) {
+        return null;
+      }
+      // An attack on a player is sized by what its front costs: at least
+      // the stack that takes NATION_ATTACK_FRONT_TILES at the forecast's
+      // loss per tile, raised to it if we can spare that, else not sent.
+      if (target.isPlayer() && !isBotAttack) {
+        const stack = this.worthwhileStack(target, troops);
+        if (troops < stack) {
+          const most = Math.min(
+            this.player.troops() - reserveTroops,
+            this.troopSendCap(opponent),
+          );
+          if (most < stack) return null;
+          troops = stack;
+        }
+      }
     }
 
     // Hard & Impossible: don't attack if we'd send less than 20% of target's troops
@@ -1375,12 +1549,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
     const direct = this.game.manhattanDist(launch, landing);
     const { difficulty } = this.game.config().gameConfig();
     if (difficulty === Difficulty.Easy) {
-      return {
-        length: direct,
-        blocker: null,
-        // weather-seasons hook: a sea storm on the way.
-        stormy: routeCrossesStorm(this.game, [launch, landing]),
-      };
+      return this.sailedRoute(target, [launch, landing], direct, null);
     }
 
     const path =
@@ -1389,8 +1558,6 @@ export class NationAttackBehavior extends AiAttackBehavior {
         : PathFinding.Water(this.game).findPath(launch, landing);
     const route = path ?? [launch, landing];
     const length = path?.length ?? direct;
-    // weather-seasons hook: a sea storm on the way.
-    const stormy = routeCrossesStorm(this.game, route);
     // Without a path, assume the warship can fire as soon as we launch
     const sailed = (i: number) => (path === null ? 0 : i);
 
@@ -1426,12 +1593,76 @@ export class NationAttackBehavior extends AiAttackBehavior {
         // Shell and boat close in by at most 4 tiles a tick; 10 tiles spare for its reaction
         const ticksLeft = length - sailed(i);
         if (4 * ticksLeft >= this.game.manhattanDist(w.tile(), route[i]) - 10) {
-          return { length, blocker: w, stormy };
+          return this.sailedRoute(target, route, length, w);
         }
         break;
       }
     }
-    return { length, blocker: null, stormy };
+    return this.sailedRoute(target, route, length, null);
+  }
+
+  // A sailed route with the storm on it: stormy when we'd rather wait or
+  // land elsewhere (NationWeatherBehavior.avoidsStorm). While boatRoute plans
+  // a route, every landing weighed is noted for Impossible's pick.
+  private sailedRoute(
+    landing: TileRef,
+    route: TileRef[],
+    length: number,
+    blocker: Unit | null,
+  ): { length: number; blocker: Unit | null; stormy: boolean } {
+    const stormTiles = routeStormTiles(this.game, route);
+    this.landingCandidates?.push({ landing, length, blocker, stormTiles });
+    return {
+      length,
+      blocker,
+      stormy: avoidsStorm(this.game, this.player, stormTiles),
+    };
+  }
+
+  // Impossible picks the safest landing it weighed when every one has a storm
+  // on the way: the least storm, sailing through it if that's short. An attack
+  // that answers one sails through any storm (Easy and Medium included).
+  protected override boatRoute(target: Player): BoatRoute | null {
+    const known = this.boatRoutes?.get(target);
+    if (known !== undefined) return known;
+    const candidates: LandingCandidate[] = [];
+    this.landingCandidates = candidates;
+    let route: BoatRoute | null;
+    try {
+      route = super.boatRoute(target);
+    } finally {
+      this.landingCandidates = null;
+    }
+    if (route === null || route.stormy !== true) return route;
+    let chosen: BoatRoute = route;
+    if (
+      this.game.config().difficultyFor(this.player) === Difficulty.Impossible
+    ) {
+      let best: LandingCandidate | null = null;
+      for (const c of candidates) {
+        if (c.blocker !== null) continue;
+        if (
+          best === null ||
+          c.stormTiles < best.stormTiles ||
+          (c.stormTiles === best.stormTiles && c.length < best.length)
+        ) {
+          best = c;
+        }
+      }
+      if (best !== null && best.stormTiles <= NATION_SHORT_STORM_TILES) {
+        chosen = {
+          landing: best.landing,
+          length: best.length,
+          blocker: null,
+          stormy: false,
+        };
+      }
+    }
+    if (chosen.stormy === true && this.answers(target)) {
+      chosen = { ...chosen, stormy: false };
+    }
+    if (chosen !== route) this.boatRoutes?.set(target, chosen);
+    return chosen;
   }
 
   // Hard & Impossible don't sail further than this to attack someone
