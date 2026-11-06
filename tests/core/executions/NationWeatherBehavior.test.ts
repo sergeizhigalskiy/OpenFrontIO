@@ -103,8 +103,9 @@ async function twoFronts(difficulty: Difficulty) {
   const snowy = game.player("snowy");
   const fair = game.player("fair");
   conquerRect(game, nation, 0, 0, 50, 100);
-  conquerRect(game, snowy, 50, 0, 100, 30);
-  conquerRect(game, fair, 50, 30, 100, 100);
+  // Snow land is the northern 25 rows of this 100-row map.
+  conquerRect(game, snowy, 50, 0, 100, 25);
+  conquerRect(game, fair, 50, 25, 100, 100);
   nation.setTroops(100_000);
   // The snow-front enemy is a little weaker, so in fair weather it goes first.
   snowy.setTroops(9_000);
