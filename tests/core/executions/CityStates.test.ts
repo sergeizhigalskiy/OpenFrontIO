@@ -293,6 +293,36 @@ describe("city-states: founding", () => {
     (exec as unknown as { removeClusters(): void }).removeClusters();
   }
 
+  test("a city-state ringed by one player keeps its land; a tribe ringed the same way is annexed", async () => {
+    const { game, a, cs } = await founded();
+    // a holds everything around the disc, two tiles deep.
+    for (let x = 90; x <= 110; x++) {
+      for (let y = 90; y <= 110; y++) {
+        const t = game.ref(x, y);
+        if (game.owner(t) !== cs) a.conquer(t);
+      }
+    }
+    const csTiles = cs.numTilesOwned();
+    expect(csTiles).toBe(discSize());
+    runAnnexation(game, cs);
+    expect(cs.isAlive()).toBe(true);
+    expect(cs.numTilesOwned()).toBe(csTiles);
+    // Its own PlayerExecution's cluster passes leave it alone too.
+    executeTicks(game, 45);
+    expect(cs.isAlive()).toBe(true);
+    expect(cs.numTilesOwned()).toBe(csTiles);
+
+    const tribe = game.addPlayer(
+      new PlayerInfo("ringed", PlayerType.Bot, null, "ringed"),
+    );
+    conquerRect(game, a, 20, 20, 41, 41);
+    conquerRect(game, tribe, 23, 23, 38, 38);
+    expect(tribe.numTilesOwned()).toBe(225);
+    runAnnexation(game, tribe);
+    expect(tribe.isAlive()).toBe(false);
+    expect(tribe.numTilesOwned()).toBe(0);
+  });
+
   test("a player ringed by a city-state alone is not annexed by it", async () => {
     const { game, cs } = await founded();
     const tribe = game.addPlayer(

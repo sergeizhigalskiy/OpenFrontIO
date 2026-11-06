@@ -9,6 +9,7 @@ const forecastMock = vi.hoisted(() => ({
   result: {
     lossPerTile: 123,
     tilesPerSecond: 4.25 as number | null,
+    defensePost: false,
   },
   calls: [] as unknown[][],
   fronts: new Map<number, number>([
@@ -136,6 +137,8 @@ describe("PlayerInfoOverlay attack forecast", () => {
         maxTroops: () => 1000,
         isReplay: () => false,
         gameConfig: () => ({}),
+        defensePostDefenseBonus: () => 5,
+        defensePostSpeedBonus: () => 3,
       }),
       teamClanTag: () => undefined,
       ...over,
@@ -147,6 +150,7 @@ describe("PlayerInfoOverlay attack forecast", () => {
     forecastMock.result = {
       lossPerTile: 123,
       tilesPerSecond: 4.25,
+      defensePost: false,
     };
     overlay = new PlayerInfoOverlay();
     overlay.eventBus = { on: vi.fn() } as never;
@@ -190,12 +194,33 @@ describe("PlayerInfoOverlay attack forecast", () => {
     expect(last[5]).toBe(12);
   });
 
-  it("hides the troop-derived numbers under fog", async () => {
+  it("names a covering defense post with the config's factors", async () => {
+    forecastMock.result = { ...forecastMock.result, defensePost: true };
+    const out = await hover(game(enemy, me()));
+    expect(out).toContain('attack_forecast.defense_post{"loss":5,"time":3}');
+    // Factors come from the config, not the text.
+    const config = {
+      isUnitDisabled: () => true,
+      maxTroops: () => 1000,
+      isReplay: () => false,
+      gameConfig: () => ({}),
+      defensePostDefenseBonus: () => 4,
+      defensePostSpeedBonus: () => 2.5,
+    };
+    const other = await hover(game(enemy, me(), { config: () => config }));
+    expect(other).toContain(
+      'attack_forecast.defense_post{"loss":4,"time":2.5}',
+    );
+  });
+
+  it("hides the troop-derived numbers under fog, not the post's cover", async () => {
+    forecastMock.result = { ...forecastMock.result, defensePost: true };
     const fog = vi.fn(() => true);
     const out = await hover(game(enemy, me(), { fogHidesTroops: fog }));
     expect(out).toContain('attack_forecast.loss{"troops":"?"}');
     expect(out).toContain('attack_forecast.speed{"speed":"?"}');
     expect(out).not.toContain('"troops":"12"');
+    expect(out).toContain("attack_forecast.defense_post");
     expect(fog).toHaveBeenCalledWith(42, enemy);
 
     // Unclaimed land has no troops for fog to hide.

@@ -51,6 +51,8 @@ export interface AttackForecast {
   lossPerTile: number;
   /** Tiles taken per second at the start, or null when the front is unknown. */
   tilesPerSecond: number | null;
+  /** One of the defender's defense posts covers the tile. */
+  defensePost: boolean;
 }
 
 /**
@@ -132,5 +134,6 @@ export function attackForecast<P extends ForecastPlayer<P>>(
       frontSize === null || result.tickFraction <= 0
         ? null
         : ticksPerSecond / result.tickFraction,
+    defensePost: defenderHasDefensePost,
   };
 }
