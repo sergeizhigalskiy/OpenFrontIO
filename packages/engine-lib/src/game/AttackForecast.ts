@@ -10,8 +10,10 @@
  */
 import { GameMap, TileRef } from "@openfront/engine-api/game/GameMap";
 import { PlayerType } from "@openfront/engine-api/game/GameTypes";
+import { TerrainFeature } from "@openfront/engine-api/game/TerrainFeature";
 import {
   attackEnvironment,
+  AttackEnvironment,
   AttackEnvironmentGame,
   withEnvironmentCost,
 } from "./AttackEnvironment";
@@ -21,6 +23,14 @@ import {
   AttackLogicResult,
 } from "./AttackLogic";
 import { defensePostCovers, DefenseUnitQuery } from "./DefensePosts";
+
+/** `env` with no terrain feature when `drop`. */
+function withoutFeatures(
+  env: AttackEnvironment,
+  drop: boolean,
+): AttackEnvironment {
+  return drop ? { ...env, feature: TerrainFeature.None } : env;
+}
 
 /** Mean of the 0-4 tiles of jitter AttackExecution adds to its front each tick. */
 export const ATTACK_FRONT_JITTER_MEAN = 2;
@@ -86,6 +96,8 @@ export function attackFrontSizes(
  * (attackFrontSizes), or null if unknown. `spearhead` prices an attack
  * focused on the tile, whose budget comes from at most SPEAR_BUDGET_FRONT
  * of that border, as a click sends. The tile must be passable land.
+ * `terrainFeatures` false prices the tile as if it had no forest, river or
+ * ford (Medium nations read the forecast that way).
  */
 export function attackForecast<P extends ForecastPlayer<P>>(
   game: ForecastGame,
@@ -95,6 +107,7 @@ export function attackForecast<P extends ForecastPlayer<P>>(
   attackTroops: number,
   frontSize: number | null,
   spearhead: boolean,
+  terrainFeatures = true,
 ): AttackForecast {
   const defenderHasDefensePost =
     defender !== null && defensePostCovers(game, tile, defender.smallID());
@@ -125,7 +138,10 @@ export function attackForecast<P extends ForecastPlayer<P>>(
       borderSize,
     }),
     // Forest, river, ford, winter and mud, capped, as AttackExecution does.
-    attackEnvironment(game, tile, defender !== null, defenderHasDefensePost),
+    withoutFeatures(
+      attackEnvironment(game, tile, defender !== null, defenderHasDefensePost),
+      !terrainFeatures,
+    ),
   );
   const ticksPerSecond = 1000 / game.config().msPerTick();
   return {

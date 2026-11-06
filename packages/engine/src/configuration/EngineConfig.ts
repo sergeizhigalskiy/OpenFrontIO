@@ -4,6 +4,7 @@ import {
   Gold,
   PlayerInfo,
   PlayerType,
+  Team,
   TerraNullius,
   Tick,
   UnitType,
@@ -447,12 +448,21 @@ export class EngineConfig extends Config {
     }
   }
 
-  startManpower(playerInfo: PlayerInfo): number {
+  /**
+   * Troops a player of `playerInfo` on `team` starts with. A nation's come
+   * from the difficulty it plays at (Config.difficultyFor), so a stacked
+   * team's nations start a step stronger too.
+   */
+  startManpower(playerInfo: PlayerInfo, team: Team | null = null): number {
     if (playerInfo.playerType === PlayerType.Bot) {
       return 10_000;
     }
     if (playerInfo.playerType === PlayerType.Nation) {
-      switch (this._gameConfig.difficulty) {
+      const difficulty = this.difficultyFor({
+        type: () => playerInfo.playerType,
+        team: () => team,
+      });
+      switch (difficulty) {
         case Difficulty.Easy:
           return 12_500;
         case Difficulty.Medium:
@@ -462,7 +472,7 @@ export class EngineConfig extends Config {
         case Difficulty.Impossible:
           return 31_250;
         default:
-          assertNever(this._gameConfig.difficulty);
+          assertNever(difficulty);
       }
     }
     // The onboarding tutorial's player starts about half full, where troops

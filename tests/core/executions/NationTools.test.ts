@@ -34,7 +34,6 @@ import {
 } from "@openfront/engine/execution/nation/NationAttackBehavior";
 import {
   cheapestFrontTile,
-  forecastHardness,
   FrontIndex,
   FrontSurvey,
   NATION_CITY_FOCUS_RANGE,
@@ -111,6 +110,7 @@ function behaviorFor(game: Game, player: Player): NationAttackBehavior {
 /** The private parts of a nation's attack behavior these tests read. */
 interface Inside {
   rankWeight(p: Player): number;
+  worthwhileStack(target: Player, troops: number): number;
   reaimStalledAttacks(): void;
   retakeRailCut(): boolean;
   trackSites(): void;
@@ -219,106 +219,51 @@ function terrainGame(difficulty: Difficulty) {
   conquerRect(game, flats, 20, 40, 60, 60);
   nation.setTroops(500_000);
   for (const p of [hills, woods, flats]) p.setTroops(40_000);
-  const hardness = (p: Player) =>
-    forecastHardness(
-      game,
-      nation,
-      p,
-      surveyFronts(game, nation).get(p.smallID()),
-      100_000,
-      difficulty,
-    );
-  return { game, nation, hills, woods, flats, hardness };
+  return { game, nation, hills, woods, flats };
 }
 
 describe("picking fronts with the forecast", () => {
-  it("Medium reads the terrain type only; Hard and Impossible the whole forecast; Easy neither", () => {
-    for (const difficulty of DIFFICULTIES) {
-      const { hills, woods, flats, hardness } = terrainGame(difficulty);
-      expect(hardness(flats), difficulty).toBeCloseTo(1);
-      switch (difficulty) {
-        case Difficulty.Easy:
-          expect(hardness(hills)).toBe(1);
-          expect(hardness(woods)).toBe(1);
-          break;
-        case Difficulty.Medium:
-          // Mountains bleed 120 a tile where plains bleed 80; forest is a
-          // terrain feature it ignores.
-          expect(hardness(hills)).toBeCloseTo(1.5);
-          expect(hardness(woods)).toBeCloseTo(1);
-          break;
-        default:
-          expect(hardness(hills)).toBeCloseTo(1.5);
-          expect(hardness(woods)).toBeCloseTo(1.2);
-      }
-    }
-  });
-
-  it("between targets of like strength, Medium and up attack the cheapest front", () => {
+  it("targets are ranked by troops at every difficulty, whatever their terrain", () => {
     for (const difficulty of DIFFICULTIES) {
       const { game, nation, hills, woods, flats } = terrainGame(difficulty);
-      const behavior = behaviorFor(game, nation);
-      const b = inside(behavior);
+      const b = inside(behaviorFor(game, nation));
       const [h, w, f] = [hills, woods, flats].map((p) => b.rankWeight(p));
-      if (difficulty === Difficulty.Easy) {
-        expect([h, w]).toEqual([f, f]);
-        continue;
-      }
-      expect(f, difficulty).toBeLessThan(h);
-      const sent = attacksSent(game);
-      for (let i = 0; i < 20 && sent().length === 0; i++) {
-        behavior.maybeAttack();
-      }
-      // Medium can't tell the forest from the plains.
-      expect(sent()[0]?.target, difficulty).toBe(
-        difficulty === Difficulty.Medium ? woods.id() : flats.id(),
-      );
-      expect(w === f).toBe(difficulty === Difficulty.Medium);
+      expect([h, w], difficulty).toEqual([f, f]);
+      hills.setTroops(10_000);
+      expect(b.rankWeight(hills)).toBeLessThan(b.rankWeight(flats));
     }
   });
 
-  it("a much weaker target still comes first behind mountains", () => {
-    const { game, nation, hills, flats } = terrainGame(Difficulty.Hard);
-    hills.setTroops(10_000);
-    const b = inside(behaviorFor(game, nation));
-    expect(b.rankWeight(hills)).toBeLessThan(b.rankWeight(flats));
+  it("the stack an attack needs comes from the forecast; Medium reads it without terrain features", () => {
+    for (const difficulty of DIFFICULTIES) {
+      const { game, nation, hills, woods, flats } = terrainGame(difficulty);
+      const b = inside(behaviorFor(game, nation));
+      const stack = (p: Player) => b.worthwhileStack(p, 100_000);
+      // Mountains bleed 120 a tile where plains bleed 80: terrain, not a
+      // terrain feature, so every difficulty prices it.
+      expect(stack(hills) / stack(flats), difficulty).toBeCloseTo(1.5);
+      // Forest is a feature: 1.2x the losses, except for Medium.
+      expect(stack(woods) / stack(flats), difficulty).toBeCloseTo(
+        difficulty === Difficulty.Medium ? 1 : 1.2,
+      );
+    }
   });
 });
 
 describe("weighing defense posts", () => {
-  it("Hard and Impossible rank a front mostly under posts as twice as costly", async () => {
+  it("Hard and Impossible rank a front mostly under posts as twice as strong", async () => {
     for (const difficulty of DIFFICULTIES) {
       const { game, nation, enemy, front } = await splitPlains(difficulty);
       const b = inside(behaviorFor(game, nation));
-      const plain = b.rankWeight(enemy);
+      expect(b.rankWeight(enemy)).toBe(enemy.troops());
       // Covers y 22-78 of the 100-tile front at x = 50.
       enemy.buildUnit(UnitType.DefensePost, game.ref(60, 50), {});
       expect(postsCoverFront(game, enemy, front())).toBe(true);
-      const covered = b.rankWeight(enemy);
-      const hardness = forecastHardness(
-        game,
-        nation,
-        enemy,
-        front(),
-        nation.troops(),
-        difficulty,
+      expect(b.rankWeight(enemy), difficulty).toBe(
+        difficulty === Difficulty.Hard || difficulty === Difficulty.Impossible
+          ? NATION_POST_FRONT_WEIGHT * enemy.troops()
+          : enemy.troops(),
       );
-      switch (difficulty) {
-        case Difficulty.Easy:
-          expect(covered).toBe(enemy.troops());
-          break;
-        case Difficulty.Medium:
-          // It doesn't weigh posts, in its forecast or otherwise.
-          expect(covered).toBe(plain);
-          break;
-        default:
-          // The forecast prices the post (5x) where it covers; the front
-          // counts twice on top.
-          expect(hardness).toBeGreaterThan(2);
-          expect(covered).toBeCloseTo(
-            NATION_POST_FRONT_WEIGHT * hardness * enemy.troops(),
-          );
-      }
     }
   });
 

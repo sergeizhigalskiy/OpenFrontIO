@@ -60,7 +60,6 @@ import {
 import { mineWeightedTroops } from "./NationResourceSiteTargeting";
 import {
   cheapestFrontTile,
-  forecastHardness,
   FrontSurvey,
   NATION_ATTACK_FRONT_TILES,
   NATION_POST_FRONT_WEIGHT,
@@ -338,10 +337,9 @@ export class NationAttackBehavior extends AiAttackBehavior {
     for (const n of playerNeighbors) {
       if (n.isPlayer()) borderingPlayerSet.add(n);
     }
-    // Weakest first (rankWeight): Medium and up scale troops by the
-    // forecast's price of the front against open ground, Hard & Impossible
-    // ranking a front mostly under posts as NATION_POST_FRONT_WEIGHT times
-    // as strong. A target holding resource sites counts as a bit weaker,
+    // Weakest first (rankWeight), Hard & Impossible ranking a front mostly
+    // under posts as NATION_POST_FRONT_WEIGHT times as strong. A target
+    // holding resource sites counts as a bit weaker,
     // and for Hard & Impossible one behind a snow front in winter or a mud
     // front as stronger (NationWeatherBehavior.frontHardness).
     // Weighed once per player up front: fishing grounds look for their coast.
@@ -848,11 +846,15 @@ export class NationAttackBehavior extends AiAttackBehavior {
   /**
    * The smallest stack worth sending at `target`: the attack forecast's loss
    * per tile on our front with `troops`, times NATION_ATTACK_FRONT_TILES.
-   * 0 when there is no front to price.
+   * Medium reads the forecast without terrain features (the ladder's
+   * "picks fronts with the forecast, ignoring terrain"). 0 when there is no
+   * front to price.
    */
   private worthwhileStack(target: Player, troops: number): number {
     const tiles = this.frontCostTiles(target);
     if (tiles.length === 0) return 0;
+    const features =
+      this.game.config().difficultyFor(this.player) !== Difficulty.Medium;
     let loss = 0;
     for (const tile of tiles) {
       loss += attackForecast(
@@ -863,6 +865,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
         troops,
         null,
         false,
+        features,
       ).lossPerTile;
     }
     return (loss / tiles.length) * NATION_ATTACK_FRONT_TILES;
@@ -1076,28 +1079,21 @@ export class NationAttackBehavior extends AiAttackBehavior {
 
   /**
    * What we rank `p` by among the players we could attack, lowest first:
-   * its troops, discounted for the resource sites it holds; on Medium and
-   * up times how much more than open ground the forecast prices its front
-   * for the stack we could send (NationSpearheads.forecastHardness), Hard
-   * and Impossible doubling it when posts cover most of the front.
+   * its troops, as upstream, discounted for the resource sites it holds;
+   * Hard and Impossible double it when posts cover more than half the front
+   * (NationSpearheads.postsCoverFront).
    */
   private rankWeight(p: Player): number {
     const troops = mineWeightedTroops(this.game, this.player, p);
     const difficulty = this.game.config().difficultyFor(this.player);
-    if (difficulty === Difficulty.Easy) return troops;
-    const front = this.frontWith(p);
-    const stack = Math.max(1, this.player.troops() - this.reserveTroops(p));
-    let w =
-      troops *
-      forecastHardness(this.game, this.player, p, front, stack, difficulty);
     if (
       (difficulty === Difficulty.Hard ||
         difficulty === Difficulty.Impossible) &&
-      postsCoverFront(this.game, p, front)
+      postsCoverFront(this.game, p, this.frontWith(p))
     ) {
-      w *= NATION_POST_FRONT_WEIGHT;
+      return troops * NATION_POST_FRONT_WEIGHT;
     }
-    return w;
+    return troops;
   }
 
   /**

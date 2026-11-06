@@ -239,6 +239,15 @@ export class GameImpl implements Game {
       this._config.setStackedTeams(
         stackedTeamsOf(this._config.gameConfig(), this.allPlayers()),
       );
+      // Known only now that every team is filled: their nations start with
+      // the troops of the difficulty they play at (startManpower).
+      const stacked = this._config.gameConfig().stackedTeams ?? [];
+      for (const p of this.allPlayers()) {
+        const team = p.team();
+        if (p.type() !== PlayerType.Nation || team === null) continue;
+        if (!stacked.includes(team)) continue;
+        p.setTroops(this._config.startManpower(p.info(), team));
+      }
     }
 
     console.log(
@@ -1003,12 +1012,13 @@ export class GameImpl implements Game {
   }
 
   addPlayer(playerInfo: PlayerInfo, team: Team | null = null): Player {
+    const assigned = team ?? this.maybeAssignTeam(playerInfo);
     const player = new PlayerImpl(
       this,
       this.nextPlayerID,
       playerInfo,
-      this.config().startManpower(playerInfo),
-      team ?? this.maybeAssignTeam(playerInfo),
+      this.config().startManpower(playerInfo, assigned),
+      assigned,
     );
     this._playersBySmallID.push(player);
     this.nextPlayerID++;

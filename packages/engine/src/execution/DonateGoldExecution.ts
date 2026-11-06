@@ -100,7 +100,7 @@ export class DonateGoldExecution implements Execution {
   }
 
   private getGoldChunkSize(): number {
-    const { difficulty } = this.mg.config().gameConfig();
+    const difficulty = this.mg.config().difficultyFor(this.recipient);
     switch (difficulty) {
       case Difficulty.Easy:
         return 2_500;

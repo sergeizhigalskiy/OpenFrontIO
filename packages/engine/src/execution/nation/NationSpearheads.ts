@@ -1,14 +1,6 @@
 import { TileRef } from "@openfront/engine-api/game/GameMap";
-import {
-  Difficulty,
-  TerrainType,
-  UnitType,
-} from "@openfront/engine-api/game/GameTypes";
-import {
-  ATTACK_FRONT_JITTER_MEAN,
-  attackForecast,
-} from "@openfront/engine-lib/game/AttackForecast";
-import { attackBudgetFront } from "@openfront/engine-lib/game/AttackLogic";
+import { Difficulty, UnitType } from "@openfront/engine-api/game/GameTypes";
+import { attackForecast } from "@openfront/engine-lib/game/AttackForecast";
 import {
   DEFENSE_POST_RANGE,
   defensePostCovers,
@@ -25,17 +17,15 @@ import { pocketAnnexLimit } from "../PlayerExecution";
  *
  * A front is the target's land across our border (surveyFronts).
  *
- * Picking fronts with the forecast (forecastHardness): nations still rank
- * the players they could attack weakest first, as upstream does; Medium and
- * up scale each one's troops by how much more the attack forecast
- * (engine-lib AttackForecast) says a tile of its front costs than open
- * ground, so between targets of like strength they prefer the cheapest
- * front. Medium reads the terrain type only, ignoring terrain features (and
- * posts, which it doesn't weigh); Hard and Impossible run the full forecast
- * (terrain, forests, rivers, posts, fallout).
+ * Targets are ranked weakest first by troops, as upstream does. The attack
+ * forecast (engine-lib AttackForecast) decides where to strike and how much
+ * to send: the spearheads below, the cheapest front tile, and the stack an
+ * attack needs (NationAttackBehavior.worthwhileStack), which Medium prices
+ * without terrain features (the ladder's "picks fronts with the forecast,
+ * ignoring terrain").
  *
  * Weighing posts: Hard and Impossible rank a target as NATION_POST_FRONT_WEIGHT
- * times as costly when its defense posts cover more than half the front.
+ * times as strong when its defense posts cover more than half the front.
  *
  * Spearheads (spearheadFocus), first that applies:
  *  - Medium and up: the target's nearest defense post covering at least a
@@ -76,8 +66,6 @@ export const NATION_ATTACK_FRONT_TILES = 150;
 const FRONT_SURVEY_MAX_TILES = 512;
 /** Our border tiles scanned at most, so a huge border stays cheap. */
 const FRONT_SURVEY_SCAN_BORDER_TILES = 4096;
-/** Front tiles the forecast prices for a front's hardness. */
-const FRONT_COST_SAMPLE_TILES = 8;
 /** Front tiles read for post cover and the cheapest tile. */
 const FRONT_COVER_SAMPLE_TILES = 32;
 /** Front tiles a neck search starts from. */
@@ -168,95 +156,6 @@ export function sampleTiles(tiles: readonly TileRef[], n: number): TileRef[] {
     out.push(tiles[Math.floor((i * tiles.length) / n)]);
   }
   return out;
-}
-
-/** Up to `n` passable land tiles of `target`'s border: a front for a target across the water. */
-function borderSample(game: Game, target: Player, n: number): TileRef[] {
-  const out: TileRef[] = [];
-  for (const t of target.borderTiles()) {
-    if (game.isLand(t) && !game.isImpassable(t)) out.push(t);
-    if (out.length >= n) break;
-  }
-  return out;
-}
-
-/**
- * How many times an open-ground tile a tile of `target`'s front costs
- * `player` with `troops`, by the forecast, averaged over sampled front tiles
- * (a target without a land front is read at its border): Medium reads the
- * terrain type only; Hard and Impossible the full forecast. 1 on Easy, or
- * with nothing to read.
- */
-export function forecastHardness(
-  game: Game,
-  player: Player,
-  target: Player,
-  front: FrontSurvey | undefined,
-  troops: number,
-  difficulty: Difficulty,
-): number {
-  if (difficulty === Difficulty.Easy) return 1;
-  const frontSize = Math.max(1, front?.tiles.length ?? 0);
-  const open = lossPerTile(
-    game,
-    player,
-    target,
-    TerrainType.Plains,
-    troops,
-    frontSize,
-  );
-  if (!(open > 0)) return 1;
-  const tiles =
-    front !== undefined && front.tiles.length > 0
-      ? sampleTiles(front.tiles, FRONT_COST_SAMPLE_TILES)
-      : borderSample(game, target, FRONT_COST_SAMPLE_TILES);
-  if (tiles.length === 0) return 1;
-  let loss = 0;
-  for (const tile of tiles) {
-    loss +=
-      difficulty === Difficulty.Medium
-        ? lossPerTile(
-            game,
-            player,
-            target,
-            game.terrainType(tile),
-            troops,
-            frontSize,
-          )
-        : attackForecast(game, player, target, tile, troops, frontSize, false)
-            .lossPerTile;
-  }
-  return loss / tiles.length / open;
-}
-
-/** The forecast's loss per tile on `terrain`, with no post, feature, fallout or environment. */
-function lossPerTile(
-  game: Game,
-  player: Player,
-  target: Player,
-  terrain: TerrainType,
-  troops: number,
-  frontSize: number,
-): number {
-  return game.config().attackLogic({
-    terrain,
-    attackTroops: Math.max(1, troops),
-    attacker: { type: player.type(), numTiles: player.numTilesOwned() },
-    defender: {
-      type: target.type(),
-      numTiles: Math.max(1, target.numTilesOwned()),
-      troops: target.troops(),
-      isTraitor: target.isTraitor(),
-      isDisconnectedTeammate:
-        target.isDisconnected() && player.isOnSameTeam(target),
-      isCityState: target.isCityState(),
-    },
-    defenderHasDefensePost: false,
-    falloutRatio: null,
-    borderSize:
-      attackBudgetFront(Math.max(1, frontSize), false) +
-      ATTACK_FRONT_JITTER_MEAN,
-  }).attackerTroopLoss;
 }
 
 function builtUnits(player: Player, type: UnitType): Unit[] {

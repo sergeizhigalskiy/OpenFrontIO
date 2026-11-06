@@ -306,6 +306,17 @@ describe("stacked teams in a game", () => {
     );
   });
 
+  test("short-handed Hard nations start with Impossible's manpower", async () => {
+    const { game, nationsOn } = await stackedGame(Difficulty.Hard);
+    const [red] = nationsOn(RED);
+    const [blue] = nationsOn(BLUE);
+    expect(red.troops()).toBe(25_000);
+    expect(blue.troops()).toBe(31_250);
+    expect(blue.troops()).toBe(
+      game.config().startManpower(blue.info(), blue.team()),
+    );
+  });
+
   test("short-handed Impossible nations grow 10% faster", async () => {
     const { game, nationsOn } = await stackedGame(Difficulty.Impossible);
     const [red] = nationsOn(RED);

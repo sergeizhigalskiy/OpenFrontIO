@@ -14,11 +14,11 @@ import {
   withEnvironmentCost,
 } from "@openfront/engine-lib/game/AttackEnvironment";
 import { attackBudgetFront } from "@openfront/engine-lib/game/AttackLogic";
-import { defensePostCovers } from "@openfront/engine-lib/game/DefensePosts";
 import {
   bossShieldAttackCap,
   isBossRaidBoss,
 } from "@openfront/engine-lib/game/BossRaid";
+import { defensePostCovers } from "@openfront/engine-lib/game/DefensePosts";
 import {
   isInfected,
   plagueCaptureTroops,
@@ -246,7 +246,8 @@ export class AttackExecution implements Execution {
     this.mg.stats().attackMaxIncoming(this.target, this.attack.troops());
 
     if (!this.target.isPlayer()) return;
-    const difficulty = this.mg.config().gameConfig().difficulty;
+    // How the target takes it: a nation by the difficulty it plays at.
+    const difficulty = this.mg.config().difficultyFor(this.target);
     // Hitting back at whoever just attacked us doesn't anger them, except on Easy
     if (
       difficulty !== Difficulty.Easy &&

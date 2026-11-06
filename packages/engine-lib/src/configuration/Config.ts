@@ -504,7 +504,7 @@ export class Config implements AttackRules {
    * nation Boss, which is always Impossible, and nations on a short-handed
    * team of a stacked game, which play one step harder (TeamAssignment.ts).
    */
-  difficultyFor(player: PlayerLike): Difficulty {
+  difficultyFor(player: Pick<PlayerLike, "type" | "team">): Difficulty {
     if (
       player.type() === PlayerType.Nation &&
       isBossRaidBoss(this._gameConfig, player)
@@ -534,7 +534,7 @@ export class Config implements AttackRules {
   }
 
   /** A nation on a short-handed team of a stacked game. */
-  private onStackedTeam(player: PlayerLike): boolean {
+  private onStackedTeam(player: Pick<PlayerLike, "type" | "team">): boolean {
     if (player.type() !== PlayerType.Nation) return false;
     const stacked = this._gameConfig.stackedTeams;
     if (stacked === undefined || stacked.length === 0) return false;
