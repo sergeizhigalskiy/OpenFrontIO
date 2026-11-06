@@ -13,11 +13,21 @@ import {
   isInfected,
   outbreakTiles,
   pickOutbreakCenter,
+  PLAGUE_COMEBACK_DELAY_TICKS,
+  PLAGUE_CURE_GROWTH_TICKS,
+  PLAGUE_MAX_OUTBREAKS,
   PLAGUE_MIN_SPAWN_DISTANCE,
-  PLAGUE_START_TROOPS,
+  PLAGUE_OUTBREAK_DELAY_TICKS,
+  PLAGUE_OUTBREAK_RADIUS,
   plagueCaptureTroops,
+  plagueComebackTroops,
+  plagueComesBack,
   plagueConsumedWorld,
+  plagueCureGold,
   plagueDecay,
+  plagueSiteCount,
+  plagueSpreadTroops,
+  plagueStartTroops,
 } from "@openfront/engine-lib/game/Plague";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import { AttackExecution } from "@openfront/engine/execution/AttackExecution";
@@ -71,6 +81,11 @@ function infectedOn(game: Game, rect: [number, number, number, number]) {
   return infected;
 }
 
+/** Runs until `ticksSinceStart` ticks have passed since the spawn phase. */
+function runTo(game: Game, ticksSinceStart: number): void {
+  while (game.ticksSinceStart() < ticksSinceStart) executeTicks(game, 1);
+}
+
 function nationBehavior(game: Game, player: Player): NationAttackBehavior {
   return new NationAttackBehavior(
     new PseudoRandom(42),
@@ -114,10 +129,36 @@ describe("plague rules", () => {
     expect(plagueConsumedWorld(6_999, 10_000)).toBe(false);
     expect(plagueConsumedWorld(7_000, 10_000)).toBe(true);
   });
+
+  test("outbreaks: at 4:00, 0.75x the strongest player's troops but at least 30k", () => {
+    expect(PLAGUE_OUTBREAK_DELAY_TICKS).toBe(2400);
+    expect(plagueStartTroops(100_000)).toBe(75_000);
+    expect(plagueStartTroops(10_000)).toBe(30_000);
+    expect(plagueSiteCount(5)).toBe(1);
+    expect(plagueSiteCount(6)).toBe(2);
+  });
+
+  test("comebacks: wiped before 20:00, 1.5x the last start 3 minutes later, 3 outbreaks at most", () => {
+    expect(PLAGUE_COMEBACK_DELAY_TICKS).toBe(1800);
+    expect(PLAGUE_MAX_OUTBREAKS).toBe(3);
+    expect(plagueComebackTroops(100_000)).toBe(150_000);
+    expect(plagueComesBack(1, 11_999)).toBe(true);
+    expect(plagueComesBack(1, 12_000)).toBe(false);
+    expect(plagueComesBack(2, 5_000)).toBe(true);
+    expect(plagueComesBack(3, 5_000)).toBe(false);
+  });
+
+  test("the cure pays 500k per outbreak number at the gold multiplier, and spread keeps half", () => {
+    expect(plagueCureGold(1, 1)).toBe(500_000n);
+    expect(plagueCureGold(3, 1)).toBe(1_500_000n);
+    expect(plagueCureGold(2, 0.5)).toBe(500_000n);
+    expect(PLAGUE_CURE_GROWTH_TICKS).toBe(1200);
+    expect(plagueSpreadTroops(30_001)).toBe(15_000);
+  });
 });
 
 describe("plague outbreak", () => {
-  test("placement is deterministic and at least 60 tiles from every spawn", async () => {
+  test("placement is deterministic, on free land, at least 60 tiles from every spawn", async () => {
     const game = await setup(BIG, {});
     const spawns = [
       game.ref(40, 40),
@@ -128,9 +169,10 @@ describe("plague outbreak", () => {
     const first = pickOutbreakCenter(game.map(), new PseudoRandom(9), spawns);
     const again = pickOutbreakCenter(game.map(), new PseudoRandom(9), spawns);
     expect(first).not.toBeNull();
-    expect(again).toBe(first);
+    expect(again).toEqual(first);
+    expect(first!.farEnough).toBe(true);
     for (const s of spawns) {
-      expect(game.euclideanDistSquared(first!, s)).toBeGreaterThanOrEqual(
+      expect(game.euclideanDistSquared(first!.tile, s)).toBeGreaterThanOrEqual(
         PLAGUE_MIN_SPAWN_DISTANCE ** 2,
       );
     }
@@ -138,39 +180,81 @@ describe("plague outbreak", () => {
     expect(outbreakTiles(game.map(), game.ref(100, 100)).length).toBe(317);
   });
 
-  test("breaks out 2 minutes after the spawn phase with 30,000 troops", async () => {
+  test("the disc covers only free land; with none 60 tiles away, the farthest free tile", async () => {
+    const game = await plagueGame(PLAINS, [human("a")]);
+    const a = game.player("a");
+    // Everything held but a strip on the east edge, 85 to 95 tiles from a's
+    // spawn; a spawn in the middle of the strip as well.
+    conquerRect(game, a, 0, 0, 90, 100);
+    const spawns = [game.ref(5, 50), game.ref(95, 50)];
+    const pick = pickOutbreakCenter(game.map(), new PseudoRandom(4), spawns)!;
+    expect(pick.farEnough).toBe(false);
+    expect(game.x(pick.tile)).toBeGreaterThanOrEqual(90);
+    expect(game.owner(pick.tile).isPlayer()).toBe(false);
+    // Farthest from both spawns: a corner of the strip.
+    expect([0, 99]).toContain(game.y(pick.tile));
+    const disc = outbreakTiles(game.map(), pick.tile);
+    expect(disc.length).toBeGreaterThan(0);
+    for (const t of disc) expect(game.owner(t).isPlayer()).toBe(false);
+    // Nothing free at all: no centre.
+    conquerRect(game, a, 90, 0, 100, 100);
+    expect(pickOutbreakCenter(game.map(), new PseudoRandom(4), spawns)).toBe(
+      null,
+    );
+  });
+
+  test("breaks out 4 minutes after the spawn phase with 0.75x the strongest player's troops", async () => {
     const game = await plagueGame(BIG, [human("a"), human("b")]);
     const [a, b] = [game.player("a"), game.player("b")];
     conquerRect(game, a, 20, 20, 30, 30);
     conquerRect(game, b, 170, 170, 180, 180);
     a.setSpawnTile(game.ref(25, 25));
     b.setSpawnTile(game.ref(175, 175));
+    a.setTroops(100_000);
+    b.setTroops(50_000);
     const exec = new PlagueExecution("plague-test");
     game.addExecution(exec);
+    runTo(game, PLAGUE_OUTBREAK_DELAY_TICKS - 1);
+    expect(exec.infectedPlayer()).toBeNull();
     let ticks = 0;
-    while (exec.infectedPlayer() === null && ticks < 1300) {
+    while (exec.infectedPlayer() === null && ticks < 100) {
       executeTicks(game, 1);
       ticks++;
     }
-    expect(Math.round(game.elapsedGameSeconds() * 10)).toBe(1201);
+    expect(Math.round(game.elapsedGameSeconds() * 10)).toBe(
+      PLAGUE_OUTBREAK_DELAY_TICKS + 1,
+    );
     const infected = exec.infectedPlayer()!;
     expect(infected.id()).toBe(INFECTED_PLAYER_ID);
     expect(infected.type()).toBe(PlayerType.Bot);
-    // Its whole pool went straight out in attacks.
+    expect(exec.outbreakCount()).toBe(1);
+    // Half its pool went straight out in attacks; half stays home.
     const inAttacks = infected
       .outgoingAttacks()
       .reduce((sum, attack) => sum + attack.troops(), 0);
     expect(infected.outgoingAttacks().length).toBeGreaterThan(0);
-    expect(infected.troops() + inAttacks).toBe(PLAGUE_START_TROOPS);
+    expect(infected.troops() + inAttacks).toBe(75_000);
+    expect(infected.troops()).toBe(75_000 - plagueSpreadTroops(75_000));
     const center = infected.spawnTile()!;
     for (const s of [a.spawnTile()!, b.spawnTile()!]) {
       expect(game.euclideanDistSquared(center, s)).toBeGreaterThanOrEqual(
         PLAGUE_MIN_SPAWN_DISTANCE ** 2,
       );
     }
-    expect(infected.numTilesOwned()).toBe(
-      outbreakTiles(game.map(), center).length,
-    );
+    // The disc of free land around the centre, and nothing else.
+    let disc = 0;
+    const r = PLAGUE_OUTBREAK_RADIUS;
+    for (let dx = -r; dx <= r; dx++) {
+      for (let dy = -r; dy <= r; dy++) {
+        if (dx * dx + dy * dy > r * r) continue;
+        const x = game.x(center) + dx;
+        const y = game.y(center) + dy;
+        if (!game.isValidCoord(x, y)) continue;
+        expect(game.owner(game.ref(x, y))).toBe(infected);
+        disc++;
+      }
+    }
+    expect(infected.numTilesOwned()).toBe(disc);
     // Another game with the same seed and spawns breaks out on the same tile.
     const twin = await plagueGame(BIG, [human("a"), human("b")]);
     twin.player("a").setSpawnTile(game.ref(25, 25));
@@ -179,8 +263,152 @@ describe("plague outbreak", () => {
     conquerRect(twin, twin.player("b"), 170, 170, 180, 180);
     const twinExec = new PlagueExecution("plague-test");
     twin.addExecution(twinExec);
-    executeTicks(twin, 1201);
+    executeTicks(twin, PLAGUE_OUTBREAK_DELAY_TICKS + 1);
     expect(twinExec.infectedPlayer()!.spawnTile()).toBe(center);
+  });
+
+  test("with 6 humans and nations, two sites share the troops", async () => {
+    const ids = ["a", "b", "c", "d", "e", "f"];
+    const game = await plagueGame(BIG, ids.map(human));
+    // Small holdings in a ring around the middle, far from the corners.
+    ids.forEach((id, i) => {
+      const p = game.player(id);
+      const x = 30 + (i % 3) * 70;
+      const y = i < 3 ? 30 : 170;
+      conquerRect(game, p, x - 3, y - 3, x + 3, y + 3);
+      p.setSpawnTile(game.ref(x, y));
+      p.setTroops(100_000);
+    });
+    const exec = new PlagueExecution("plague-test");
+    game.addExecution(exec);
+    runTo(game, PLAGUE_OUTBREAK_DELAY_TICKS + 1);
+    const infected = exec.infectedPlayer()!;
+    const home = infected.troops();
+    const away = infected
+      .outgoingAttacks()
+      .reduce((sum, attack) => sum + attack.troops(), 0);
+    expect(home + away).toBe(75_000);
+    // Two discs, far apart.
+    const disc = outbreakTiles(game.map(), game.ref(100, 100)).length;
+    expect(infected.numTilesOwned()).toBeGreaterThan(disc);
+    let far = false;
+    const tiles = Array.from(infected.tiles());
+    for (const t of tiles) {
+      if (
+        game.euclideanDistSquared(t, infected.spawnTile()!) >
+        (4 * PLAGUE_OUTBREAK_RADIUS) ** 2
+      ) {
+        far = true;
+      }
+    }
+    expect(far).toBe(true);
+  });
+});
+
+describe("plague cure and comebacks", () => {
+  // a holds the west strip; the outbreak lands on the free land east of it.
+  async function cureGame(config: Record<string, unknown> = {}) {
+    const game = await plagueGame(PLAINS, [human("a")], config);
+    const a = game.player("a");
+    conquerRect(game, a, 0, 0, 10, 100);
+    a.setSpawnTile(game.ref(5, 50));
+    a.setTroops(100_000);
+    const exec = new PlagueExecution("plague-test");
+    // No growth for a, so the first outbreak starts with exactly 75k.
+    game.addExecution(exec);
+    runTo(game, PLAGUE_OUTBREAK_DELAY_TICKS + 1);
+    const infected = exec.infectedPlayer()!;
+    expect(infected.isAlive()).toBe(true);
+    return { game, a, exec, infected };
+  }
+
+  // a takes The Infected's last tiles, as an attack that finishes it would.
+  function finishOff(game: Game, a: Player, infected: Player): void {
+    game.conquerPlayer(a, infected);
+    for (const t of Array.from(infected.tiles())) infected.relinquish(t);
+  }
+
+  test("whoever takes the last tile is paid 500k and grows 25% faster for 2 minutes", async () => {
+    const { game, a, exec, infected } = await cureGame();
+    const gold = a.gold();
+    finishOff(game, a, infected);
+    executeTicks(game, 1);
+    expect(infected.isAlive()).toBe(false);
+    expect(a.gold() - gold).toBe(plagueCureGold(1, 1));
+    // No winner: the game goes on.
+    expect(game.getWinner()).toBeNull();
+
+    const since = game.ticksSinceStart();
+    a.setTroops(50_000);
+    const rate = game.config().troopIncreaseRate(a, since);
+    (exec as any).growCurer(since);
+    expect(a.troops() - 50_000).toBe(Math.floor(rate * 0.25));
+    expect((exec as any).cureBonusUntil).toBe(
+      since - 1 + PLAGUE_CURE_GROWTH_TICKS,
+    );
+    runTo(game, since + PLAGUE_CURE_GROWTH_TICKS);
+    expect((exec as any).cureBonusPlayer).toBeNull();
+  });
+
+  test("an attack that wipes it out pays the attacker", async () => {
+    const { game, a, infected } = await cureGame();
+    // a borders what is left of it: 50 tiles, under the 100 an attack kills.
+    for (const t of Array.from(infected.tiles()).slice(50)) a.conquer(t);
+    game.map().forEachTile((t) => {
+      if (game.isLand(t) && !game.owner(t).isPlayer()) a.conquer(t);
+    });
+    const gold = a.gold();
+    a.setTroops(500_000);
+    game.addExecution(new AttackExecution(400_000, a, infected.id()));
+    executeTicks(game, 3);
+    expect(infected.isAlive()).toBe(false);
+    expect(a.gold() - gold).toBeGreaterThanOrEqual(plagueCureGold(1, 1));
+  });
+
+  test("wiped out early, it comes back 3 minutes later, 1.5x stronger, up to 3 outbreaks", async () => {
+    const { game, a, exec, infected } = await cureGame();
+    const starts = [75_000];
+    for (let n = 2; n <= PLAGUE_MAX_OUTBREAKS; n++) {
+      finishOff(game, a, infected);
+      executeTicks(game, 1);
+      const wiped = game.ticksSinceStart() - 1;
+      expect(exec.nextOutbreak()).toBe(wiped + PLAGUE_COMEBACK_DELAY_TICKS);
+      runTo(game, wiped + PLAGUE_COMEBACK_DELAY_TICKS - 1);
+      expect(infected.isAlive()).toBe(false);
+      runTo(game, wiped + PLAGUE_COMEBACK_DELAY_TICKS + 1);
+      expect(infected.isAlive()).toBe(true);
+      expect(exec.outbreakCount()).toBe(n);
+      starts.push(plagueComebackTroops(starts[starts.length - 1]));
+      const away = infected
+        .outgoingAttacks()
+        .reduce((sum, attack) => sum + attack.troops(), 0);
+      expect(infected.troops() + away).toBe(starts[n - 1]);
+    }
+    expect(starts).toEqual([75_000, 112_500, 168_750]);
+    // The third is the last.
+    const gold = a.gold();
+    finishOff(game, a, infected);
+    executeTicks(game, 1);
+    expect(a.gold() - gold).toBe(plagueCureGold(3, 1));
+    expect(exec.nextOutbreak()).toBeNull();
+    runTo(game, game.ticksSinceStart() + PLAGUE_COMEBACK_DELAY_TICKS + 10);
+    expect(infected.isAlive()).toBe(false);
+  });
+
+  test("wiped out after 20:00, it stays gone", async () => {
+    const { game, a, exec, infected } = await cureGame();
+    vi.spyOn(game, "ticksSinceStart").mockReturnValue(20 * 600);
+    finishOff(game, a, infected);
+    executeTicks(game, 1);
+    expect(exec.nextOutbreak()).toBeNull();
+  });
+
+  test("the bounty follows the gold multiplier", async () => {
+    const { game, a, infected } = await cureGame({ goldMultiplier: 2 });
+    const gold = a.gold();
+    finishOff(game, a, infected);
+    executeTicks(game, 1);
+    expect(a.gold() - gold).toBe(plagueCureGold(1, 2));
   });
 });
 
@@ -301,7 +529,7 @@ describe("plague infection", () => {
     expect(attack.troops()).toBe(away - plagueDecay(away));
   });
 
-  test("it spreads its whole pool across all its borders", async () => {
+  test("it spreads half its pool across all its borders and keeps the rest", async () => {
     const game = await plagueGame(PLAINS, [human("a"), human("b")]);
     const [a, b] = [game.player("a"), game.player("b")];
     conquerRect(game, a, 0, 0, 40, 100);
@@ -314,7 +542,7 @@ describe("plague infection", () => {
     expect(targets).toContain(a);
     expect(targets).toContain(b);
     expect(targets).toContain(game.terraNullius());
-    expect(infected.troops()).toBe(0);
+    expect(infected.troops()).toBe(15_000);
   });
 });
 
@@ -371,21 +599,13 @@ describe("plague win check", () => {
     expect(game.getWinner()).toBeNull();
   });
 
-  test("once it is eliminated, the living player with the most land wins", async () => {
-    const { game, a, infected, winCheck } = await standings();
-    for (const t of Array.from(infected.tiles())) infected.relinquish(t);
-    winCheck.tick(10);
-    expect(game.getWinner()).toBe(a);
-  });
-
-  test("in team games that player's team wins", async () => {
-    const { game, a, infected, winCheck } = await standings({
-      gameMode: GameMode.Team,
-      playerTeams: 2,
-    });
-    for (const t of Array.from(infected.tiles())) infected.relinquish(t);
-    winCheck.tick(10);
-    expect(game.getWinner()).toBe(a.team());
+  test("wiping it out never ends the game, in FFA or teams", async () => {
+    for (const config of [{}, { gameMode: GameMode.Team, playerTeams: 2 }]) {
+      const { game, infected, winCheck } = await standings(config);
+      for (const t of Array.from(infected.tiles())) infected.relinquish(t);
+      winCheck.tick(10);
+      expect(game.getWinner()).toBeNull();
+    }
   });
 
   test("everyone loses once The Infected holds 70% of the land", async () => {
@@ -492,8 +712,41 @@ describe("plague snapshots", () => {
     b.setTroops(100_000);
     game.addExecution(new PlagueExecution("plague-test"));
     game.addExecution(new WinCheckExecution());
-    executeTicks(game, 1230);
+    executeTicks(game, PLAGUE_OUTBREAK_DELAY_TICKS + 30);
     expect(game.hasPlayer(INFECTED_PLAYER_ID)).toBe(true);
     await expectSnapshotRoundTrip(game, BIG, 60);
+  }, 60_000);
+
+  test("a snapshot taken just before the outbreak breaks it out the same way", async () => {
+    const game = await plagueGame(BIG, [human("a"), human("b")]);
+    const [a, b] = [game.player("a"), game.player("b")];
+    conquerRect(game, a, 0, 0, 60, 200);
+    conquerRect(game, b, 140, 0, 200, 200);
+    a.setSpawnTile(game.ref(20, 100));
+    b.setSpawnTile(game.ref(180, 100));
+    a.setTroops(100_000);
+    game.addExecution(new PlagueExecution("plague-test"));
+    game.addExecution(new WinCheckExecution());
+    runTo(game, PLAGUE_OUTBREAK_DELAY_TICKS - 5);
+    expect(game.hasPlayer(INFECTED_PLAYER_ID)).toBe(false);
+    await expectSnapshotRoundTrip(game, BIG, 20);
+    expect(game.hasPlayer(INFECTED_PLAYER_ID)).toBe(true);
+  }, 60_000);
+
+  test("a cure and the wait for the comeback round-trip", async () => {
+    const game = await plagueGame(PLAINS, [human("a")]);
+    const a = game.player("a");
+    conquerRect(game, a, 0, 0, 10, 100);
+    a.setSpawnTile(game.ref(5, 50));
+    a.setTroops(100_000);
+    const exec = new PlagueExecution("plague-test");
+    game.addExecution(exec, new PlayerExecution(a), new WinCheckExecution());
+    runTo(game, PLAGUE_OUTBREAK_DELAY_TICKS + 5);
+    const infected = exec.infectedPlayer()!;
+    game.conquerPlayer(a, infected);
+    for (const t of Array.from(infected.tiles())) infected.relinquish(t);
+    executeTicks(game, 3);
+    expect((exec as any).cureBonusPlayer).toBe(a);
+    await expectSnapshotRoundTrip(game, PLAINS, 40);
   }, 60_000);
 });

@@ -1,14 +1,19 @@
 import { TileRef } from "@openfront/engine-api/game/GameMap";
+import { UnitType } from "@openfront/engine-api/game/GameTypes";
 import {
   HORDE_BAND_ATTACK_INTERVAL_TICKS,
+  HORDE_BAND_CLEANUP_TICKS,
   HORDE_BAND_RETARGET_TICKS,
   HORDE_BAND_TARGET_SAMPLES,
+  hordeBandSpent,
   isHordeBand,
+  isHordeDefender,
 } from "@openfront/engine-lib/game/HordeNight";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import {
   VersionedSchema,
   zInt,
+  zNum,
   zPlayerRef,
   zRandom,
 } from "@openfront/engine-lib/snapshot/SnapshotType";
@@ -30,11 +35,14 @@ import {
 
 /**
  * A Horde Night band (see engine-lib/game/HordeNight.ts): a tribe-like bot
- * that attacks the nearest non-horde player with everything it has, again
- * and again, and never allies. Land and boat attacks go through
+ * that attacks the defender its wave was sent at with everything it has,
+ * again and again, and never allies. Once that defender falls it goes for
+ * the nearest other defender. Land and boat attacks go through
  * TribeAttackBehavior with no reserve; a band that can't reach its target by
  * land yet marches through free land toward it (a spearhead on its nearest
- * border tile).
+ * border tile). HORDE_BAND_CLEANUP_TICKS after landing, a band holding under
+ * HORDE_BAND_CLEANUP_PERCENT of its landing troops disbands and frees its
+ * land.
  */
 export class HordeBandExecution implements Execution {
   private active = true;
@@ -43,11 +51,22 @@ export class HordeBandExecution implements Execution {
   private attackBehavior: TribeAttackBehavior | null = null;
   // Which tick of each attack interval this band acts on.
   private attackTick: number;
-  // The nearest non-horde player, looked up again every retarget interval.
+  // Who it attacks: its defender while that lives, then the nearest one,
+  // looked up again every retarget interval.
   private target: Player | null = null;
   private retargetTick = 0;
+  // The tick it landed (set on init), for the cleanup.
+  private landedTick = -1;
 
-  constructor(private band: Player) {
+  /**
+   * `defender` is who the band's wave was sent at (null: the nearest
+   * defender); `landingTroops` what it landed with.
+   */
+  constructor(
+    private band: Player,
+    private defender: Player | null = null,
+    private landingTroops = 0,
+  ) {
     this.random = new PseudoRandom(simpleHash(band.id()));
     this.attackTick = simpleHash(band.id()) % HORDE_BAND_ATTACK_INTERVAL_TICKS;
   }
@@ -56,8 +75,9 @@ export class HordeBandExecution implements Execution {
     return false;
   }
 
-  init(mg: Game): void {
+  init(mg: Game, ticks: number): void {
     this.mg = mg;
+    if (this.landedTick < 0) this.landedTick = ticks;
   }
 
   tick(ticks: number): void {
@@ -65,6 +85,13 @@ export class HordeBandExecution implements Execution {
     if (!this.band.isAlive()) {
       // The band's PlayerExecution clears up after it.
       this.active = false;
+      return;
+    }
+    if (
+      ticks - this.landedTick >= HORDE_BAND_CLEANUP_TICKS &&
+      hordeBandSpent(this.strength(), this.landingTroops)
+    ) {
+      this.disband();
       return;
     }
     // No reserve: every troop goes into the attack.
@@ -79,15 +106,41 @@ export class HordeBandExecution implements Execution {
     refuseAllianceRequests(this.band);
     razeNextStructure(this.mg, this.band);
 
-    if (
+    if (this.defender !== null && this.defender.isAlive()) {
+      this.target = this.defender;
+    } else if (
       this.target === null ||
       !this.target.isAlive() ||
+      this.target === this.defender ||
       ticks >= this.retargetTick
     ) {
       this.target = this.nearestPlayer()?.player ?? null;
       this.retargetTick = ticks + HORDE_BAND_RETARGET_TICKS;
     }
     this.attack(this.attackBehavior, this.target);
+  }
+
+  /** The band's troops at home, in its attacks and on its boats. */
+  strength(): number {
+    let troops = this.band.troops();
+    for (const attack of this.band.outgoingAttacks()) troops += attack.troops();
+    for (const boat of this.band.units(UnitType.TransportShip)) {
+      troops += boat.troops();
+    }
+    return troops;
+  }
+
+  // Bled out: the band and its attacks go, and its land is free again.
+  private disband(): void {
+    for (const attack of this.band.outgoingAttacks()) attack.delete();
+    for (const boat of this.band.units(UnitType.TransportShip)) {
+      boat.delete(false);
+    }
+    this.band.removeTroops(this.band.troops());
+    for (const tile of Array.from(this.band.tiles())) {
+      this.band.relinquish(tile);
+    }
+    this.active = false;
   }
 
   private attack(behavior: TribeAttackBehavior, target: Player | null): void {
@@ -136,19 +189,24 @@ export class HordeBandExecution implements Execution {
   }
 
   /**
-   * The non-horde player closest to where the band landed, measured to a
-   * sample of each player's border. Ties go to the earlier player.
+   * The defender closest to where the band landed, measured to a sample of
+   * each one's border. Ties go to the earlier player.
    */
   nearestPlayer(): { player: Player; distance: number } | null {
     let best: { player: Player; distance: number } | null = null;
     for (const player of this.mg.players()) {
-      if (!this.isPrey(player)) continue;
+      if (!isHordeDefender(player) || !this.isPrey(player)) continue;
       const { distance } = this.closestTile(player);
       if (best === null || distance < best.distance) {
         best = { player, distance };
       }
     }
     return best;
+  }
+
+  /** The defender the band's wave was sent at, or null. */
+  assignedDefender(): Player | null {
+    return this.defender;
   }
 
   // The sampled border tile of `player` closest to the band's landing tile.
@@ -190,6 +248,9 @@ export class HordeBandExecution implements Execution {
       attackTick: this.attackTick,
       target: this.target === null ? null : w.player(this.target),
       retargetTick: this.retargetTick,
+      defender: this.defender === null ? null : w.player(this.defender),
+      landingTroops: this.landingTroops,
+      landedTick: this.landedTick,
     });
   }
 
@@ -211,6 +272,9 @@ export class HordeBandExecution implements Execution {
     this.attackTick = s.attackTick;
     this.target = s.target === null ? null : r.player(s.target);
     this.retargetTick = s.retargetTick;
+    this.defender = s.defender === null ? null : r.player(s.defender);
+    this.landingTroops = s.landingTroops;
+    this.landedTick = s.landedTick;
   }
 }
 
@@ -223,12 +287,25 @@ const HordeBandStateSchema = z.object({
   attackTick: zInt(),
   target: zPlayerRef().nullable(),
   retargetTick: zInt(),
+  defender: zPlayerRef().nullable(),
+  landingTroops: zNum(),
+  landedTick: zInt(),
 });
 type HordeBandState = z.infer<typeof HordeBandStateSchema>;
 
 export const HordeBandExecutionSnapshot = execSnapshotType({
   name: "HordeBand",
-  version: 1,
+  version: 2,
   schema: HordeBandStateSchema,
+  // v2: bands go for the defender their wave was sent at, and disband once
+  // spent. An older band had none, and never disbands.
+  migrations: {
+    1: (d) => ({
+      ...(d as Record<string, unknown>),
+      defender: null,
+      landingTroops: 0,
+      landedTick: 0,
+    }),
+  },
   cls: () => HordeBandExecution,
 });

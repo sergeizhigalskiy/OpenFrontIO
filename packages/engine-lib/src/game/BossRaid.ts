@@ -1,4 +1,5 @@
 import {
+  Difficulty,
   GameMode,
   PlayerInfo,
   PlayerType,
@@ -15,8 +16,11 @@ import { simpleHash } from "../Util";
 
 // Boss Raid: everyone against one Boss. The Boss is a volunteer human or an
 // Impossible nation; every other player and nation is a Raider, all on one
-// team. Raiders win by eliminating the Boss, the Boss wins by surviving the
-// timer. The Boss scales with N, the number of raiders the game started with.
+// team. The Raiders win by bringing the Boss under 1% of the land for 30 s in
+// a row (or to none), the Boss by surviving the timer or outlasting every
+// Raider. The Boss scales with W, the weighted raiders the game started
+// with, in which a human counts for far more than a nation. Nobody, human or
+// nation, allies the Boss.
 
 export { BOSS_RAID_NATION_BOSS };
 
@@ -25,23 +29,88 @@ export const BOSS_RAID_RAIDER_TEAM: Team = "Raiders";
 
 /** The timer the Boss has to survive when the lobby sets none, in minutes. */
 export const BOSS_RAID_DEFAULT_TIMER_MINUTES = 25;
+/** The lobby's range for the Boss's timer, in minutes. */
+export const BOSS_RAID_MIN_TIMER_MINUTES = 15;
+export const BOSS_RAID_MAX_TIMER_MINUTES = 60;
 
-// The Boss's multipliers, as integer percents: 100 + PER_RAIDER * N.
-/** Max troops x(1 + 0.6 N). */
+// W, the weighted raiders, in hundredths (1.5 is 150): a human Raider counts
+// 1.5, a nation Raider by its difficulty. Calibrate the human weight in
+// playtests, aiming for the Boss winning about half the time.
+/** A human Raider's weight: 1.5. */
+export const BOSS_RAID_HUMAN_WEIGHT_HUNDREDTHS = 150;
+/** A nation Raider's weight by difficulty: 0.25, 0.35, 0.5 and 0.6. */
+export const BOSS_RAID_NATION_WEIGHT_HUNDREDTHS: Record<Difficulty, number> = {
+  [Difficulty.Easy]: 25,
+  [Difficulty.Medium]: 35,
+  [Difficulty.Hard]: 50,
+  [Difficulty.Impossible]: 60,
+};
+
+// The Boss's multipliers, as percents: 100 + PER_RAIDER * W.
+/** Max troops x(1 + 0.6 W). */
 export const BOSS_MAX_TROOPS_PERCENT_PER_RAIDER = 60;
-/** Troop growth x(1 + 0.3 N). */
+/** Troop growth x(1 + 0.3 W). */
 export const BOSS_TROOP_GROWTH_PERCENT_PER_RAIDER = 30;
-/** Gold income x(1 + 0.3 N). */
+/** Gold income x(1 + 0.3 W). */
 export const BOSS_GOLD_INCOME_PERCENT_PER_RAIDER = 30;
 
-export function bossMaxTroopsPercent(raiders: number): number {
-  return 100 + BOSS_MAX_TROOPS_PERCENT_PER_RAIDER * raiders;
+/** `weight` is W in hundredths (bossRaidRaiderWeight). */
+export function bossMaxTroopsPercent(weight: number): number {
+  return 100 + (BOSS_MAX_TROOPS_PERCENT_PER_RAIDER * weight) / 100;
 }
-export function bossTroopGrowthPercent(raiders: number): number {
-  return 100 + BOSS_TROOP_GROWTH_PERCENT_PER_RAIDER * raiders;
+export function bossTroopGrowthPercent(weight: number): number {
+  return 100 + (BOSS_TROOP_GROWTH_PERCENT_PER_RAIDER * weight) / 100;
 }
-export function bossGoldIncomePercent(raiders: number): number {
-  return 100 + BOSS_GOLD_INCOME_PERCENT_PER_RAIDER * raiders;
+export function bossGoldIncomePercent(weight: number): number {
+  return 100 + (BOSS_GOLD_INCOME_PERCENT_PER_RAIDER * weight) / 100;
+}
+
+/**
+ * Start shield: for the first 3 minutes after the spawn phase the Boss sends
+ * at most 25% of its troops in one attack, so it can't swallow the map
+ * before the Raiders get going.
+ */
+export const BOSS_RAID_SHIELD_TICKS = 3 * 60 * 10;
+export const BOSS_RAID_SHIELD_ATTACK_PERCENT = 25;
+
+/**
+ * The most troops one Boss attack may hold `ticksSinceStart` ticks after the
+ * spawn phase, when the Boss's troops at home plus that attack's are
+ * `troops`. Infinity once the shield is down.
+ */
+export function bossShieldAttackCap(
+  ticksSinceStart: number,
+  troops: number,
+): number {
+  if (ticksSinceStart >= BOSS_RAID_SHIELD_TICKS) return Infinity;
+  return Math.floor((troops * BOSS_RAID_SHIELD_ATTACK_PERCENT) / 100);
+}
+
+/** The Raiders win once the Boss holds under 1% of the land ... */
+export const BOSS_RAID_LOW_LAND_PERCENT = 1;
+/** ... for 30 s in a row. */
+export const BOSS_RAID_LOW_LAND_TICKS = 30 * 10;
+
+/**
+ * The clock runs from the end of the start shield: everyone starts on a
+ * few dozen tiles, far under 1% of the land.
+ */
+export const BOSS_RAID_LOW_LAND_FROM_TICKS = BOSS_RAID_SHIELD_TICKS;
+
+/**
+ * Whether the Boss, holding `bossTiles` of `landTiles` `ticksSinceStart`
+ * ticks into the game, is under BOSS_RAID_LOW_LAND_PERCENT of the land with
+ * the clock running.
+ */
+export function bossUnderLowLand(
+  bossTiles: number,
+  landTiles: number,
+  ticksSinceStart: number,
+): boolean {
+  return (
+    ticksSinceStart >= BOSS_RAID_LOW_LAND_FROM_TICKS &&
+    bossTiles * 100 < landTiles * BOSS_RAID_LOW_LAND_PERCENT
+  );
 }
 
 /** The game's Boss Raid settings, or null when it isn't a Boss Raid. */
@@ -58,22 +127,27 @@ export function isBossRaid(
   return bossRaidOf(config) !== null;
 }
 
-/** Minutes the Boss has to survive. */
+/** Minutes the Boss has to survive: the lobby's, kept within its range. */
 export function bossRaidTimerMinutes(
   config: Pick<GameConfig, "maxTimerValue">,
 ): number {
-  return config.maxTimerValue ?? BOSS_RAID_DEFAULT_TIMER_MINUTES;
+  const minutes = config.maxTimerValue ?? BOSS_RAID_DEFAULT_TIMER_MINUTES;
+  return Math.max(
+    BOSS_RAID_MIN_TIMER_MINUTES,
+    Math.min(BOSS_RAID_MAX_TIMER_MINUTES, minutes),
+  );
 }
 
 /**
- * The config with the Boss Raid timer filled in, so the HUD's end timer and
- * the win check read the same value. Any other config comes back unchanged.
+ * The config with the Boss Raid timer filled in and kept in range, so the
+ * HUD's end timer and the win check read the same value. Any other config
+ * comes back unchanged.
  */
 export function withBossRaidDefaults(config: GameConfig): GameConfig {
-  if (!isBossRaid(config) || typeof config.maxTimerValue === "number") {
-    return config;
-  }
-  return { ...config, maxTimerValue: BOSS_RAID_DEFAULT_TIMER_MINUTES };
+  if (!isBossRaid(config)) return config;
+  const minutes = bossRaidTimerMinutes(config);
+  if (config.maxTimerValue === minutes) return config;
+  return { ...config, maxTimerValue: minutes };
 }
 
 /** Whether `player` is the Boss: the only player on the Boss team. */
@@ -86,8 +160,7 @@ export function isBossRaidBoss(
 
 /**
  * Whether `a` and `b` stand on opposite sides of a Boss Raid: one the Boss,
- * the other a Raider. Nations never ally across that line, so the AI keeps it
- * everyone against the Boss; humans may ally whoever they like.
+ * the other a Raider. Nobody, human or nation, allies across that line.
  */
 export function acrossBossLine(
   config: Pick<GameConfig, "bossRaid" | "gameMode">,
@@ -163,30 +236,42 @@ export function bossRaidHumanTeams(
   );
 }
 
-/** N: players on the Raiders team, tribes excluded. */
-export function countBossRaidRaiders(
+/**
+ * W in hundredths: 1.5 per human on the Raiders team, plus each nation
+ * Raider's weight at `nationDifficulty` (the lobby's). Tribes don't count.
+ */
+export function bossRaidRaiderWeight(
   players: Iterable<{ team(): Team | null; type(): PlayerType }>,
+  nationDifficulty: Difficulty,
 ): number {
-  let n = 0;
+  let weight = 0;
   for (const p of players) {
-    if (p.type() !== PlayerType.Bot && p.team() === BOSS_RAID_RAIDER_TEAM) n++;
+    if (p.team() !== BOSS_RAID_RAIDER_TEAM) continue;
+    if (p.type() === PlayerType.Human) {
+      weight += BOSS_RAID_HUMAN_WEIGHT_HUNDREDTHS;
+    } else if (p.type() === PlayerType.Nation) {
+      weight += BOSS_RAID_NATION_WEIGHT_HUNDREDTHS[nationDifficulty];
+    }
   }
-  return n;
+  return weight;
 }
 
 export type BossRaidWinner = "boss" | "raiders" | null;
 
 /**
- * Who has won so far: the Raiders once the Boss is eliminated, the Boss once
- * the timer runs out or no Raider is left.
+ * Who has won so far: the Raiders once the Boss holds no land, or has held
+ * under 1% of it for BOSS_RAID_LOW_LAND_TICKS in a row (`lowLandTicks`); the
+ * Boss once the timer runs out or no Raider is left.
  */
 export function bossRaidWinner(state: {
   bossAlive: boolean;
+  lowLandTicks: number;
   raidersAlive: boolean;
   elapsedSeconds: number;
   timerMinutes: number;
 }): BossRaidWinner {
   if (!state.bossAlive) return "raiders";
+  if (state.lowLandTicks >= BOSS_RAID_LOW_LAND_TICKS) return "raiders";
   if (!state.raidersAlive) return "boss";
   if (state.elapsedSeconds >= state.timerMinutes * 60) return "boss";
   return null;

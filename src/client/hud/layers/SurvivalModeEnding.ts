@@ -3,17 +3,15 @@ import {
   HORDE_DEFENDERS_TEAM,
   HORDE_TEAM,
 } from "@openfront/engine-lib/game/HordeNight";
-import {
-  INFECTED_PLAYER_ID,
-  INFECTED_TEAM,
-} from "@openfront/engine-lib/game/Plague";
-import { getTranslatedPlayerTeamLabel, translateText } from "../../Utils";
+import { INFECTED_TEAM } from "@openfront/engine-lib/game/Plague";
+import { translateText } from "../../Utils";
 import type { GameView } from "../../view";
 
 /**
  * The win and lose screens of the survival lobby modes, named after the mode
  * (WinCheckExecution's Horde Night and plague branches). Null when neither
- * mode decided the game, so the win modal shows its usual title.
+ * mode decided the game, so the win modal shows its usual title: a plague
+ * game the Infected didn't consume ends the usual way.
  */
 export function survivalModeEnding(
   game: GameView,
@@ -25,8 +23,11 @@ export function survivalModeEnding(
 
   if (config.hordeNight?.enabled === true && winner[0] === "team") {
     if (winner[1] === HORDE_DEFENDERS_TEAM) {
+      const narrow = game.cataclysm().horde?.outcome === "narrow";
       return {
-        title: translateText("horde_night.defenders_won"),
+        title: translateText(
+          narrow ? "horde_night.narrow_win" : "horde_night.defenders_won",
+        ),
         isWin: me?.team() === HORDE_DEFENDERS_TEAM,
       };
     }
@@ -35,40 +36,12 @@ export function survivalModeEnding(
     }
   }
 
-  if (config.plague === true) {
-    if (winner[0] === "team" && winner[1] === INFECTED_TEAM) {
-      return { title: translateText("plague.consumed"), isWin: false };
-    }
-    // A plague game can also end the usual way while The Infected lives.
-    const cured =
-      game.hasPlayer(INFECTED_PLAYER_ID) &&
-      !game.player(INFECTED_PLAYER_ID).isAlive();
-    if (!cured) return null;
-    if (winner[0] === "team") {
-      const isWin = me !== null && me.team() === winner[1];
-      return {
-        title: isWin
-          ? translateText("plague.cured_your_team")
-          : translateText("plague.cured_other", {
-              name: getTranslatedPlayerTeamLabel(winner[1]),
-            }),
-        isWin,
-      };
-    }
-    if (winner[0] === "nation") {
-      return {
-        title: translateText("plague.cured_other", { name: winner[1] }),
-        isWin: false,
-      };
-    }
-    const isWin = me !== null && me.clientID() === winner[1];
-    const name = game.playerByClientID(winner[1])?.displayName() ?? "";
-    return {
-      title: isWin
-        ? translateText("plague.cured_you")
-        : translateText("plague.cured_other", { name }),
-      isWin,
-    };
+  if (
+    config.plague === true &&
+    winner[0] === "team" &&
+    winner[1] === INFECTED_TEAM
+  ) {
+    return { title: translateText("plague.consumed"), isWin: false };
   }
   return null;
 }

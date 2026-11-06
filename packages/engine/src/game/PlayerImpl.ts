@@ -34,6 +34,7 @@ import {
 } from "@openfront/engine-api/game/GameUpdates";
 import { ReadonlyTileSet } from "@openfront/engine-api/game/ReadViews";
 import { ClientID } from "@openfront/engine-api/Schemas";
+import { acrossBossLine } from "@openfront/engine-lib/game/BossRaid";
 import { andFN, manhattanDistFN } from "@openfront/engine-lib/game/GameMapImpl";
 import {
   MINEFIELD_MIN_DENSITY,
@@ -885,6 +886,10 @@ export class PlayerImpl implements Player {
     }
     // City-states stay neutral (WorldFeatures.ts).
     if (this._isCityState || other.isCityState()) {
+      return false;
+    }
+    // Boss Raid: nobody allies the Boss, humans included (BossRaid.ts).
+    if (acrossBossLine(this.mg.config().gameConfig(), this, other)) {
       return false;
     }
     if (this.isDisconnected() || other.isDisconnected()) {

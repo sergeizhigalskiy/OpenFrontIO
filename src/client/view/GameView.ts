@@ -30,7 +30,7 @@ import { ClientID, GameID } from "@openfront/engine-api/Schemas";
 import { Config } from "@openfront/engine-lib/configuration/Config";
 import {
   BOSS_RAID_BOSS_TEAM,
-  countBossRaidRaiders,
+  bossRaidRaiderWeight,
 } from "@openfront/engine-lib/game/BossRaid";
 import { unpackMotionPlans } from "@openfront/engine-lib/game/MotionPlans";
 import {
@@ -411,13 +411,17 @@ export class GameView implements GameLike {
         this._teamClanTags = null;
       }
     });
-    // Boss Raid: the Boss's caps scale with the raiders the game started
-    // with, which the engine counted when it made the teams; count the same
-    // players here so this view's Config agrees (engine-lib/game/BossRaid.ts).
-    // Every player arrives on the first update, the Boss among them.
+    // Boss Raid: the Boss's caps scale with the weighted raiders the game
+    // started with, which the engine counted when it made the teams; weigh
+    // the same players here so this view's Config agrees
+    // (engine-lib/game/BossRaid.ts). Every player arrives on the first
+    // update, the Boss among them.
     if (addedBoss) {
-      this._config.setBossRaidRaiders(
-        countBossRaidRaiders(this._players.values()),
+      this._config.setBossRaidRaiderWeight(
+        bossRaidRaiderWeight(
+          this._players.values(),
+          this._config.gameConfig().difficulty,
+        ),
       );
     }
 

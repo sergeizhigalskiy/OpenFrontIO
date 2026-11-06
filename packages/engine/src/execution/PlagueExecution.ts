@@ -4,7 +4,7 @@ import {
   PlayerInfo,
   PlayerType,
 } from "@openfront/engine-api/game/GameTypes";
-import { renderTroops } from "@openfront/engine-lib/Format";
+import { renderNumber, renderTroops } from "@openfront/engine-lib/Format";
 import {
   contactInfectionBps,
   contactInfectionLoss,
@@ -12,21 +12,33 @@ import {
   INFECTED_PLAYER_ID,
   outbreakTiles,
   pickOutbreakCenter,
+  PLAGUE_COMEBACK_DELAY_TICKS,
+  PLAGUE_CURE_GROWTH_PERCENT,
+  PLAGUE_CURE_GROWTH_TICKS,
   PLAGUE_INTERVAL_TICKS,
+  PLAGUE_MIN_SPAWN_DISTANCE,
   PLAGUE_OUTBREAK_DELAY_TICKS,
+  PLAGUE_OUTBREAK_RETRY_TICKS,
   PLAGUE_SPREAD_INTERVAL_TICKS,
-  PLAGUE_START_TROOPS,
+  plagueComebackTroops,
+  plagueComesBack,
+  plagueCureGold,
   plagueDecay,
+  plagueSiteCount,
+  plagueSpreadTroops,
+  plagueStartTroops,
 } from "@openfront/engine-lib/game/Plague";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import {
   zInt,
+  zNum,
   zPlayerRef,
   zRandom,
 } from "@openfront/engine-lib/snapshot/SnapshotType";
 import { simpleHash } from "@openfront/engine-lib/Util";
 import { z } from "zod";
 import { Execution, Game, Player } from "../game/Game";
+import { listenForInfectedConquest } from "../game/PlagueCure";
 import { execSnapshotType } from "../snapshot/ExecutionSnapshot";
 import type {
   ExecRecord,
@@ -50,9 +62,11 @@ const NEIGHBORS: TileRef[] = [0, 0, 0, 0];
 /**
  * The zombie plague (see engine-lib/game/Plague.ts). Breaks The Infected out
  * on schedule, then every interval: decays its pool, takes contact
- * infection from everyone bordering it, and spreads its whole pool across
- * all its borders as attacks. Capture conversion lives in AttackExecution;
- * pocket annexation and death in The Infected's own PlayerExecution.
+ * infection from everyone bordering it, and sends half its pool across its
+ * borders as attacks. When it is wiped out it pays the cure to whoever took
+ * its last tile, and schedules the comeback outbreak. Capture conversion
+ * lives in AttackExecution; pocket annexation and death in The Infected's own
+ * PlayerExecution.
  */
 export class PlagueExecution implements Execution {
   private active = true;
@@ -62,6 +76,19 @@ export class PlagueExecution implements Execution {
   // Players that lost troops to contact infection last interval (small ids,
   // ascending): only those just starting to bleed get the message.
   private bleeding: number[] = [];
+  // Outbreaks so far, and the troops the last one started with.
+  private outbreaks = 0;
+  private lastStartTroops = 0;
+  // Ticks since the spawn phase at which the next outbreak comes; null when
+  // none is due.
+  private nextOutbreakTick: number | null = PLAGUE_OUTBREAK_DELAY_TICKS;
+  // Whether The Infected was alive at the end of the last tick.
+  private infectedAlive = false;
+  // The last player to conquer The Infected (GameImpl.conquerPlayer).
+  private lastConqueror: Player | null = null;
+  // Whoever cured the last outbreak grows faster until this tick.
+  private cureBonusPlayer: Player | null = null;
+  private cureBonusUntil = 0;
 
   /** `seed` is the game id. */
   constructor(seed: string) {
@@ -74,6 +101,11 @@ export class PlagueExecution implements Execution {
 
   init(mg: Game): void {
     this.mg = mg;
+    listenForInfectedConquest(mg, this);
+  }
+
+  infectedConquered(conqueror: Player): void {
+    this.lastConqueror = conqueror;
   }
 
   tick(ticks: number): void {
@@ -81,25 +113,29 @@ export class PlagueExecution implements Execution {
       this.active = false;
       return;
     }
-    if (this.infected === null) {
-      const ticksSinceStart = Math.round(this.mg.elapsedGameSeconds() * 10);
-      if (ticksSinceStart >= PLAGUE_OUTBREAK_DELAY_TICKS) this.breakOut();
-      return;
-    }
+    const since = this.mg.ticksSinceStart();
+    this.growCurer(since);
+
     const infected = this.infected;
-    if (!infected.isAlive()) {
-      // Wiped out: the plague is over (WinCheckExecution names the winner).
-      this.active = false;
+    if (infected !== null && infected.isAlive()) {
+      this.infectedAlive = true;
+      if (ticks % PLAGUE_INTERVAL_TICKS !== 0) return;
+      refuseAllianceRequests(infected);
+      razeNextStructure(this.mg, infected);
+      decayInfected(infected);
+      const border = infectedBorderCounts(this.mg, infected);
+      this.bleeding = infectByContact(this.mg, infected, border, this.bleeding);
+      if (ticks % PLAGUE_SPREAD_INTERVAL_TICKS === 0) {
+        spreadInfected(this.mg, infected, border);
+      }
       return;
     }
-    if (ticks % PLAGUE_INTERVAL_TICKS !== 0) return;
-    refuseAllianceRequests(infected);
-    razeNextStructure(this.mg, infected);
-    decayInfected(infected);
-    const border = infectedBorderCounts(this.mg, infected);
-    this.bleeding = infectByContact(this.mg, infected, border, this.bleeding);
-    if (ticks % PLAGUE_SPREAD_INTERVAL_TICKS === 0) {
-      spreadInfected(this.mg, infected, border);
+    if (this.infectedAlive) {
+      this.infectedAlive = false;
+      this.cured(since);
+    }
+    if (this.nextOutbreakTick !== null && since >= this.nextOutbreakTick) {
+      this.breakOut(since);
     }
   }
 
@@ -108,33 +144,151 @@ export class PlagueExecution implements Execution {
     return this.infected;
   }
 
-  private breakOut(): void {
+  /** Outbreaks so far. */
+  outbreakCount(): number {
+    return this.outbreaks;
+  }
+
+  /** Ticks since the spawn phase of the next outbreak, or null. */
+  nextOutbreak(): number | null {
+    return this.nextOutbreakTick;
+  }
+
+  // The Infected was just wiped out: pay whoever took its last tile, and
+  // schedule the comeback.
+  private cured(since: number): void {
+    this.bleeding = [];
+    const curer = this.lastConqueror;
+    this.lastConqueror = null;
+    if (
+      curer !== null &&
+      curer.isAlive() &&
+      (curer.type() === PlayerType.Human || curer.type() === PlayerType.Nation)
+    ) {
+      const gold = plagueCureGold(
+        this.outbreaks,
+        this.mg.config().goldMultiplier(),
+      );
+      curer.addGold(gold);
+      this.cureBonusPlayer = curer;
+      this.cureBonusUntil = since + PLAGUE_CURE_GROWTH_TICKS;
+      this.mg.displayMessage(
+        "events_display.plague_cured_you",
+        MessageType.CONQUERED_PLAYER,
+        curer.id(),
+        gold,
+        { gold: renderNumber(gold), percent: PLAGUE_CURE_GROWTH_PERCENT },
+      );
+      this.mg.displayMessage(
+        "events_display.plague_cured",
+        MessageType.NAVAL_INVASION_INBOUND,
+        null,
+        undefined,
+        { name: curer.displayName() },
+      );
+    }
+    if (plagueComesBack(this.outbreaks, since)) {
+      this.nextOutbreakTick = since + PLAGUE_COMEBACK_DELAY_TICKS;
+      this.mg.displayMessage(
+        "events_display.plague_comeback",
+        MessageType.NAVAL_INVASION_INBOUND,
+        null,
+        undefined,
+        { minutes: PLAGUE_COMEBACK_DELAY_TICKS / 600 },
+      );
+    } else {
+      this.nextOutbreakTick = null;
+      this.active = this.cureBonusPlayer !== null;
+    }
+  }
+
+  // The cure's reward: +25% troop growth for its player while it lasts.
+  private growCurer(since: number): void {
+    const player = this.cureBonusPlayer;
+    if (player === null) return;
+    if (since >= this.cureBonusUntil || !player.isAlive()) {
+      this.cureBonusPlayer = null;
+      if (this.nextOutbreakTick === null && !this.infectedAlive) {
+        this.active = false;
+      }
+      return;
+    }
+    const rate = this.mg.config().troopIncreaseRate(player, since);
+    if (rate > 0) player.addTroops((rate * PLAGUE_CURE_GROWTH_PERCENT) / 100);
+  }
+
+  private breakOut(since: number): void {
+    const players = this.mg
+      .players()
+      .filter(
+        (p) => p.type() === PlayerType.Human || p.type() === PlayerType.Nation,
+      );
     const spawns: TileRef[] = [];
     for (const p of this.mg.allPlayers()) {
+      if (p.type() === PlayerType.Bot) continue;
       const spawn = p.spawnTile();
       if (spawn !== undefined) spawns.push(spawn);
     }
-    const center = pickOutbreakCenter(this.mg.map(), this.random, spawns);
-    if (center === null || this.mg.hasPlayer(INFECTED_PLAYER_ID)) {
-      this.active = false;
+    const centers: TileRef[] = [];
+    for (let i = 0; i < plagueSiteCount(players.length); i++) {
+      const pick = pickOutbreakCenter(this.mg.map(), this.random, [
+        ...spawns,
+        ...centers,
+      ]);
+      if (pick === null) break;
+      if (!pick.farEnough) {
+        console.log(
+          `plague: no free land ${PLAGUE_MIN_SPAWN_DISTANCE} tiles from every spawn, breaking out on the farthest`,
+        );
+      }
+      centers.push(pick.tile);
+    }
+    if (centers.length === 0) {
+      // No free land at all: try again shortly.
+      this.nextOutbreakTick = since + PLAGUE_OUTBREAK_RETRY_TICKS;
       return;
     }
-    const infected = this.mg.addPlayer(
-      new PlayerInfo(INFECTED_NAME, PlayerType.Bot, null, INFECTED_PLAYER_ID),
-    );
-    for (const tile of outbreakTiles(this.mg.map(), center)) {
-      infected.conquer(tile);
+
+    let strongest = 0;
+    for (const p of players) strongest = Math.max(strongest, p.troops());
+    const troops =
+      this.outbreaks === 0
+        ? plagueStartTroops(strongest)
+        : plagueComebackTroops(this.lastStartTroops);
+    this.outbreaks++;
+    this.lastStartTroops = troops;
+    this.nextOutbreakTick = null;
+
+    let infected: Player;
+    if (this.mg.hasPlayer(INFECTED_PLAYER_ID)) {
+      infected = this.mg.player(INFECTED_PLAYER_ID);
+    } else {
+      infected = this.mg.addPlayer(
+        new PlayerInfo(INFECTED_NAME, PlayerType.Bot, null, INFECTED_PLAYER_ID),
+      );
     }
-    infected.setSpawnTile(center);
-    infected.setTroops(PLAGUE_START_TROOPS);
+    for (const center of centers) {
+      for (const tile of outbreakTiles(this.mg.map(), center)) {
+        infected.conquer(tile);
+      }
+    }
+    if (!infected.isAlive()) {
+      this.nextOutbreakTick = since + PLAGUE_OUTBREAK_RETRY_TICKS;
+      this.outbreaks--;
+      return;
+    }
+    infected.setSpawnTile(centers[0]);
+    infected.setTroops(troops);
     this.mg.addExecution(new PlayerExecution(infected));
     this.infected = infected;
+    this.infectedAlive = true;
+    this.lastConqueror = null;
     this.mg.displayMessage(
       "events_display.plague_outbreak",
       MessageType.NAVAL_INVASION_INBOUND,
       null,
       undefined,
-      { troops: renderTroops(PLAGUE_START_TROOPS) },
+      { troops: renderTroops(troops) },
     );
     spreadInfected(this.mg, infected, infectedBorderCounts(this.mg, infected));
   }
@@ -150,15 +304,36 @@ export class PlagueExecution implements Execution {
       random: w.random(this.random),
       infected: this.infected === null ? null : w.player(this.infected),
       bleeding: [...this.bleeding],
+      outbreaks: this.outbreaks,
+      lastStartTroops: this.lastStartTroops,
+      nextOutbreakTick: this.nextOutbreakTick,
+      infectedAlive: this.infectedAlive,
+      lastConqueror:
+        this.lastConqueror === null ? null : w.player(this.lastConqueror),
+      cureBonusPlayer:
+        this.cureBonusPlayer === null ? null : w.player(this.cureBonusPlayer),
+      cureBonusUntil: this.cureBonusUntil,
     });
   }
 
   restoreSnapshot(s: PlagueState, r: SnapshotReader): void {
     this.active = s.active;
-    if (s.initialized) this.mg = r.game;
+    if (s.initialized) {
+      this.mg = r.game;
+      listenForInfectedConquest(r.game, this);
+    }
     this.random = r.random(s.random);
     this.infected = s.infected === null ? null : r.player(s.infected);
     this.bleeding = [...s.bleeding];
+    this.outbreaks = s.outbreaks;
+    this.lastStartTroops = s.lastStartTroops;
+    this.nextOutbreakTick = s.nextOutbreakTick;
+    this.infectedAlive = s.infectedAlive;
+    this.lastConqueror =
+      s.lastConqueror === null ? null : r.player(s.lastConqueror);
+    this.cureBonusPlayer =
+      s.cureBonusPlayer === null ? null : r.player(s.cureBonusPlayer);
+    this.cureBonusUntil = s.cureBonusUntil;
   }
 }
 
@@ -235,15 +410,16 @@ export function infectByContact(
 }
 
 /**
- * The Infected sends its whole pool out as attacks on every neighbour, free
- * land included, shared by how long each border is.
+ * The Infected sends half its pool (PLAGUE_SPREAD_PERCENT) out as attacks on
+ * every neighbour, free land included, shared by how long each border is.
+ * The rest stays home as a garrison.
  */
 export function spreadInfected(
   game: Game,
   infected: Player,
   border: Map<number, number>,
 ): void {
-  const pool = infected.troops();
+  const pool = plagueSpreadTroops(infected.troops());
   if (pool < 1) return;
   let total = 0;
   for (const count of border.values()) total += count;
@@ -274,12 +450,37 @@ const PlagueStateSchema = z.object({
   random: zRandom(),
   infected: zPlayerRef().nullable(),
   bleeding: z.array(zInt()),
+  outbreaks: zInt(),
+  lastStartTroops: zNum(),
+  nextOutbreakTick: zInt().nullable(),
+  infectedAlive: z.boolean(),
+  lastConqueror: zPlayerRef().nullable(),
+  cureBonusPlayer: zPlayerRef().nullable(),
+  cureBonusUntil: zInt(),
 });
 type PlagueState = z.infer<typeof PlagueStateSchema>;
 
 export const PlagueExecutionSnapshot = execSnapshotType({
   name: "Plague",
-  version: 1,
+  version: 2,
   schema: PlagueStateSchema,
+  // v2: outbreaks at 4:00 that come back, and the cure. An older game had
+  // its one outbreak at 2:00 (or has it still to come) and never comes back.
+  migrations: {
+    1: (d) => {
+      const old = d as Record<string, unknown>;
+      const broke = old.infected !== null;
+      return {
+        ...old,
+        outbreaks: broke ? 3 : 0,
+        lastStartTroops: 30_000,
+        nextOutbreakTick: broke ? null : 2 * 60 * 10,
+        infectedAlive: broke,
+        lastConqueror: null,
+        cureBonusPlayer: null,
+        cureBonusUntil: 0,
+      };
+    },
+  },
   cls: () => PlagueExecution,
 });

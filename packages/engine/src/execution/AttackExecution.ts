@@ -15,6 +15,10 @@ import {
   siegeCampTiles,
 } from "@openfront/engine-lib/game/AttackForecast";
 import {
+  bossShieldAttackCap,
+  isBossRaidBoss,
+} from "@openfront/engine-lib/game/BossRaid";
+import {
   isInfected,
   plagueCaptureTroops,
 } from "@openfront/engine-lib/game/Plague";
@@ -213,6 +217,18 @@ export class AttackExecution implements Execution {
       ) {
         this.attack.setTroops(this.attack.troops() + outgoing.troops());
         outgoing.delete();
+      }
+    }
+    // Boss Raid start shield: the Boss's attack holds at most a quarter of
+    // its troops for the first 3 minutes; the rest stays home (BossRaid.ts).
+    if (isBossRaidBoss(this.mg.config().gameConfig(), this._owner)) {
+      const cap = bossShieldAttackCap(
+        this.mg.ticksSinceStart(),
+        this._owner.troops() + this.attack.troops(),
+      );
+      if (this.attack.troops() > cap) {
+        this._owner.addTroops(this.attack.troops() - cap);
+        this.attack.setTroops(cap);
       }
     }
 

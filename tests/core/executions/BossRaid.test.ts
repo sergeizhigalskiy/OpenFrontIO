@@ -15,17 +15,28 @@ import {
   acrossBossLine,
   BOSS_RAID_BOSS_TEAM,
   BOSS_RAID_DEFAULT_TIMER_MINUTES,
+  BOSS_RAID_LOW_LAND_TICKS,
+  BOSS_RAID_MAX_TIMER_MINUTES,
+  BOSS_RAID_MIN_TIMER_MINUTES,
   BOSS_RAID_NATION_BOSS,
   BOSS_RAID_RAIDER_TEAM,
+  BOSS_RAID_SHIELD_TICKS,
   bossGoldIncomePercent,
   bossMaxTroopsPercent,
   bossRaidConfigError,
   bossRaidHumanTeams,
+  bossRaidRaiderWeight,
+  bossRaidTimerMinutes,
   bossRaidWinner,
+  bossShieldAttackCap,
   bossTroopGrowthPercent,
+  bossUnderLowLand,
   pickBossRaidBoss,
+  withBossRaidDefaults,
 } from "@openfront/engine-lib/game/BossRaid";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
+import { AllianceRequestExecution } from "@openfront/engine/execution/alliance/AllianceRequestExecution";
+import { AttackExecution } from "@openfront/engine/execution/AttackExecution";
 import {
   BOSS_STRATEGY_SLOT,
   bossFor,
@@ -97,22 +108,47 @@ function bossOf(game: Game): Player {
 }
 
 describe("Boss Raid scaling", () => {
+  // W in hundredths: 1 + 0.6 W for the cap, 1 + 0.3 W for growth and gold.
   test.each([
     [0, 100, 100, 100],
-    [1, 160, 130, 130],
-    [2, 220, 160, 160],
-    [5, 400, 250, 250],
-    [10, 700, 400, 400],
+    [25, 115, 107.5, 107.5],
+    [150, 190, 145, 145],
+    [750, 550, 325, 325],
   ])(
-    "N=%i raiders: max troops %i%%, growth %i%%, gold %i%%",
-    (n, troops, growth, gold) => {
-      expect(bossMaxTroopsPercent(n)).toBe(troops);
-      expect(bossTroopGrowthPercent(n)).toBe(growth);
-      expect(bossGoldIncomePercent(n)).toBe(gold);
+    "W=%i/100: max troops %i%%, growth %d%%, gold %d%%",
+    (w, troops, growth, gold) => {
+      expect(bossMaxTroopsPercent(w)).toBe(troops);
+      expect(bossTroopGrowthPercent(w)).toBe(growth);
+      expect(bossGoldIncomePercent(w)).toBe(gold);
     },
   );
 
-  test("the Boss's caps and income scale with N; a Raider's don't", async () => {
+  test("W: 1.5 per human, a nation by difficulty, tribes and the Boss not at all", () => {
+    const p = (team: string, type: PlayerType) => ({
+      team: () => team,
+      type: () => type,
+    });
+    const raider = (type: PlayerType) => p(BOSS_RAID_RAIDER_TEAM, type);
+    const players = [
+      raider(PlayerType.Human),
+      ...Array.from({ length: 12 }, () => raider(PlayerType.Nation)),
+      raider(PlayerType.Bot),
+      p(BOSS_RAID_BOSS_TEAM, PlayerType.Nation),
+    ];
+    // 1 human and 12 Hard nations: W = 7.5, a 5.5x cap (8.2x when every
+    // raider counted 1).
+    expect(bossRaidRaiderWeight(players, Difficulty.Hard)).toBe(750);
+    expect(bossMaxTroopsPercent(750)).toBe(550);
+    expect(bossRaidRaiderWeight(players, Difficulty.Easy)).toBe(150 + 12 * 25);
+    expect(bossRaidRaiderWeight(players, Difficulty.Medium)).toBe(
+      150 + 12 * 35,
+    );
+    expect(bossRaidRaiderWeight(players, Difficulty.Impossible)).toBe(
+      150 + 12 * 60,
+    );
+  });
+
+  test("the Boss's caps and income scale with W; a Raider's don't", async () => {
     const game = await bossRaidGame({
       humans: [human("boss", "bossaaaa"), human("raider", "raider01")],
       nations: ["n1", "n2", "n3"],
@@ -121,7 +157,9 @@ describe("Boss Raid scaling", () => {
     const boss = game.player("boss");
     const raider = game.player("raider");
     expect(boss.team()).toBe(BOSS_RAID_BOSS_TEAM);
-    expect(game.config().bossRaidRaiders()).toBe(4);
+    // A human and three Medium nations.
+    const w = 150 + 3 * 35;
+    expect(game.config().bossRaidRaiderWeight()).toBe(w);
     giveBands(game, [boss, raider]);
     // Same territory, so the only difference is the Boss multiplier.
     const tiles = Math.min(boss.numTilesOwned(), raider.numTilesOwned());
@@ -143,7 +181,7 @@ describe("Boss Raid scaling", () => {
     const config = game.config();
     const base = plain.config().maxTroops(solo);
     expect(config.maxTroops(raider)).toBe(base);
-    expect(config.maxTroops(boss)).toBe((base * bossMaxTroopsPercent(4)) / 100);
+    expect(config.maxTroops(boss)).toBe((base * bossMaxTroopsPercent(w)) / 100);
 
     boss.setTroops(10_000);
     raider.setTroops(10_000);
@@ -152,12 +190,12 @@ describe("Boss Raid scaling", () => {
       plain.config().troopIncreaseRate(solo),
     );
     expect(config.troopIncreaseRate(boss)).toBeGreaterThan(
-      config.troopIncreaseRate(raider) * 1.9,
+      config.troopIncreaseRate(raider) * 1.7,
     );
 
     expect(config.goldAdditionRate(raider)).toBe(100n);
     expect(config.goldAdditionRate(boss)).toBe(
-      BigInt(Math.floor((100 * bossGoldIncomePercent(4)) / 100)),
+      BigInt(Math.floor((100 * bossGoldIncomePercent(w)) / 100)),
     );
   });
 
@@ -166,7 +204,7 @@ describe("Boss Raid scaling", () => {
       human("a", "aaaaaaaa"),
       human("b", "bbbbbbbb"),
     ]);
-    expect(game.config().bossRaidRaiders()).toBe(0);
+    expect(game.config().bossRaidRaiderWeight()).toBe(0);
     expect(game.config().disableAlliances()).toBe(false);
     for (const p of game.allPlayers()) {
       expect(p.team()).not.toBe(BOSS_RAID_BOSS_TEAM);
@@ -204,7 +242,7 @@ describe("Boss Raid teams", () => {
     }
     // Alliances follow the lobby's setting, as in any game.
     expect(game.config().disableAlliances()).toBe(false);
-    expect(game.config().bossRaidRaiders()).toBe(4);
+    expect(game.config().bossRaidRaiderWeight()).toBe(2 * 150 + 2 * 35);
     const noAlliances = await bossRaidGame({
       humans: [human("boss", "bossaaaa"), human("r1", "raider01")],
       nations: [],
@@ -250,7 +288,7 @@ describe("Boss Raid singleplayer", () => {
       expect(n.team()).toBe(BOSS_RAID_RAIDER_TEAM);
       expect(game.config().difficultyFor(n)).toBe(Difficulty.Easy);
     }
-    expect(game.config().bossRaidRaiders()).toBe(4);
+    expect(game.config().bossRaidRaiderWeight()).toBe(150 + 3 * 25);
     // The lobby left the timer unset, so the Boss Raid default applies.
     expect(game.config().gameConfig().maxTimerValue).toBe(
       BOSS_RAID_DEFAULT_TIMER_MINUTES,
@@ -269,13 +307,41 @@ describe("Boss Raid singleplayer", () => {
 });
 
 describe("Boss Raid win conditions", () => {
+  const alive = { bossAlive: true, raidersAlive: true, lowLandTicks: 0 };
   test.each([
-    [{ bossAlive: false, raidersAlive: true, elapsedSeconds: 10 }, "raiders"],
-    [{ bossAlive: true, raidersAlive: true, elapsedSeconds: 10 }, null],
-    [{ bossAlive: true, raidersAlive: true, elapsedSeconds: 1500 }, "boss"],
-    [{ bossAlive: true, raidersAlive: false, elapsedSeconds: 10 }, "boss"],
+    [{ ...alive, bossAlive: false, elapsedSeconds: 10 }, "raiders"],
+    [{ ...alive, elapsedSeconds: 10 }, null],
+    [{ ...alive, lowLandTicks: 299, elapsedSeconds: 10 }, null],
+    [{ ...alive, lowLandTicks: 300, elapsedSeconds: 10 }, "raiders"],
+    [{ ...alive, elapsedSeconds: 1500 }, "boss"],
+    [{ ...alive, raidersAlive: false, elapsedSeconds: 10 }, "boss"],
   ] as const)("%o -> %s", (state, winner) => {
     expect(bossRaidWinner({ ...state, timerMinutes: 25 })).toBe(winner);
+  });
+
+  test("under 1% of the land, for 30 s in a row, once the start shield is down", () => {
+    expect(BOSS_RAID_LOW_LAND_TICKS).toBe(300);
+    expect(bossUnderLowLand(99, 10_000, 1800)).toBe(true);
+    expect(bossUnderLowLand(100, 10_000, 1800)).toBe(false);
+    // Everyone starts on a few tiles: no clock in the first 3 minutes.
+    expect(bossUnderLowLand(99, 10_000, 1799)).toBe(false);
+  });
+
+  test("the timer: 25 minutes unless set, kept between 15 and 60", () => {
+    expect(BOSS_RAID_MIN_TIMER_MINUTES).toBe(15);
+    expect(BOSS_RAID_MAX_TIMER_MINUTES).toBe(60);
+    expect(bossRaidTimerMinutes({})).toBe(25);
+    expect(bossRaidTimerMinutes({ maxTimerValue: 5 })).toBe(15);
+    expect(bossRaidTimerMinutes({ maxTimerValue: 40 })).toBe(40);
+    expect(bossRaidTimerMinutes({ maxTimerValue: 90 })).toBe(60);
+    const raid = {
+      gameMode: GameMode.Team,
+      bossRaid: { boss: "nation" },
+    } as GameConfig;
+    expect(
+      withBossRaidDefaults({ ...raid, maxTimerValue: 90 }).maxTimerValue,
+    ).toBe(60);
+    expect(withBossRaidDefaults(raid).maxTimerValue).toBe(25);
   });
 
   async function raid() {
@@ -305,6 +371,30 @@ describe("Boss Raid win conditions", () => {
     for (const tile of [...raider.tiles()]) raider.relinquish(tile);
     executeTicks(game, 10);
     expect(game.getWinner()).toBe(BOSS_RAID_BOSS_TEAM);
+  });
+
+  test("the Raiders win once the Boss holds under 1% of the land for 30 s", async () => {
+    const { game, boss, raider } = await raid();
+    const keep = Math.floor(game.numLandTiles() / 100) - 1;
+    const shrink = () => {
+      for (const tile of [...boss.tiles()].slice(keep)) boss.relinquish(tile);
+    };
+    shrink();
+    // Not during the start shield.
+    executeTicks(game, 400);
+    expect(game.getWinner()).toBeNull();
+    vi.spyOn(game, "ticksSinceStart").mockReturnValue(BOSS_RAID_SHIELD_TICKS);
+    executeTicks(game, 290);
+    expect(game.getWinner()).toBeNull();
+    // Back over 1% for a moment: the 30 s start again.
+    for (const tile of [...raider.tiles()].slice(0, 10)) boss.conquer(tile);
+    executeTicks(game, 20);
+    shrink();
+    executeTicks(game, 290);
+    expect(game.getWinner()).toBeNull();
+    executeTicks(game, 30);
+    expect(boss.isAlive()).toBe(true);
+    expect(game.getWinner()).toBe(BOSS_RAID_RAIDER_TEAM);
   });
 
   test("the Boss wins by surviving the timer, whatever the tile share", async () => {
@@ -515,7 +605,7 @@ describe("Boss Raid alliances", () => {
     expect(decide(raider).some((yes) => yes)).toBe(false);
   });
 
-  test("humans may still ally across the line", async () => {
+  test("nobody allies the Boss, humans included", async () => {
     const game = await bossRaidGame({
       humans: [human("boss", "bossaaaa"), human("raider", "raider01")],
       nations: [],
@@ -524,9 +614,75 @@ describe("Boss Raid alliances", () => {
     const boss = game.player("boss");
     const raider = game.player("raider");
     giveBands(game, [boss, raider]);
-    expect(raider.canSendAllianceRequest(boss)).toBe(true);
-    raider.createAllianceRequest(boss)?.accept();
-    expect(raider.isAlliedWith(boss)).toBe(true);
+    expect(raider.canSendAllianceRequest(boss)).toBe(false);
+    expect(boss.canSendAllianceRequest(raider)).toBe(false);
+    game.addExecution(new AllianceRequestExecution(raider, boss.id()));
+    game.addExecution(new AllianceRequestExecution(boss, raider.id()));
+    executeTicks(game, 2);
+    expect(boss.incomingAllianceRequests()).toHaveLength(0);
+    expect(raider.incomingAllianceRequests()).toHaveLength(0);
+    expect(raider.isAlliedWith(boss)).toBe(false);
+  });
+});
+
+describe("Boss Raid start shield", () => {
+  test("a quarter of the troops per attack for the first 3 minutes", () => {
+    expect(BOSS_RAID_SHIELD_TICKS).toBe(1800);
+    expect(bossShieldAttackCap(0, 100_000)).toBe(25_000);
+    expect(bossShieldAttackCap(1799, 100_000)).toBe(25_000);
+    expect(bossShieldAttackCap(1800, 100_000)).toBe(Infinity);
+  });
+
+  async function shieldGame() {
+    const game = await bossRaidGame({
+      humans: [human("boss", "bossaaaa"), human("raider", "raider01")],
+      nations: [],
+      boss: "bossaaaa",
+    });
+    const boss = game.player("boss");
+    const raider = game.player("raider");
+    giveBands(game, [boss, raider]);
+    boss.setTroops(400_000);
+    raider.setTroops(400_000);
+    return { game, boss, raider };
+  }
+
+  test("the Boss's attack holds 25% of its troops, the rest stays home", async () => {
+    const { game, boss, raider } = await shieldGame();
+    game.addExecution(new AttackExecution(300_000, boss, raider.id()));
+    executeTicks(game, 1);
+    const sent = boss.outgoingAttacks().reduce((sum, a) => sum + a.troops(), 0);
+    expect(sent).toBeLessThanOrEqual(100_000);
+    expect(sent).toBeGreaterThan(90_000);
+    // A second click adds to the same attack, still within the cap.
+    game.addExecution(new AttackExecution(200_000, boss, raider.id()));
+    executeTicks(game, 1);
+    const total =
+      boss.troops() +
+      boss.outgoingAttacks().reduce((sum, a) => sum + a.troops(), 0);
+    const after = boss
+      .outgoingAttacks()
+      .reduce((sum, a) => sum + a.troops(), 0);
+    expect(after).toBeLessThanOrEqual(Math.floor(total / 4) + 1);
+  });
+
+  test("a Raider is not shielded", async () => {
+    const { game, boss, raider } = await shieldGame();
+    game.addExecution(new AttackExecution(300_000, raider, boss.id()));
+    executeTicks(game, 1);
+    const raid = raider
+      .outgoingAttacks()
+      .reduce((sum, a) => sum + a.troops(), 0);
+    expect(raid).toBeGreaterThan(250_000);
+  });
+
+  test("after 3 minutes the Boss attacks with what it likes", async () => {
+    const { game, boss, raider } = await shieldGame();
+    vi.spyOn(game, "ticksSinceStart").mockReturnValue(BOSS_RAID_SHIELD_TICKS);
+    game.addExecution(new AttackExecution(300_000, boss, raider.id()));
+    executeTicks(game, 1);
+    const sent = boss.outgoingAttacks().reduce((sum, a) => sum + a.troops(), 0);
+    expect(sent).toBeGreaterThan(250_000);
   });
 });
 
@@ -542,7 +698,7 @@ describe("Boss Raid snapshots", () => {
     game.addExecution(new WinCheckExecution());
     executeTicks(game, 3);
     const restored = await expectSnapshotRoundTrip(game, MAP, 10);
-    expect(restored.config().bossRaidRaiders()).toBe(3);
+    expect(restored.config().bossRaidRaiderWeight()).toBe(150 + 2 * 35);
     expect(restored.config().gameConfig().maxTimerValue).toBe(
       BOSS_RAID_DEFAULT_TIMER_MINUTES,
     );

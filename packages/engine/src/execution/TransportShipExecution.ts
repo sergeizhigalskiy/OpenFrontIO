@@ -6,6 +6,10 @@ import {
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
 import { renderTroops } from "@openfront/engine-lib/Format";
+import {
+  bossShieldAttackCap,
+  isBossRaidBoss,
+} from "@openfront/engine-lib/game/BossRaid";
 import { MotionPlanRecord } from "@openfront/engine-lib/game/MotionPlans";
 import { STORM_SPEED_DIVISOR } from "@openfront/engine-lib/game/Weather";
 import {
@@ -64,6 +68,23 @@ export class TransportShipExecution implements Execution {
     this.originalOwner = this.attacker;
   }
 
+  /**
+   * A boat that sets out from the open-water tile `src` rather than from its
+   * owner's coast, for `dst` (a shore tile): a Horde Night band sailing in
+   * from the map edge. Its owner needs no land, only the troops.
+   */
+  static fromSea(
+    attacker: Player,
+    src: TileRef,
+    dst: TileRef,
+    troops: number,
+  ): TransportShipExecution {
+    const exec = new TransportShipExecution(attacker, dst, troops);
+    exec.src = src;
+    exec.dst = dst;
+    return exec;
+  }
+
   activeDuringSpawnPhase(): boolean {
     return false;
   }
@@ -120,8 +141,20 @@ export class TransportShipExecution implements Execution {
       .config()
       .boatAttackAmount(this.attacker, this.target);
     this.troops = Math.min(this.troops, this.attacker.troops());
+    // Boss Raid start shield: a quarter of the Boss's troops at most.
+    if (isBossRaidBoss(mg.config().gameConfig(), this.attacker)) {
+      this.troops = Math.min(
+        this.troops,
+        bossShieldAttackCap(mg.ticksSinceStart(), this.attacker.troops()),
+      );
+    }
 
-    this.dst = targetTransportTile(this.mg, this.attacker, this.ref);
+    // A boat from open water (fromSea) comes with its route set.
+    const fromSea = (this.src as TileRef | null | undefined) !== undefined;
+
+    if (!fromSea) {
+      this.dst = targetTransportTile(this.mg, this.attacker, this.ref);
+    }
 
     if (this.dst === null) {
       console.warn(
@@ -131,9 +164,11 @@ export class TransportShipExecution implements Execution {
       return;
     }
 
-    const src = this.attacker.canBuild(UnitType.TransportShip, this.dst);
+    const src = fromSea
+      ? this.src
+      : this.attacker.canBuild(UnitType.TransportShip, this.dst);
 
-    if (src === false) {
+    if (src === false || src === null) {
       console.warn(
         `${this.attacker} cannot send ship to ${this.target}, cannot find start tile`,
       );

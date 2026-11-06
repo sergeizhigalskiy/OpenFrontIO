@@ -269,12 +269,13 @@ export type PoolConfig = z.infer<typeof PoolConfigSchema>;
 
 // Boss Raid (engine-lib/game/BossRaid.ts): a Team game of everyone against
 // one Boss. `boss` is BOSS_RAID_NATION_BOSS for an Impossible nation, or the
-// clientID of the lobby player who volunteered. `raiders` is not a lobby
-// setting: the engine fills it in when the game is created.
+// clientID of the lobby player who volunteered. `raiderWeight` (W, the
+// weighted raiders, in hundredths) is not a lobby setting: the engine fills
+// it in when the game is created.
 export const BOSS_RAID_NATION_BOSS = "nation";
 export const BossRaidConfigSchema = z.object({
   boss: z.string().regex(/^(nation|[A-Za-z0-9]{8,10})$/),
-  raiders: zb.uint({ max: 1000 }).optional(),
+  raiderWeight: zb.uint({ max: 1_000_000 }).optional(),
 });
 export type BossRaidConfig = z.infer<typeof BossRaidConfigSchema>;
 

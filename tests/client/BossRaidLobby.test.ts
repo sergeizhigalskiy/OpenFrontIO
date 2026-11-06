@@ -3,6 +3,8 @@ import { GameUpdateType } from "@openfront/engine-api/game/GameUpdates";
 import { Config } from "@openfront/engine-lib/configuration/Config";
 import {
   BOSS_RAID_BOSS_TEAM,
+  BOSS_RAID_HUMAN_WEIGHT_HUNDREDTHS,
+  BOSS_RAID_NATION_WEIGHT_HUNDREDTHS,
   BOSS_RAID_RAIDER_TEAM,
 } from "@openfront/engine-lib/game/BossRaid";
 import { describe, expect, it, vi } from "vitest";
@@ -112,7 +114,7 @@ describe("Boss Raid lobby summary and end screen", () => {
 });
 
 describe("Boss Raid in the client's view", () => {
-  it("counts the raiders once the teams arrive, so the Boss's cap matches the engine's", () => {
+  it("weighs the raiders once the teams arrive, so the Boss's cap matches the engine's", () => {
     const config = new Config(
       testGameConfig({ gameMode: GameMode.Team, bossRaid: { boss: "nation" } }),
       false,
@@ -138,7 +140,11 @@ describe("Boss Raid in the client's view", () => {
       }),
     ];
     view.update(gu);
-    expect(config.bossRaidRaiders()).toBe(2);
+    // W: the human and the nation, by their weights; not the tribe.
+    expect(config.bossRaidRaiderWeight()).toBe(
+      BOSS_RAID_HUMAN_WEIGHT_HUNDREDTHS +
+        BOSS_RAID_NATION_WEIGHT_HUNDREDTHS[config.gameConfig().difficulty],
+    );
     // The lobby left the timer unset: the Boss Raid default shows in the HUD.
     expect(config.gameConfig().maxTimerValue).toBe(25);
   });

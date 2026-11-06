@@ -13,6 +13,10 @@ import {
   TeamCountConfig,
 } from "@openfront/engine-api/Schemas";
 import {
+  BOSS_RAID_MAX_TIMER_MINUTES,
+  BOSS_RAID_MIN_TIMER_MINUTES,
+} from "@openfront/engine-lib/game/BossRaid";
+import {
   DOOMSDAY_CLOCK_SPEEDS,
   DoomsdayClockSpeed,
 } from "@openfront/engine-lib/game/DoomsdayClock";
@@ -214,6 +218,10 @@ export interface ToggleOptionConfig {
   hidden?: boolean;
   // When set, this toggle's card expands to a pace dropdown while it is checked.
   doomsdayClockSpeed?: DoomsdayClockSpeed;
+  // When set, this toggle's card expands to a minutes dropdown while checked.
+  minuteChoices?: { options: readonly number[]; selected: number };
+  // A translation key: the mode's win rule, shown on the card while checked.
+  ruleKey?: string;
 }
 
 export interface BossRaidSettings {
@@ -317,6 +325,17 @@ export class GameConfigSettings extends LitElement {
     this.emit("difficulty-selected", { difficulty });
   };
 
+  private handleOptionMinutesChange = (
+    toggle: ToggleOptionConfig,
+    e: Event,
+  ) => {
+    const minutes = Number((e.target as HTMLSelectElement).value);
+    this.emit("option-minutes-selected", {
+      labelKey: toggle.labelKey,
+      minutes,
+    });
+  };
+
   private handleDoomsdayClockSpeedChange = (e: Event) => {
     const speed = (e.target as HTMLSelectElement).value as DoomsdayClockSpeed;
     this.emit("doomsday-clock-speed-selected", { speed });
@@ -378,8 +397,8 @@ export class GameConfigSettings extends LitElement {
           </span>
           <input
             type="number"
-            min="1"
-            max="120"
+            min=${BOSS_RAID_MIN_TIMER_MINUTES}
+            max=${BOSS_RAID_MAX_TIMER_MINUTES}
             step="1"
             class="w-20 rounded-md bg-black/40 border border-white/20 px-2 py-1 text-white text-sm"
             .value=${String(bossRaid.timerMinutes ?? "")}
@@ -388,6 +407,9 @@ export class GameConfigSettings extends LitElement {
         </label>
         <div class="text-[11px] text-white/50 pl-2">
           ${translateText("boss_raid.rules")}
+        </div>
+        <div class="text-[11px] text-white/40 pl-2">
+          ${translateText("boss_raid.scaling")}
         </div>
         ${
           bossRaid.errorKey !== null
@@ -433,6 +455,9 @@ export class GameConfigSettings extends LitElement {
 
     if (toggle.doomsdayClockSpeed !== undefined) {
       return this.renderDoomsdayClockToggle(toggle);
+    }
+    if (toggle.minuteChoices !== undefined || toggle.ruleKey !== undefined) {
+      return this.renderModeToggle(toggle);
     }
 
     return renderTextCardButton(
@@ -480,6 +505,58 @@ export class GameConfigSettings extends LitElement {
                   )}
                 </select>
               `
+            : nothing
+        }
+      </div>
+    `;
+  }
+
+  // A lobby mode's toggle: when on, the card grows to hold its minutes
+  // dropdown (if any) and its one-line win rule. The dropdown stops
+  // propagation so picking a length doesn't flip the toggle.
+  private renderModeToggle(toggle: ToggleOptionConfig): TemplateResult {
+    const choices = toggle.minuteChoices;
+    return html`
+      <div
+        class="${cardClass(
+          toggle.checked,
+          "p-4 flex flex-col items-center justify-center gap-2 text-center",
+        )}"
+        @click=${() => this.handleOptionToggle(toggle)}
+      >
+        <span class="${CARD_LABEL_CLASS} ${stateTextClass(toggle.checked)}">
+          ${translateText(toggle.labelKey)}
+        </span>
+        ${
+          toggle.checked && choices !== undefined
+            ? html`
+                <select
+                  class="bg-white/10 border border-white/20 rounded-lg px-2 py-1 text-white text-xs"
+                  @click=${(e: Event) => e.stopPropagation()}
+                  @change=${(e: Event) =>
+                    this.handleOptionMinutesChange(toggle, e)}
+                >
+                  ${choices.options.map(
+                    (minutes) => html`
+                      <option
+                        value=${minutes}
+                        ?selected=${choices.selected === minutes}
+                      >
+                        ${translateText("game_settings.minutes_choice", {
+                          minutes,
+                        })}
+                      </option>
+                    `,
+                  )}
+                </select>
+              `
+            : nothing
+        }
+        ${
+          toggle.checked && toggle.ruleKey !== undefined
+            ? html`<span class="text-[11px] text-white/60" data-mode-rule
+                >${translateText(toggle.ruleKey)}</span
+              >`
             : nothing
         }
       </div>

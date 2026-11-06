@@ -10,9 +10,11 @@ import {
   BOSS_RAID_RAIDER_TEAM,
   bossRaidTimerMinutes,
   bossRaidWinner,
+  bossUnderLowLand,
   isBossRaid,
 } from "@openfront/engine-lib/game/BossRaid";
 import { isInfected } from "@openfront/engine-lib/game/Plague";
+import { zInt } from "@openfront/engine-lib/snapshot/SnapshotType";
 import { z } from "zod";
 import { Execution, Game } from "../game/Game";
 import { execSnapshotType } from "../snapshot/ExecutionSnapshot";
@@ -25,6 +27,10 @@ export class WinCheckExecution implements Execution {
   private mg: Game | null = null;
 
   private checkedRankedSpawns = false;
+
+  // Boss Raid: the tick the Boss went under 1% of the land, while it stays
+  // there; null otherwise.
+  private bossLowLandSince: number | null = null;
 
   // Hard time limit (in seconds) to force a winner before the server's
   // maxGameDuration hard kill. 170mins (10 mins before 3hrs)
@@ -186,20 +192,39 @@ export class WinCheckExecution implements Execution {
     );
   }
 
-  // Boss Raid: the Raiders win by eliminating the Boss, the Boss by surviving
-  // the timer (or outlasting every Raider). Tile share doesn't count.
+  // Boss Raid: the Raiders win once the Boss holds under 1% of the land for
+  // 30 s in a row after the 3-minute start shield (or none at any time), the
+  // Boss by surviving the timer or outlasting every Raider. The Raiders' tile
+  // share doesn't count.
   checkWinnerBossRaid(): void {
     if (this.mg === null) throw new Error("Not initialized");
     let bossAlive = false;
+    let bossTiles = 0;
     let raidersAlive = false;
     for (const p of this.mg.allPlayers()) {
       if (!p.isAlive()) continue;
       const team = p.team();
-      if (team === BOSS_RAID_BOSS_TEAM) bossAlive = true;
-      else if (team === BOSS_RAID_RAIDER_TEAM) raidersAlive = true;
+      if (team === BOSS_RAID_BOSS_TEAM) {
+        bossAlive = true;
+        bossTiles += p.numTilesOwned();
+      } else if (team === BOSS_RAID_RAIDER_TEAM) raidersAlive = true;
+    }
+    const ticks = this.mg.ticks();
+    if (
+      !bossUnderLowLand(
+        bossTiles,
+        this.mg.numLandTiles(),
+        this.mg.ticksSinceStart(),
+      )
+    ) {
+      this.bossLowLandSince = null;
+    } else {
+      this.bossLowLandSince ??= ticks;
     }
     const winner = bossRaidWinner({
       bossAlive,
+      lowLandTicks:
+        this.bossLowLandSince === null ? 0 : ticks - this.bossLowLandSince,
       raidersAlive,
       elapsedSeconds: this.mg.elapsedGameSeconds(),
       timerMinutes: bossRaidTimerMinutes(this.mg.config().gameConfig()),
@@ -277,6 +302,7 @@ export class WinCheckExecution implements Execution {
       active: this.active,
       initialized: this.mg !== null,
       checkedRankedSpawns: this.checkedRankedSpawns,
+      bossLowLandSince: this.bossLowLandSince,
     });
   }
 
@@ -284,6 +310,7 @@ export class WinCheckExecution implements Execution {
     this.active = s.active;
     this.mg = s.initialized ? r.game : null;
     this.checkedRankedSpawns = s.checkedRankedSpawns;
+    this.bossLowLandSince = s.bossLowLandSince;
   }
 }
 
@@ -299,12 +326,17 @@ const WinCheckStateSchema = z.object({
   active: z.boolean(),
   initialized: z.boolean(),
   checkedRankedSpawns: z.boolean(),
+  bossLowLandSince: zInt().nullable(),
 });
 type WinCheckState = z.infer<typeof WinCheckStateSchema>;
 
 export const WinCheckExecutionSnapshot = execSnapshotType({
   name: "WinCheck",
-  version: 1,
+  version: 2,
   schema: WinCheckStateSchema,
+  // v2 adds the Boss Raid low-land clock.
+  migrations: {
+    1: (d) => ({ ...(d as Record<string, unknown>), bossLowLandSince: null }),
+  },
   cls: () => WinCheckExecution,
 });

@@ -2,6 +2,7 @@ import type { TileRef } from "@openfront/engine-api/game/GameMap";
 import { UnitType } from "@openfront/engine-api/game/GameTypes";
 import type {
   CataclysmUpdate,
+  HordeUpdate,
   RisingTideUpdate,
 } from "@openfront/engine-api/game/GameUpdates";
 import {
@@ -12,9 +13,9 @@ import { TELEGRAPH_ENEMY } from "../render/frame/derive/NukeTelegraphs";
 import type { DeadUnitFx, NukeTelegraphData } from "../render/types";
 
 /**
- * The client's copy of the volcano and rising tide state, folded from
- * GameUpdateType.Cataclysm updates (each one carries the whole state of its
- * kind). Empty while both modes are off.
+ * The client's copy of the volcano, rising tide and Horde Night state, folded
+ * from GameUpdateType.Cataclysm updates (each one carries the whole state of
+ * its kind). Empty while those modes are off.
  */
 export class CataclysmView {
   volcanoSites: readonly TileRef[] = [];
@@ -30,6 +31,8 @@ export class CataclysmView {
   tide: RisingTideUpdate | null = null;
   /** Bumped whenever the tide state changes. */
   tideVersion = 0;
+  /** The latest Horde Night state; null while the mode is off. */
+  horde: HordeUpdate | null = null;
 
   apply(updates: readonly CataclysmUpdate[] | undefined): void {
     this.eruptedSites = [];
@@ -40,11 +43,22 @@ export class CataclysmView {
         this.eruptionTick = u.eruptionTick;
         if (u.eruptedSite !== null) this.eruptedSites.push(u.eruptedSite);
         this.volcanoVersion++;
-      } else {
+      } else if (u.kind === "tide") {
         this.tide = u;
         this.tideVersion++;
+      } else {
+        this.horde = u;
       }
     }
+  }
+
+  /** A defending human's land when the first Horde Night wave landed. */
+  hordeStartTiles(smallID: number): number | null {
+    const land = this.horde?.startLand ?? [];
+    for (let i = 0; i + 1 < land.length; i += 2) {
+      if (land[i] === smallID) return land[i + 1];
+    }
+    return null;
   }
 }
 

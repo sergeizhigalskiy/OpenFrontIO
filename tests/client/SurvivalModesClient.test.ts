@@ -54,9 +54,16 @@ function fakeGame(
   config: Partial<GameConfig>,
   me: { team: string | null; clientID: string } | null,
   infectedAlive: boolean | null = null,
+  hordeOutcome: string | null = null,
 ): GameView {
   return {
     config: () => ({ gameConfig: () => ({ ...BASE, ...config }) }),
+    cataclysm: () => ({
+      horde:
+        hordeOutcome === null
+          ? null
+          : { kind: "horde", startLand: [], outcome: hordeOutcome },
+    }),
     myPlayer: () =>
       me === null ? null : { team: () => me.team, clientID: () => me.clientID },
     hasPlayer: (id: string) =>
@@ -85,24 +92,26 @@ describe("survival mode endings", () => {
       survivalModeEnding(fakeGame(horde, null), ["team", HORDE_DEFENDERS_TEAM])
         ?.isWin,
     ).toBe(false);
+    // Held between 25% and 50% of the land at the timer: a narrow win.
+    expect(
+      survivalModeEnding(fakeGame(horde, defender, null, "narrow"), [
+        "team",
+        HORDE_DEFENDERS_TEAM,
+        "c1",
+      ]),
+    ).toEqual({ title: "horde_night.narrow_win", isWin: true });
   });
 
-  test("the plague: consumed world, cured with a winner, or the usual title", () => {
+  test("the plague: a consumed world, or the usual title (cured or not)", () => {
     const plague = { plague: true };
     const me = { team: null, clientID: "c1" };
     expect(
       survivalModeEnding(fakeGame(plague, me, true), ["team", INFECTED_TEAM]),
     ).toEqual({ title: "plague.consumed", isWin: false });
+    // Killing The Infected ends nothing: the game is won the usual way.
     expect(
       survivalModeEnding(fakeGame(plague, me, false), ["player", "c1"]),
-    ).toEqual({ title: "plague.cured_you", isWin: true });
-    expect(
-      survivalModeEnding(fakeGame(plague, me, false), ["player", "c2"]),
-    ).toEqual({
-      title: 'plague.cured_other {"name":"name_c2"}',
-      isWin: false,
-    });
-    // Won the usual way while The Infected still lives.
+    ).toBeNull();
     expect(
       survivalModeEnding(fakeGame(plague, me, true), ["player", "c1"]),
     ).toBeNull();

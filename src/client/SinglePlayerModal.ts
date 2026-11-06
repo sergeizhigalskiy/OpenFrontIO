@@ -14,13 +14,14 @@ import {
 } from "@openfront/engine-api/Schemas";
 import {
   BOSS_RAID_DEFAULT_TIMER_MINUTES,
+  BOSS_RAID_MAX_TIMER_MINUTES,
+  BOSS_RAID_MIN_TIMER_MINUTES,
   bossRaidConfigError,
 } from "@openfront/engine-lib/game/BossRaid";
 import { DoomsdayClockSpeed } from "@openfront/engine-lib/game/DoomsdayClock";
 import {
   HORDE_NIGHT_DEFAULT_SURVIVAL_MINUTES,
-  HORDE_NIGHT_MAX_SURVIVAL_MINUTES,
-  HORDE_NIGHT_MIN_SURVIVAL_MINUTES,
+  HORDE_NIGHT_SURVIVAL_CHOICES,
 } from "@openfront/engine-lib/game/HordeNight";
 import {
   EXCLUSIVE_MODE_LABEL_KEYS,
@@ -568,21 +569,6 @@ export class SinglePlayerModal extends BaseModal {
         .onInput=${this.handleOvertimeMinutesInput}
         .onKeyDown=${this.handleOvertimeMinutesKeyDown}
       ></toggle-input-card>`,
-      html`<toggle-input-card
-        .labelKey=${"game_settings.horde_night"}
-        .checked=${this.hordeNight}
-        .inputMin=${HORDE_NIGHT_MIN_SURVIVAL_MINUTES}
-        .inputMax=${HORDE_NIGHT_MAX_SURVIVAL_MINUTES}
-        .inputStep=${1}
-        .inputValue=${this.hordeNightSurvivalMinutes}
-        .inputAriaLabel=${translateText("game_settings.horde_night")}
-        .inputPlaceholder=${translateText("game_settings.mins_placeholder")}
-        .defaultInputValue=${HORDE_NIGHT_DEFAULT_SURVIVAL_MINUTES}
-        .minValidOnEnable=${HORDE_NIGHT_MIN_SURVIVAL_MINUTES}
-        .onToggle=${this.handleHordeNightToggle}
-        .onInput=${this.handleHordeNightMinutesInput}
-        .onKeyDown=${this.handleHordeNightMinutesKeyDown}
-      ></toggle-input-card>`,
     ];
 
     return html`
@@ -693,8 +679,20 @@ export class SinglePlayerModal extends BaseModal {
                     checked: this.risingTide,
                   },
                   {
+                    labelKey: "game_settings.horde_night",
+                    checked: this.hordeNight,
+                    minuteChoices: {
+                      options: HORDE_NIGHT_SURVIVAL_CHOICES,
+                      selected:
+                        this.hordeNightSurvivalMinutes ??
+                        HORDE_NIGHT_DEFAULT_SURVIVAL_MINUTES,
+                    },
+                    ruleKey: "horde_night.rules",
+                  },
+                  {
                     labelKey: "game_settings.plague",
                     checked: this.plague,
+                    ruleKey: "plague.rules",
                   },
                   {
                     labelKey: "game_settings.seasons",
@@ -734,6 +732,7 @@ export class SinglePlayerModal extends BaseModal {
             @bots-changed=${this.handleBotsChange}
             @nations-changed=${this.handleNationsChange}
             @option-toggle-changed=${this.handleConfigOptionToggleChanged}
+            @option-minutes-selected=${this.handleConfigOptionMinutesSelected}
             @unit-toggle-changed=${this.handleConfigUnitToggleChanged}
           ></game-config-settings>
         </div>
@@ -1153,7 +1152,10 @@ export class SinglePlayerModal extends BaseModal {
     this.maxTimerValue =
       minutes === undefined
         ? undefined
-        : Math.max(1, Math.min(120, Math.round(minutes)));
+        : Math.max(
+            BOSS_RAID_MIN_TIMER_MINUTES,
+            Math.min(BOSS_RAID_MAX_TIMER_MINUTES, Math.round(minutes)),
+          );
   };
 
   private bossRaidOn(): boolean {
@@ -1276,6 +1278,10 @@ export class SinglePlayerModal extends BaseModal {
         this.plague = checked;
         if (checked) this.turnOffOtherExclusiveModes("plague");
         break;
+      case "game_settings.horde_night":
+        this.hordeNight = checked;
+        if (checked) this.turnOffOtherExclusiveModes("hordeNight");
+        break;
       case "game_settings.seasons":
         this.seasons = checked;
         break;
@@ -1361,30 +1367,12 @@ export class SinglePlayerModal extends BaseModal {
     this.overtimeStartMinutes = toOptionalNumber(value);
   };
 
-  private handleHordeNightToggle = (
-    checked: boolean,
-    value: number | string | undefined,
-  ) => {
-    this.hordeNight = checked;
-    this.hordeNightSurvivalMinutes = toOptionalNumber(value);
-    if (checked) this.turnOffOtherExclusiveModes("hordeNight");
-  };
-
-  private handleHordeNightMinutesKeyDown = (e: KeyboardEvent) => {
-    preventDisallowedKeys(e, ["-", "+", "e"]);
-  };
-
-  private handleHordeNightMinutesInput = (e: Event) => {
-    const input = e.target as HTMLInputElement;
-    const value = parseBoundedIntegerFromInput(input, {
-      min: HORDE_NIGHT_MIN_SURVIVAL_MINUTES,
-      max: HORDE_NIGHT_MAX_SURVIVAL_MINUTES,
-      stripPattern: /[e+-]/gi,
-    });
-    if (value === undefined) {
-      return;
-    }
-    this.hordeNightSurvivalMinutes = value;
+  private handleConfigOptionMinutesSelected = (e: Event) => {
+    const { labelKey, minutes } = (
+      e as CustomEvent<{ labelKey: string; minutes: number }>
+    ).detail;
+    if (labelKey !== "game_settings.horde_night") return;
+    this.hordeNightSurvivalMinutes = minutes;
   };
 
   private handleOvertimeMinutesKeyDown = (e: KeyboardEvent) => {
@@ -1628,8 +1616,9 @@ export class SinglePlayerModal extends BaseModal {
             maxTimerValue: finalMaxTimerValue,
             bots: this.bots,
             infiniteGold: this.infiniteGold,
-            donateGold: this.gameMode === GameMode.Team,
-            donateTroops: this.gameMode === GameMode.Team,
+            // Horde Night: donations on, so you can reinforce a nation.
+            donateGold: this.gameMode === GameMode.Team || this.hordeNight,
+            donateTroops: this.gameMode === GameMode.Team || this.hordeNight,
             infiniteTroops: this.infiniteTroops,
             instantBuild: this.instantBuild,
             randomSpawn: this.randomSpawn,

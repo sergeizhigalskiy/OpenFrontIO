@@ -455,11 +455,24 @@ export interface GamePausedUpdate {
 }
 
 /**
- * Volcanoes and rising tide (see engine-lib/game/Volcanoes.ts and
- * RisingTide.ts). Each update carries the whole state of its `kind`, sent
- * when it changes and again on a view resync, so a view keeps the latest one.
+ * Volcanoes, rising tide and Horde Night (see engine-lib/game/Volcanoes.ts,
+ * RisingTide.ts and HordeNight.ts). Each update carries the whole state of
+ * its `kind`, sent when it changes and again on a view resync, so a view
+ * keeps the latest one.
  */
-export type CataclysmUpdate = VolcanoUpdate | RisingTideUpdate;
+export type CataclysmUpdate = VolcanoUpdate | RisingTideUpdate | HordeUpdate;
+
+export interface HordeUpdate {
+  type: GameUpdateType.Cataclysm;
+  kind: "horde";
+  /**
+   * Each defending human's land when the first wave landed, as
+   * `[smallID, tiles, smallID, tiles, ...]`; empty before then.
+   */
+  startLand: number[];
+  /** How the night ended: null while it lasts. */
+  outcome: "defenders" | "narrow" | "horde" | null;
+}
 
 export interface VolcanoUpdate {
   type: GameUpdateType.Cataclysm;

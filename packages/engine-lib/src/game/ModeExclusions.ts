@@ -29,6 +29,19 @@ export const EXCLUSIVE_MODE_LABEL_KEYS: Record<ExclusiveMode, string> = {
   plague: "game_settings.plague",
 };
 
+/** Translation keys of each mode's one-line win rule, as the lobby shows it. */
+export const EXCLUSIVE_MODE_RULE_KEYS: Record<ExclusiveMode, string> = {
+  bossRaid: "boss_raid.rules",
+  hordeNight: "horde_night.rules",
+  plague: "plague.rules",
+};
+
+/** The win rule of the exclusive mode `config` turns on, or null. */
+export function modeWinRuleKey(config: ModeConfig): string | null {
+  const [mode] = exclusiveModesOn(config);
+  return mode === undefined ? null : EXCLUSIVE_MODE_RULE_KEYS[mode];
+}
+
 const MODE_NAMES: Record<ExclusiveMode, string> = {
   bossRaid: "Boss Raid",
   hordeNight: "Horde Night",
