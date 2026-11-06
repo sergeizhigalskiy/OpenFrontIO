@@ -10,12 +10,6 @@ import {
   Tick,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
-import {
-  BALLISTIC_MISSILE_BLAST_RADIUS,
-  BALLISTIC_MISSILE_COST,
-  BALLISTIC_MISSILE_SILO_LEVEL,
-  BALLISTIC_MISSILE_SPEED,
-} from "@openfront/engine-lib/game/ConventionalWar";
 import { euclDistFN } from "@openfront/engine-lib/game/GameMapImpl";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import {
@@ -34,15 +28,9 @@ import type {
   SnapshotReader,
   SnapshotWriter,
 } from "../../snapshot/SnapshotContext";
-import { AirMissionExecution } from "../AirMissionExecution";
 import { NukeExecution } from "../NukeExecution";
 import { UpgradeStructureExecution } from "../UpgradeStructureExecution";
 import { closestTwoTiles } from "../Util";
-import {
-  ballisticBlastHitsFriends,
-  isFlatFlightInterceptable,
-  structureStrikeValue,
-} from "./NationAirPlanning";
 import { NationAttackBehavior } from "./NationAttackBehavior";
 import { EMOJI_NUKE, NationEmojiBehavior } from "./NationEmojiBehavior";
 import { isMirvWorthSavingFor } from "./NationMIRVBehavior";
@@ -98,9 +86,6 @@ const STRIKE_SPAWN_TICKS = 10;
 /** Hard & Impossible: ticks after a launch until that nuke's perceived price is back down to its real price */
 const NUKE_PRICE_MEMORY_TICKS = 3000;
 
-/** Conventional war: minimum structure value a ballistic missile's blast must destroy */
-const BALLISTIC_MIN_VALUE = 75_000;
-
 interface Strike {
   target: Player;
   tile: TileRef;
@@ -120,9 +105,6 @@ export class NationNukeBehavior {
   private hydrogenBombsLaunched = 0;
   private hydrogenBombPerceivedCost = this.cost(UnitType.HydrogenBomb);
   private hydrogenBombLastLaunch: Tick | null = null;
-  // Conventional war: the ballistic missile, priced in the mind like a hydrogen bomb
-  private ballisticPerceivedCost = this.cost(UnitType.BallisticMissile);
-  private ballisticLastLaunch: Tick | null = null;
   // Hard & Impossible: nukes in flight that we follow up with an attack when they land
   private strikes: Strike[] = [];
 
@@ -146,8 +128,6 @@ export class NationNukeBehavior {
       hydrogenBombsLaunched: this.hydrogenBombsLaunched,
       hydrogenBombPerceivedCost: this.hydrogenBombPerceivedCost,
       hydrogenBombLastLaunch: this.hydrogenBombLastLaunch,
-      ballisticPerceivedCost: this.ballisticPerceivedCost,
-      ballisticLastLaunch: this.ballisticLastLaunch,
       strikes: this.strikes.map((s) => ({
         target: w.player(s.target),
         tile: s.tile,
@@ -183,8 +163,6 @@ export class NationNukeBehavior {
     this.hydrogenBombsLaunched = s.hydrogenBombsLaunched;
     this.hydrogenBombPerceivedCost = s.hydrogenBombPerceivedCost;
     this.hydrogenBombLastLaunch = s.hydrogenBombLastLaunch;
-    this.ballisticPerceivedCost = s.ballisticPerceivedCost;
-    this.ballisticLastLaunch = s.ballisticLastLaunch;
     this.strikes = s.strikes.map((strike) => ({
       target: r.player(strike.target),
       tile: strike.tile,
@@ -194,14 +172,8 @@ export class NationNukeBehavior {
   }
 
   maybeSendNuke() {
-    const config = this.game.config();
-    // Conventional war has no nukes: its ballistic missile takes the
-    // hydrogen bomb's rung.
-    if (config.conventionalWar()) {
-      this.maybeSendBallisticMissile();
-      return;
-    }
     const silos = this.player.units(UnitType.MissileSilo);
+    const config = this.game.config();
     if (
       silos.length === 0 ||
       config.isUnitDisabled(UnitType.MissileSilo) ||
@@ -1184,188 +1156,6 @@ export class NationNukeBehavior {
   private cost(type: UnitType): Gold {
     return this.game.unitInfo(type).cost(this.game, this.player);
   }
-
-  // ---------------------------------------------------------------------------
-  // Conventional war: ballistic missiles, used the way hydrogen bombs are
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Hard & Impossible only, as the heavy missiles are their weapons: at the
-   * nuke target, once the gold covers the missile's perceived price (each
-   * launch makes the next feel 25% pricier, forgotten within minutes in FFA,
-   * as for hydrogen bombs). One in the air at a time. The blast hits friends
-   * too, so the spot must leave our own and allied land and structures out
-   * of it; Hard & Impossible also skip flights a SAM could shoot down. With
-   * no level-2 silo yet, a silo is upgraded instead.
-   */
-  private maybeSendBallisticMissile(): void {
-    const game = this.game;
-    const config = game.config();
-    const { difficulty } = config.gameConfig();
-    if (
-      difficulty !== Difficulty.Hard &&
-      difficulty !== Difficulty.Impossible
-    ) {
-      return;
-    }
-    if (config.isUnitDisabled(UnitType.BallisticMissile)) return;
-    const silos = this.player
-      .units(UnitType.MissileSilo)
-      .filter((s) => !s.isUnderConstruction());
-    if (silos.length === 0) return;
-    if (this.player.units(UnitType.BallisticMissile).length > 0) return;
-    const price = this.getPerceivedBallisticCost();
-    if (this.player.gold() < price) return;
-    if (!silos.some((s) => s.level() >= BALLISTIC_MISSILE_SILO_LEVEL)) {
-      this.upgradeSiloForHeavyMissile(silos, price);
-      return;
-    }
-
-    const choice = this.chooseNukeTarget();
-    if (choice === null) return;
-    const target = choice.target;
-    if (
-      target.type() === PlayerType.Bot ||
-      this.player.isOnSameTeam(target) ||
-      this.attackBehavior.shouldAttack(target) === false
-    ) {
-      return;
-    }
-    const tile = this.findBestBallisticTile(target);
-    if (tile === null) return;
-    this.sendBallisticMissile(tile, target);
-  }
-
-  /** Upgrades the highest upgradable silo, if the gold covers it and the missile. */
-  private upgradeSiloForHeavyMissile(silos: Unit[], missilePrice: Gold): void {
-    let best: Unit | null = null;
-    for (const silo of silos) {
-      if (!this.player.canUpgradeUnit(silo)) continue;
-      if (
-        best === null ||
-        silo.level() > best.level() ||
-        (silo.level() === best.level() && silo.id() < best.id())
-      ) {
-        best = silo;
-      }
-    }
-    if (best === null) return;
-    if (this.player.gold() < missilePrice + this.cost(UnitType.MissileSilo)) {
-      return;
-    }
-    this.game.addExecution(
-      new UpgradeStructureExecution(this.player, best.id()),
-    );
-  }
-
-  /**
-   * The spot, among random tiles of the target's land (30 on Impossible, 10
-   * on Hard) and its structures, whose blast destroys the most structure
-   * value, with nothing of ours or our friends' in it and a flight no SAM
-   * covers. Null when no spot is worth BALLISTIC_MIN_VALUE.
-   */
-  private findBestBallisticTile(target: Player): TileRef | null {
-    const game = this.game;
-    const { difficulty } = game.config().gameConfig();
-    const numRandomTiles = difficulty === Difficulty.Impossible ? 30 : 10;
-    const candidates = new Set(
-      randTerritoryTileArray(this.random, game, target, numRandomTiles).concat(
-        target.units(Structures.types).map((u) => u.tile()),
-      ),
-    );
-    const scored: { tile: TileRef; score: number }[] = [];
-    for (const tile of candidates) {
-      const score = this.ballisticTileScore(tile);
-      if (score >= BALLISTIC_MIN_VALUE) scored.push({ tile, score });
-    }
-    // Stable sort: on ties the earlier candidate wins
-    scored.sort((a, b) => b.score - a.score);
-    for (const { tile } of scored) {
-      if (ballisticBlastHitsFriends(game, this.player, tile)) continue;
-      const spawn = this.player.canBuild(UnitType.BallisticMissile, tile);
-      if (spawn === false) continue;
-      if (
-        isFlatFlightInterceptable(
-          game,
-          this.player,
-          spawn,
-          tile,
-          BALLISTIC_MISSILE_SPEED,
-        )
-      ) {
-        continue;
-      }
-      return tile;
-    }
-    return null;
-  }
-
-  /** Structure value the blast at `tile` destroys (friends' count as any). */
-  private ballisticTileScore(tile: TileRef): number {
-    let value = 0;
-    for (const { unit } of this.game.nearbyUnits(
-      tile,
-      BALLISTIC_MISSILE_BLAST_RADIUS,
-      Structures.types,
-    )) {
-      value += structureStrikeValue(unit);
-    }
-    return value;
-  }
-
-  private sendBallisticMissile(tile: TileRef, target: Player): void {
-    const tick = this.game.ticks();
-    const perceived = this.inflatedBallisticCost();
-    // 25% pricier each time, as for hydrogen bombs
-    this.ballisticPerceivedCost = (perceived * 125n) / 100n;
-    this.ballisticLastLaunch = tick;
-    this.game.addExecution(
-      new AirMissionExecution(UnitType.BallisticMissile, this.player, tile),
-    );
-    this.emojiBehavior.maybeSendEmoji(target, EMOJI_NUKE);
-  }
-
-  // Mirrors getPerceivedNukeCost, with the cluster missile as the MIRV
-  private getPerceivedBallisticCost(): Gold {
-    const real = this.cost(UnitType.BallisticMissile);
-    if (this.paysRealBallisticPrice()) return real;
-    return this.inflatedBallisticCost();
-  }
-
-  private paysRealBallisticPrice(): boolean {
-    const config = this.game.config();
-    if (this.game.players().length === 2) return true;
-    if (config.isUnitDisabled(UnitType.ClusterMissile)) return true;
-    const real = this.cost(UnitType.BallisticMissile);
-    if (
-      config.gameConfig().gameMode === GameMode.Team &&
-      this.player.gold() > real
-    ) {
-      return true;
-    }
-    // Enough for a cluster missile and a ballistic missile both
-    if (this.player.gold() > this.cost(UnitType.ClusterMissile) + real) {
-      return true;
-    }
-    return this.isUnderHeavyAttack();
-  }
-
-  private inflatedBallisticCost(): Gold {
-    const real = this.cost(UnitType.BallisticMissile);
-    const perceived = this.ballisticPerceivedCost;
-    if (perceived <= real) return real;
-    if (!this.forgetsNukePrices()) return perceived;
-    const lastLaunch = this.ballisticLastLaunch;
-    const left =
-      lastLaunch === null
-        ? 0
-        : NUKE_PRICE_MEMORY_TICKS - (this.game.ticks() - lastLaunch);
-    if (left <= 0) return real;
-    return (
-      real +
-      ((perceived - real) * BigInt(left)) / BigInt(NUKE_PRICE_MEMORY_TICKS)
-    );
-  }
 }
 
 function structureLevels(player: Player): number {
@@ -1376,8 +1166,9 @@ function structureLevels(player: Player): number {
 
 export const NationNukeBehaviorSnapshot = snapshotType({
   name: "NationNukeBehavior",
-  // v3 added the conventional war ballistic missile's perceived price.
-  version: 3,
+  // v3 added a ballistic missile's perceived price and last launch; v4 dropped
+  // them again along with the missile.
+  version: 4,
   schema: z.object({
     recentlySentNukes: z.array(
       z.tuple([
@@ -1395,8 +1186,6 @@ export const NationNukeBehaviorSnapshot = snapshotType({
     hydrogenBombsLaunched: zInt(),
     hydrogenBombPerceivedCost: z.bigint(),
     hydrogenBombLastLaunch: zInt().nullable(),
-    ballisticPerceivedCost: z.bigint(),
-    ballisticLastLaunch: zInt().nullable(),
     strikes: z.array(
       z.object({
         target: zPlayerRef(),
@@ -1414,11 +1203,9 @@ export const NationNukeBehaviorSnapshot = snapshotType({
       hydrogenBombLastLaunch: null,
       strikes: [],
     }),
-    // v2 nations had never launched a ballistic missile
-    2: (d) => ({
-      ...d,
-      ballisticPerceivedCost: BigInt(BALLISTIC_MISSILE_COST),
-      ballisticLastLaunch: null,
-    }),
+    // v2 is v4's layout
+    2: (d) => d,
+    // The schema strips v3's ballisticPerceivedCost and ballisticLastLaunch
+    3: (d) => d,
   },
 });

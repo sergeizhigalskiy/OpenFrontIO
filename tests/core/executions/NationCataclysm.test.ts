@@ -1,6 +1,5 @@
 import { TileRef } from "@openfront/engine-api/game/GameMap";
 import {
-  Difficulty,
   PlayerInfo,
   PlayerType,
   UnitType,
@@ -25,7 +24,6 @@ import {
   isCataclysmHazard,
 } from "@openfront/engine/execution/nation/NationCataclysm";
 import { NationEmojiBehavior } from "@openfront/engine/execution/nation/NationEmojiBehavior";
-import { NationStructureBehavior } from "@openfront/engine/execution/nation/NationStructureBehavior";
 import { NationStructurePlacement } from "@openfront/engine/execution/nation/NationStructurePlacement";
 import { NationWarshipBehavior } from "@openfront/engine/execution/nation/NationWarshipBehavior";
 import { RisingTideExecution } from "@openfront/engine/execution/RisingTideExecution";
@@ -84,35 +82,6 @@ describe("nations and volcanoes", () => {
     expect(placements(game, nation, UnitType.City)).toEqual(
       new Array(12).fill(null),
     );
-  });
-});
-
-describe("nations and volcanoes: reactive builds", () => {
-  test("a capital's or port's reactive build skips a warned spot too", async () => {
-    // Hard reacts every time (Medium only on a coin flip).
-    const { game, nation } = await withNation("big_plains", {
-      difficulty: Difficulty.Hard,
-    });
-    const site = game.ref(100, 100);
-    for (const t of tilesInRadius(game.map(), site, VOLCANO_WARNING_RADIUS)) {
-      nation.conquer(t);
-    }
-    // buildNear is what the capital, port and front defenses build through.
-    const buildNear = (behavior: NationStructureBehavior) =>
-      (
-        behavior as unknown as {
-          buildNear(type: UnitType, center: TileRef, maxDist: number): boolean;
-        }
-      ).buildNear(UnitType.DefensePost, site, 10);
-    const behavior = () =>
-      new NationStructureBehavior(new PseudoRandom(3), game, nation);
-
-    game.addExecution(new VolcanoExecution("ai", [{ x: 100, y: 100 }]));
-    runTo(game, VOLCANO_FIRST_RUMBLE_TICKS);
-    expect(buildNear(behavior())).toBe(true);
-    game.executeNextTick(); // starts rumbling
-    expect(isCataclysmHazard(game, site)).toBe(true);
-    expect(buildNear(behavior())).toBe(false);
   });
 });
 

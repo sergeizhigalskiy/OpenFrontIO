@@ -1,7 +1,6 @@
 /**
  * Nation AI for defense lines: nations upgrade defense posts on threatened
- * borders, and build a siege camp when their attack front faces an enemy
- * defense post, more readily on higher difficulty.
+ * borders, more readily on higher difficulty.
  */
 import {
   Difficulty,
@@ -9,22 +8,14 @@ import {
   PlayerType,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
-import { SIEGE_CAMP_RANGE } from "@openfront/engine-lib/game/Siege";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import { AttackExecution } from "@openfront/engine/execution/AttackExecution";
 import { ConstructionExecution } from "@openfront/engine/execution/ConstructionExecution";
-import { isCataclysmHazard } from "@openfront/engine/execution/nation/NationCataclysm";
-import {
-  considerSiegeCamp,
-  NATION_SIEGE_CAMP_CHANCE,
-  NATION_SIEGE_CAMP_GOLD_FACTOR,
-} from "@openfront/engine/execution/nation/NationSiegeBehavior";
 import {
   DEFENSE_POST_UPGRADE_GOLD_FACTOR,
   NationStructureBehavior,
 } from "@openfront/engine/execution/nation/NationStructureBehavior";
 import { UpgradeStructureExecution } from "@openfront/engine/execution/UpgradeStructureExecution";
-import { VolcanoExecution } from "@openfront/engine/execution/VolcanoExecution";
 import { Execution, Game, Player } from "@openfront/engine/game/Game";
 import { vi } from "vitest";
 import { createGame, L } from "./core/pathfinding/_fixtures";
@@ -66,129 +57,6 @@ function added<T extends Execution>(
     .map((c) => c[0])
     .filter((e): e is T => e instanceof cls);
 }
-
-function siegeOrders(spy: { mock: { calls: unknown[][] } }): number[] {
-  return added(spy, ConstructionExecution)
-    .filter((e) => e["constructionType"] === UnitType.SiegeCamp)
-    .map((e) => e["tile"] as number);
-}
-
-describe("nation siege camps", () => {
-  /** The nation attacks the enemy, whose built post covers the front. */
-  function siegeSetup(difficulty: Difficulty, post = true) {
-    const g = frontGame(difficulty);
-    if (post) {
-      g.enemy.buildUnit(UnitType.DefensePost, g.game.ref(100, 8), {});
-    }
-    g.enemy.setTroops(50_000);
-    g.game.addExecution(
-      new AttackExecution(5_000, g.nation, g.enemy.id(), null, false),
-    );
-    for (let i = 0; i < 3; i++) g.game.executeNextTick();
-    expect(g.nation.outgoingAttacks()).toHaveLength(1);
-    return g;
-  }
-
-  /** A PRNG whose rolls always pass. */
-  function luckyRandom() {
-    const random = new PseudoRandom(7);
-    vi.spyOn(random, "nextInt").mockReturnValue(0);
-    return random;
-  }
-
-  test("scales with difficulty: never on Easy, more often and cheaper after", () => {
-    expect(NATION_SIEGE_CAMP_CHANCE[Difficulty.Easy]).toBe(0);
-    for (let i = 1; i < DIFFICULTIES.length; i++) {
-      const easier = DIFFICULTIES[i - 1];
-      const harder = DIFFICULTIES[i];
-      expect(NATION_SIEGE_CAMP_CHANCE[harder]).toBeGreaterThan(
-        NATION_SIEGE_CAMP_CHANCE[easier],
-      );
-      expect(NATION_SIEGE_CAMP_GOLD_FACTOR[harder]).toBeLessThan(
-        NATION_SIEGE_CAMP_GOLD_FACTOR[easier],
-      );
-    }
-  });
-
-  test("builds a camp within reach of the post its attack front faces", () => {
-    const { game, nation, enemy } = siegeSetup(Difficulty.Impossible);
-    const spy = vi.spyOn(game, "addExecution");
-    expect(considerSiegeCamp(game, nation, luckyRandom())).toBe(true);
-    const [tile] = siegeOrders(spy);
-    expect(game.owner(tile)).toBe(nation);
-    const spawn = nation.canBuild(UnitType.SiegeCamp, tile);
-    expect(spawn).not.toBe(false);
-    const [post] = enemy.units(UnitType.DefensePost);
-    expect(
-      game.euclideanDistSquared(spawn as number, post.tile()),
-    ).toBeLessThanOrEqual(SIEGE_CAMP_RANGE ** 2);
-
-    // The order goes through: the camp stands, and one is enough.
-    spy.mockRestore();
-    for (let i = 0; i < 3; i++) game.executeNextTick();
-    expect(nation.units(UnitType.SiegeCamp)).toHaveLength(1);
-    expect(considerSiegeCamp(game, nation, luckyRandom())).toBe(false);
-  });
-
-  test("never on Easy, and not without a post on the front", () => {
-    for (const [difficulty, post] of [
-      [Difficulty.Easy, true],
-      [Difficulty.Impossible, false],
-    ] as const) {
-      const { game, nation } = siegeSetup(difficulty, post);
-      const random = new PseudoRandom(7);
-      const roll = vi.spyOn(random, "nextInt");
-      const spy = vi.spyOn(game, "addExecution");
-      expect(considerSiegeCamp(game, nation, random)).toBe(false);
-      expect(siegeOrders(spy)).toEqual([]);
-      // Nothing to decide, so the PRNG is untouched.
-      expect(roll).not.toHaveBeenCalled();
-    }
-  });
-
-  test("waits for the gold its difficulty asks for", () => {
-    const { game, nation } = siegeSetup(Difficulty.Hard);
-    nation.removeGold(nation.gold());
-    // 2x the 300k price on Hard.
-    nation.addGold(599_999n);
-    expect(considerSiegeCamp(game, nation, luckyRandom())).toBe(false);
-    nation.addGold(1n);
-    expect(considerSiegeCamp(game, nation, luckyRandom())).toBe(true);
-  });
-
-  test("never camps inside a rumbling volcano's warning ring", () => {
-    const g = frontGame(Difficulty.Impossible);
-    // The ring (radius 25) covers the whole front near the post.
-    const site = g.game.ref(100, 22);
-    g.game.addExecution(new VolcanoExecution("siege", [{ x: 100, y: 22 }]));
-    for (let i = 0; i < 10_000 && !isCataclysmHazard(g.game, site); i++) {
-      g.game.executeNextTick();
-    }
-    expect(isCataclysmHazard(g.game, site)).toBe(true);
-
-    g.enemy.buildUnit(UnitType.DefensePost, g.game.ref(100, 8), {});
-    g.enemy.setTroops(50_000);
-    g.game.addExecution(
-      new AttackExecution(5_000, g.nation, g.enemy.id(), null, false),
-    );
-    for (let i = 0; i < 3; i++) g.game.executeNextTick();
-    expect(g.nation.outgoingAttacks()).toHaveLength(1);
-    expect(isCataclysmHazard(g.game, site)).toBe(true);
-
-    const spy = vi.spyOn(g.game, "addExecution");
-    expect(considerSiegeCamp(g.game, g.nation, luckyRandom())).toBe(false);
-    expect(siegeOrders(spy)).toEqual([]);
-  });
-
-  test("a failed roll builds nothing this time", () => {
-    const { game, nation } = siegeSetup(Difficulty.Medium);
-    const random = new PseudoRandom(7);
-    vi.spyOn(random, "nextInt").mockReturnValue(99);
-    const spy = vi.spyOn(game, "addExecution");
-    expect(considerSiegeCamp(game, nation, random)).toBe(false);
-    expect(siegeOrders(spy)).toEqual([]);
-  });
-});
 
 describe("nation defense post upgrades", () => {
   function behavior(game: Game, nation: Player, random = new PseudoRandom(42)) {
