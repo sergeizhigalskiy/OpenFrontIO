@@ -1,5 +1,6 @@
 import {
   Cell,
+  GameMapSize,
   Nation,
   PlayerInfo,
   PlayerType,
@@ -8,8 +9,13 @@ import {
   AdditionalNation,
   Nation as ManifestNation,
 } from "@openfront/engine-api/game/MapFiles";
-import { GameStartInfo } from "@openfront/engine-api/Schemas";
+import { GameConfig, GameStartInfo } from "@openfront/engine-api/Schemas";
 import { nationPickForGame } from "@openfront/engine-lib/game/NationCount";
+import {
+  namesProtectedState,
+  PROTECTED_STATE_NATION,
+} from "@openfront/engine-lib/game/ProtectedState";
+import { PROTECTED_STATE_EXTRA_NATIONS } from "@openfront/engine-lib/game/ProtectedStateSpawns";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 
 /**
@@ -51,20 +57,89 @@ export function createNationsForGame(
     manifestNations?.length ?? 0,
     numHumans,
   );
+  let nations: Nation[];
   switch (pick.kind) {
     case "none":
       return [];
     case "manifest":
-      return manifestNations.map(toNation);
+      nations = manifestNations.map(toNation);
+      break;
     case "random":
-      return createRandomNations(
+      nations = createRandomNations(
         pick.count,
         manifestNations,
         additionalNations,
         toNation,
         random,
       );
+      break;
   }
+  return gameStart.config.protectedState === true
+    ? withProtectedStateNation(
+        nations,
+        gameStart.config,
+        pick.kind === "random",
+        manifestNations,
+        toNation,
+        random,
+      )
+    : nations;
+}
+
+/**
+ * With Protected State on, the nation it names (PROTECTED_STATE_NATION)
+ * always spawns. When a random draw left it out, it takes the last drawn
+ * nation's place, so the count holds; when the map has no nation by that
+ * name it is added, at its spot in PROTECTED_STATE_EXTRA_NATIONS for this
+ * map or, failing one, wherever a nation without a spot spawns. Mode off,
+ * nothing here runs and no extra random draw is made.
+ */
+export function withProtectedStateNation(
+  nations: Nation[],
+  config: GameConfig,
+  drawn: boolean,
+  manifestNations: ManifestNation[] | undefined,
+  toNation: (n: ManifestNation) => Nation,
+  random: PseudoRandom,
+  wanted: string | null = PROTECTED_STATE_NATION,
+): Nation[] {
+  if (wanted === null || wanted.trim() === "") return nations;
+  if (nations.some((n) => namesProtectedState(n.playerInfo.name, wanted))) {
+    return nations;
+  }
+  const fromMap = manifestNations?.find((n) =>
+    namesProtectedState(n.name, wanted),
+  );
+  let added: Nation;
+  if (fromMap !== undefined) {
+    added = toNation(fromMap);
+  } else {
+    const extra = PROTECTED_STATE_EXTRA_NATIONS[wanted.trim().toLowerCase()];
+    const spot = extra?.spawns[config.gameMap];
+    const cell =
+      spot === undefined
+        ? undefined
+        : config.gameMapSize === GameMapSize.Compact
+          ? new Cell(Math.floor(spot[0] / 2), Math.floor(spot[1] / 2))
+          : new Cell(spot[0], spot[1]);
+    added = new Nation(
+      cell,
+      new PlayerInfo(
+        wanted.trim(),
+        PlayerType.Nation,
+        null,
+        random.nextID(),
+        false,
+        null,
+        [],
+        null,
+        extra?.flag ?? null,
+      ),
+    );
+  }
+  return drawn && nations.length > 0
+    ? [...nations.slice(0, -1), added]
+    : [...nations, added];
 }
 
 /**

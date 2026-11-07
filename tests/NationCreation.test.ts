@@ -12,7 +12,10 @@ import {
 } from "@openfront/engine-api/game/MapFiles";
 import { GameConfig, GameStartInfo } from "@openfront/engine-api/Schemas";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
-import { createNationsForGame } from "@openfront/engine/game/NationCreation";
+import {
+  createNationsForGame,
+  withProtectedStateNation,
+} from "@openfront/engine/game/NationCreation";
 
 function makeManifestNations(count: number): ManifestNation[] {
   const result: ManifestNation[] = [];
@@ -336,5 +339,124 @@ describe("createNationsForGame: additionalNations pool", () => {
     const names = nationNames(nations);
     expect(names).toHaveLength(8);
     expect(new Set(names).size).toBe(8);
+  });
+});
+
+describe("withProtectedStateNation: the named nation always spawns", () => {
+  const toNation =
+    (random: PseudoRandom) =>
+    (n: ManifestNation): Nation =>
+      new Nation(undefined, {
+        name: n.name,
+        flag: n.flag ?? null,
+        id: random.nextID(),
+      } as unknown as Nation["playerInfo"]);
+
+  test("leaves the nations alone when the named one is already there", () => {
+    const random = new PseudoRandom(5);
+    const manifest = makeManifestNations(4);
+    const nations = manifest.map(toNation(random));
+    const out = withProtectedStateNation(
+      nations,
+      makeGameStart(4).config,
+      false,
+      manifest,
+      toNation(random),
+      random,
+      "manifest2",
+    );
+    expect(out).toBe(nations);
+  });
+
+  test("swaps it in for the last drawn nation when a random draw left it out", () => {
+    const random = new PseudoRandom(5);
+    const manifest = makeManifestNations(6);
+    const drawn = manifest.slice(0, 3).map(toNation(random));
+    const out = withProtectedStateNation(
+      drawn,
+      makeGameStart(3).config,
+      true,
+      manifest,
+      toNation(random),
+      random,
+      "Manifest5",
+    );
+    expect(nationNames(out)).toEqual(["Manifest0", "Manifest1", "Manifest5"]);
+  });
+
+  test("adds a nation the map lacks at its listed spot, halved on compact maps", () => {
+    const random = new PseudoRandom(5);
+    const manifest = makeManifestNations(3);
+    const nations = manifest.map(toNation(random));
+    const config = makeGameStart(3).config;
+    const out = withProtectedStateNation(
+      nations,
+      config,
+      false,
+      manifest,
+      toNation(random),
+      random,
+      "Israel",
+    );
+    expect(out).toHaveLength(4);
+    const added = out[3];
+    expect(added.playerInfo.name).toBe("Israel");
+    expect(added.playerInfo.nationFlag).toBe("il");
+    expect(added.spawnCell?.x).toBe(1131);
+    expect(added.spawnCell?.y).toBe(316);
+
+    const compact = withProtectedStateNation(
+      nations,
+      { ...config, gameMapSize: GameMapSize.Compact },
+      false,
+      manifest,
+      toNation(random),
+      random,
+      "Israel",
+    );
+    expect(compact[3].spawnCell?.x).toBe(565);
+    expect(compact[3].spawnCell?.y).toBe(158);
+  });
+
+  test("adds a nation with no listed spot without one", () => {
+    const random = new PseudoRandom(5);
+    const manifest = makeManifestNations(2);
+    const out = withProtectedStateNation(
+      manifest.map(toNation(random)),
+      makeGameStart(2).config,
+      false,
+      manifest,
+      toNation(random),
+      random,
+      "Atlantis",
+    );
+    expect(nationNames(out)).toEqual(["Manifest0", "Manifest1", "Atlantis"]);
+    expect(out[2].spawnCell).toBeUndefined();
+  });
+
+  test("does nothing when no nation is named, and createNationsForGame skips it with the mode off", () => {
+    const random = new PseudoRandom(5);
+    const manifest = makeManifestNations(2);
+    const nations = manifest.map(toNation(random));
+    expect(
+      withProtectedStateNation(
+        nations,
+        makeGameStart(2).config,
+        false,
+        manifest,
+        toNation(random),
+        random,
+        null,
+      ),
+    ).toBe(nations);
+
+    const off = createNationsForGame(
+      makeGameStart(2),
+      manifest,
+      [],
+      0,
+      new PseudoRandom(9),
+    );
+    expect(off).toHaveLength(2);
   });
 });
