@@ -59,12 +59,6 @@ export class PlayerView implements PlayerLike {
    * since replays don't carry it and draw no blockade rings.
    */
   private hostileActs: number[];
-  /**
-   * Supply lines (PlayerUpdate.spearOrigins): flat [targetSmallID, origin,
-   * tip] triples, the remembered origin of this player's spearheads on each
-   * target and the deepest tile they took.
-   */
-  private spearOrigins: number[];
 
   // Assigned via computeColors() in the constructor; re-assignable on theme change.
   private _territoryColor!: Colord;
@@ -91,7 +85,6 @@ export class PlayerView implements PlayerLike {
   ) {
     this.state = playerStateFromUpdate(data);
     this.hostileActs = data.hostileActs?.slice() ?? [];
-    this.spearOrigins = data.spearOrigins?.slice() ?? [];
     // Respect the client-side "Disable emojis" setting: when off, never surface
     // emoji data to any renderer/overlay that reads this shared state (#4430).
     if (!userSettings.emojis()) {
@@ -231,9 +224,6 @@ export class PlayerView implements PlayerLike {
     applyStateUpdate(this.state, pu);
     if (pu.hostileActs !== undefined) {
       this.hostileActs = pu.hostileActs.slice();
-    }
-    if (pu.spearOrigins !== undefined) {
-      this.spearOrigins = pu.spearOrigins.slice();
     }
     // applyStateUpdate refreshes outgoingEmojis every tick; re-apply the
     // "Disable emojis" setting so live emojis stay hidden when it's off (#4430).
@@ -659,20 +649,6 @@ export class PlayerView implements PlayerLike {
       if (acts[i] === id) return acts[i + 1];
     }
     return undefined;
-  }
-
-  /**
-   * This player's remembered spear line on `other` (engine Player.spearLine):
-   * the origin its spearheads count depth from and their deepest tile, or
-   * null when none is remembered.
-   */
-  spearLine(other: PlayerView): { origin: TileRef; tip: TileRef } | null {
-    const lines = this.spearOrigins;
-    const id = other.smallID();
-    for (let i = 0; i + 2 < lines.length; i += 3) {
-      if (lines[i] === id) return { origin: lines[i + 1], tip: lines[i + 2] };
-    }
-    return null;
   }
 
   deleteUnitCooldown(): number {

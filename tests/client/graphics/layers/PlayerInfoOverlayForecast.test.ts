@@ -12,7 +12,6 @@ const forecastMock = vi.hoisted(() => ({
     defensePost: false,
   },
   calls: [] as unknown[][],
-  depthCalls: [] as unknown[][],
   fronts: new Map<number, number>([
     [2, 40],
     [0, 12],
@@ -25,10 +24,6 @@ vi.mock("@openfront/engine-lib/game/AttackForecast", () => ({
     return forecastMock.result;
   }),
   attackFrontSizes: vi.fn(() => forecastMock.fronts),
-  spearDepthAt: vi.fn((...args: unknown[]) => {
-    forecastMock.depthCalls.push(args);
-    return 33;
-  }),
 }));
 
 vi.mock("lit", () => ({
@@ -116,7 +111,6 @@ describe("PlayerInfoOverlay attack forecast", () => {
       smallID: () => 1,
       troops: () => 50_000,
       borderTiles: async () => ({ borderTiles: new Set([1, 2, 3]) }),
-      spearLine: () => ({ origin: 7, tip: 8 }),
     };
   }
 
@@ -153,7 +147,6 @@ describe("PlayerInfoOverlay attack forecast", () => {
 
   beforeEach(() => {
     forecastMock.calls.length = 0;
-    forecastMock.depthCalls.length = 0;
     forecastMock.result = {
       lossPerTile: 123,
       tilesPerSecond: 4.25,
@@ -183,28 +176,13 @@ describe("PlayerInfoOverlay attack forecast", () => {
     expect(out).toContain('attack_forecast.speed{"speed":"4.3"}');
     expect(out).not.toContain("attack_forecast.defense_post");
     const last = forecastMock.calls[forecastMock.calls.length - 1];
-    // game, attacker, defender, tile, troops, front, spearhead
+    // game, attacker, defender, tile, troops, front
     expect(last[2]).toBe(enemy);
     expect(last[3]).toBe(42);
     expect(last[4]).toBe(50_000 * 0.2);
     expect(last[5]).toBe(40);
-    // A plain click attacks the whole border: priced broad, with no depth.
-    expect(last[6]).toBe(false);
-    expect(last[8]).toBe(0);
-    expect(forecastMock.depthCalls).toHaveLength(0);
-  });
-
-  it("prices a spearhead at the hovered tile while Shift is held, as deep as it lies", async () => {
-    overlay.uiState = { attackRatio: 0.2, shiftHeld: true } as never;
-    await hover(game(enemy, me()));
-    const last = forecastMock.calls[forecastMock.calls.length - 1];
-    expect(last[6]).toBe(true);
-    expect(last[8]).toBe(33);
-    // From my remembered spear line on the owner and my border.
-    const depth = forecastMock.depthCalls[forecastMock.depthCalls.length - 1];
-    expect(depth[1]).toBe(42);
-    expect(depth[2]).toEqual({ origin: 7, tip: 8 });
-    expect([...(depth[3] as Set<number>)]).toEqual([1, 2, 3]);
+    // A Shift click's spearhead takes the same tiles at the same price.
+    expect(last).toHaveLength(6);
   });
 
   it("shows a card with just the forecast for unclaimed land", async () => {

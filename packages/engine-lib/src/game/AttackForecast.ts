@@ -1,9 +1,10 @@
 /**
  * The attack forecast: what attacking a tile would cost before the player
  * clicks, from the same inputs AttackExecution reads and the same rules it
- * runs: attackLogic (AttackLogic.ts), the environment and its cap
- * (AttackEnvironment.ts), the spearhead's budget cap, and its supply line
- * (spearOverextension at the tile's depth).
+ * runs: attackLogic (AttackLogic.ts) and the environment and its cap
+ * (AttackEnvironment.ts). A spearhead prices its tiles like a broad attack
+ * on the same front: it takes them in another order, on a budget that
+ * leaves out its bulge's sides (AttackExecution SPEAR_TIP_LEAD).
  *
  * Used by the client's hover card. Generic over the player type so the
  * engine's game can be passed too, which is how the tests check the forecast
@@ -18,12 +19,7 @@ import {
   AttackEnvironmentGame,
   withEnvironmentCost,
 } from "./AttackEnvironment";
-import {
-  attackBudgetFront,
-  AttackLogicInput,
-  AttackLogicResult,
-  spearOriginFor,
-} from "./AttackLogic";
+import { AttackLogicInput, AttackLogicResult } from "./AttackLogic";
 import { defensePostCovers, DefenseUnitQuery } from "./DefensePosts";
 
 /** `env` with no terrain feature when `drop`. */
@@ -93,45 +89,9 @@ export function attackFrontSizes(
 }
 
 /**
- * How deep `tile` lies on a spearhead clicked at it now (spearDepth with the
- * tile as its focus): its manhattan distance from the spear's origin
- * (spearOriginFor): the attacker's tile nearest `tile` among `borderTiles`,
- * or the origin of `line`, its remembered spear line on the tile's owner
- * (Player.spearLine), when the spearhead would merge into a running one
- * (`running`) or start near that line's tip. 0 without a border.
- */
-export function spearDepthAt(
-  map: GameMap,
-  tile: TileRef,
-  line: { origin: TileRef; tip: TileRef } | null,
-  borderTiles: Iterable<TileRef>,
-  running = false,
-): number {
-  let natural: TileRef | null = null;
-  let best = Infinity;
-  for (const t of borderTiles) {
-    const d = map.manhattanDist(t, tile);
-    if (d < best || (d === best && natural !== null && t < natural)) {
-      best = d;
-      natural = t;
-    }
-  }
-  if (natural === null) {
-    return line === null ? 0 : map.manhattanDist(line.origin, tile);
-  }
-  const origin = spearOriginFor(natural, line, running, (a, b) =>
-    map.manhattanDist(a, b),
-  );
-  return map.manhattanDist(origin, tile);
-}
-
-/**
  * The forecast for `attacker` sending `attackTroops` at `tile`, owned by
  * `defender` (null for terra nullius). `frontSize` is the attack's border
- * (attackFrontSizes), or null if unknown. `spearhead` prices an attack
- * focused on the tile, whose budget comes from at most SPEAR_BUDGET_FRONT
- * of that border, as a click sends, with the tile `spearDepth` deep on the
- * spear (spearDepthAt). The tile must be passable land.
+ * (attackFrontSizes), or null if unknown. The tile must be passable land.
  * `terrainFeatures` false prices the tile as if it had no forest, river or
  * ford (Medium nations read the forecast that way).
  */
@@ -142,15 +102,11 @@ export function attackForecast<P extends ForecastPlayer<P>>(
   tile: TileRef,
   attackTroops: number,
   frontSize: number | null,
-  spearhead: boolean,
   terrainFeatures = true,
-  spearDepth = 0,
 ): AttackForecast {
   const defenderHasDefensePost =
     defender !== null && defensePostCovers(game, tile, defender.smallID());
-  const borderSize =
-    attackBudgetFront(Math.max(1, frontSize ?? 1), spearhead) +
-    ATTACK_FRONT_JITTER_MEAN;
+  const borderSize = Math.max(1, frontSize ?? 1) + ATTACK_FRONT_JITTER_MEAN;
   const result = withEnvironmentCost(
     game.config().attackLogic({
       terrain: game.terrainType(tile),
@@ -173,7 +129,6 @@ export function attackForecast<P extends ForecastPlayer<P>>(
         ? game.numTilesWithFallout() / game.numLandTiles()
         : null,
       borderSize,
-      spearDepth: spearhead ? spearDepth : 0,
     }),
     // Forest, river, ford, winter and mud, capped, as AttackExecution does.
     withoutFeatures(

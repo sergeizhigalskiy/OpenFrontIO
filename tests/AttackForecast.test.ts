@@ -31,7 +31,6 @@ import {
 import {
   AttackLogicInput,
   AttackLogicResult,
-  SPEAR_BUDGET_FRONT,
 } from "@openfront/engine-lib/game/AttackLogic";
 import {
   SEASON_CYCLE_TICKS,
@@ -198,6 +197,8 @@ interface Check {
   forecast: AttackForecast;
   /** The front the forecast was given. */
   front: number;
+  /** The attack's whole border at that moment. */
+  border: number;
 }
 
 function conquerRect(
@@ -263,12 +264,11 @@ function recordAttack(
     ...args: unknown[]
   ) {
     const [attackTroops, tile, borderSize] = args as [number, number, number];
-    // A broad attack's front is its border; a spearhead's forecast is
-    // given the whole border and caps it itself.
-    const front =
-      focus === null
-        ? borderSize - ATTACK_FRONT_JITTER_MEAN
-        : (this as { attack: { borderSize(): number } }).attack.borderSize();
+    // The front the engine spent this tick, its jitter taken out.
+    const front = borderSize - ATTACK_FRONT_JITTER_MEAN;
+    const border = (
+      this as { attack: { borderSize(): number } }
+    ).attack.borderSize();
     const forecast = attackForecast(
       game,
       attacker,
@@ -276,7 +276,6 @@ function recordAttack(
       tile,
       attackTroops,
       front,
-      focus !== null,
     );
     const input = original.apply(this, args);
     const engine = withEnvironmentCost(
@@ -288,7 +287,7 @@ function recordAttack(
         input.defenderHasDefensePost,
       ),
     );
-    checks.push({ input, tile, engine, forecast, front });
+    checks.push({ input, tile, engine, forecast, front, border });
     return input;
   });
   try {
@@ -422,38 +421,31 @@ describe("attack forecast matches the engine", () => {
     );
   });
 
-  test("a spearhead, priced with its capped budget", async () => {
-    const { game, attacker, defender } = await plainsGame(true);
-    // A post in the way, so the cover and the cap both show up.
-    defender.buildUnit(UnitType.DefensePost, game.ref(80, 45), {});
-    const checks = recordAttack(
-      game,
-      attacker,
-      defender,
-      60_000,
-      20,
-      game.ref(85, 45),
-    );
-    expect(checks.length).toBeGreaterThan(20);
-    for (const c of checks) {
-      // The engine's front is the border capped at 48 tiles, plus 0-4 tiles
-      // of jitter; the forecast prices the cap plus the mean jitter.
-      const capped = Math.min(c.front, SPEAR_BUDGET_FRONT);
-      expect(c.input.borderSize).toBeGreaterThanOrEqual(capped);
-      expect(c.input.borderSize).toBeLessThanOrEqual(capped + 4);
-      expect(c.forecast.lossPerTile).toBe(c.engine.attackerTroopLoss);
-      const priced = withEnvironmentCost(
-        game.config().attackLogic({
-          ...c.input,
-          borderSize: capped + ATTACK_FRONT_JITTER_MEAN,
-        }),
-        attackEnvironment(game, c.tile, true, c.input.defenderHasDefensePost),
+  test("a spearhead, priced like a broad attack on the front it spends", async () => {
+    const run = async (focus: boolean) => {
+      const { game, attacker, defender } = await plainsGame(true);
+      // A post in the way, so the cover shows up.
+      defender.buildUnit(UnitType.DefensePost, game.ref(80, 45), {});
+      return recordAttack(
+        game,
+        attacker,
+        defender,
+        150_000,
+        30,
+        focus ? game.ref(85, 45) : null,
       );
-      expect(c.forecast.tilesPerSecond).toBe(10 / priced.tickFraction);
-    }
-    // The border outgrew the cap.
-    expect(checks.some((c) => c.front > SPEAR_BUDGET_FRONT)).toBe(true);
-    expect(checks.some((c) => c.input.defenderHasDefensePost)).toBe(true);
+    };
+    const spear = await run(true);
+    expectForecastMatches(spear);
+    expect(spear.some((c) => c.input.defenderHasDefensePost)).toBe(true);
+    // Its bulge lengthens its border from 90 tiles past 100, but it spends
+    // no more a tick than a broad attack on the same front (93 tiles against
+    // 97 measured).
+    expect(Math.max(...spear.map((c) => c.border))).toBeGreaterThan(100);
+    const broad = await run(false);
+    const spent = (checks: Check[]) =>
+      checks.reduce((s, c) => s + c.input.borderSize, 0) / checks.length;
+    expect(spent(spear)).toBeLessThanOrEqual(spent(broad));
   });
 
   test("into unclaimed land", async () => {
@@ -476,7 +468,7 @@ describe("attack forecast matches the engine", () => {
     // AttackExecution adds 0-4 tiles of jitter to its border each tick.
     expect(first.input.borderSize).toBeGreaterThanOrEqual(90);
     expect(first.input.borderSize).toBeLessThanOrEqual(94);
-    // A spearhead's budget front stops at 48 tiles.
+    // A spearhead's starts from the same front.
     const spear = await plainsGame(true);
     const [tip] = recordAttack(
       spear.game,
@@ -486,7 +478,7 @@ describe("attack forecast matches the engine", () => {
       2,
       spear.game.ref(80, 45),
     );
-    expect(tip.input.borderSize).toBeGreaterThanOrEqual(SPEAR_BUDGET_FRONT);
-    expect(tip.input.borderSize).toBeLessThanOrEqual(SPEAR_BUDGET_FRONT + 4);
+    expect(tip.input.borderSize).toBeGreaterThanOrEqual(90);
+    expect(tip.input.borderSize).toBeLessThanOrEqual(94);
   });
 });

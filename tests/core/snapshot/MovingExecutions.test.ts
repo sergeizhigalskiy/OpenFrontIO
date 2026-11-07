@@ -75,7 +75,7 @@ describe("snapshot: land attacks", () => {
     await expectSnapshotRoundTrip(game, MAP, 60);
   });
 
-  test("spearheads with a remembered spear line, then relaunched from the tip", async () => {
+  test("a steered spearhead mid-conquest, and one merging into it", async () => {
     const { game, a, b } = await landGame();
     conquerRect(game, a, 20, 10, 40, 20);
     a.addTroops(100_000);
@@ -83,11 +83,7 @@ describe("snapshot: land attacks", () => {
       new AttackExecution(30_000, a, b.id(), null, true, game.ref(80, 15)),
     );
     executeTicks(game, 6);
-    expect(a.spearLine(b)).not.toBeNull();
     await expectSnapshotRoundTrip(game, MAP, 30);
-    for (const attack of a.outgoingAttacks()) attack.delete();
-    executeTicks(game, 20);
-    // The line outlives the spearhead; a new one joins it.
     game.addExecution(
       new AttackExecution(20_000, a, b.id(), null, true, game.ref(85, 25)),
     );
@@ -95,24 +91,34 @@ describe("snapshot: land attacks", () => {
     await expectSnapshotRoundTrip(game, MAP, 40);
   });
 
-  test("records from before supply lines load with no spear line or origin", async () => {
-    const { game, a, b } = await landGame();
-    a.startSpear(b, game.ref(60, 15));
+  test("records from the supply-line round load without their spear lines", async () => {
+    const { game, a } = await landGame();
     const root = snapshotGameData(game);
     const player = root.players.find(
       (p) => (p.d as { smallID: number }).smallID === a.smallID(),
     )!;
-    expect(readVersioned(PlayerSnapshot, player).spearLines).toHaveLength(1);
-    const old = { ...(player.d as Record<string, unknown>) };
-    delete old.spearLines;
-    expect(readVersioned(PlayerSnapshot, { v: 6, d: old }).spearLines).toEqual(
-      [],
-    );
-    // An Attack execution v1.
-    expect(AttackExecutionSnapshot.version).toBe(2);
+    expect(PlayerSnapshot.version).toBe(8);
+    const v7 = {
+      ...(player.d as Record<string, unknown>),
+      spearLines: [{ target: 2, origin: 5, lastTick: 1, tip: 9, tipDepth: 30 }],
+    };
+    const read = readVersioned(PlayerSnapshot, { v: 7, d: v7 });
+    expect(read).not.toHaveProperty("spearLines");
+    expect(read).toEqual(readVersioned(PlayerSnapshot, player));
+    // An Attack execution v1 and v2 go on with no generations and their
+    // whole front's budget.
+    expect(AttackExecutionSnapshot.version).toBe(3);
     expect(
-      AttackExecutionSnapshot.migrations[1]({ focusTile: 5, focusBest: 3 }),
-    ).toEqual({ focusTile: 5, focusBest: 3, spearOrigin: null });
+      AttackExecutionSnapshot.migrations[2](
+        AttackExecutionSnapshot.migrations[1]({ focusTile: 5, focusBest: 3 }),
+      ),
+    ).toMatchObject({
+      focusTile: 5,
+      focusBest: 3,
+      generationTiles: [],
+      generations: [],
+      launchFront: Number.MAX_SAFE_INTEGER,
+    });
     expect(AiAttackBehaviorSnapshot.version).toBe(5);
     const nation = {
       botAttackTroopsSent: 0,

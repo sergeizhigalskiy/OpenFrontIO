@@ -25,6 +25,7 @@ import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import { AttackExecution } from "@openfront/engine/execution/AttackExecution";
 import { ConstructionExecution } from "@openfront/engine/execution/ConstructionExecution";
 import {
+  NATION_HUMAN_RANK_WEIGHT,
   NATION_STALL_TICKS,
   NationAttackBehavior,
 } from "@openfront/engine/execution/nation/NationAttackBehavior";
@@ -233,6 +234,35 @@ describe("picking fronts with the forecast", () => {
       // Forest is a feature: 1.2x the losses, except for Medium.
       expect(stack(woods) / stack(flats), difficulty).toBeCloseTo(
         difficulty === Difficulty.Medium ? 1 : 1.2,
+      );
+    }
+  });
+});
+
+describe("ranking humans", () => {
+  it("Hard and Impossible rank a human at a quarter of its troops", async () => {
+    expect(NATION_HUMAN_RANK_WEIGHT).toBe(0.25);
+    for (const difficulty of DIFFICULTIES) {
+      const game = await setup(
+        "plains",
+        { difficulty },
+        [
+          nationInfo("nation"),
+          new PlayerInfo("human", PlayerType.Human, "c_human", "human"),
+        ],
+        undefined,
+        UseRealAttackLogic,
+      );
+      const nation = game.player("nation");
+      const human = game.player("human");
+      conquerRect(game, nation, 0, 0, 50, 100);
+      conquerRect(game, human, 50, 0, 100, 100);
+      human.setTroops(100_000);
+      const b = inside(behaviorFor(game, nation));
+      expect(b.rankWeight(human), difficulty).toBe(
+        difficulty === Difficulty.Hard || difficulty === Difficulty.Impossible
+          ? 25_000
+          : 100_000,
       );
     }
   });

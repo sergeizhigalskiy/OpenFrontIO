@@ -330,13 +330,6 @@ export interface PlayerUpdate {
    * attack, boat attack or nuke at each target, oldest first.
    */
   hostileActs?: number[];
-  /**
-   * Supply lines (engine-lib AttackLogic spearDepth): flat
-   * [targetSmallID, originTile, tipTile] triples, the origin this player's
-   * spearheads on each target count their depth from while it is
-   * remembered, and the deepest tile they took.
-   */
-  spearOrigins?: number[];
 }
 
 export interface AllianceView {
