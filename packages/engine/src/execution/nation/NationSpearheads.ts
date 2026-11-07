@@ -514,7 +514,7 @@ export function railCutToRetake(
 
 /**
  * The front tile where an attack on `target` with `troops` loses the fewest
- * troops per tile by the full forecast, spearheaded (lowest tile on a tie):
+ * troops per tile by the full forecast (lowest tile on a tie):
  * where Impossible re-aims a stalled attack.
  */
 export function cheapestFrontTile(
@@ -535,7 +535,6 @@ export function cheapestFrontTile(
       tile,
       troops,
       front.tiles.length,
-      true,
     ).lossPerTile;
     if (
       loss < bestLoss ||

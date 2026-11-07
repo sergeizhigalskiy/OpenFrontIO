@@ -1,45 +1,39 @@
 import { TileRef } from "@openfront/engine-api/game/GameMap";
-import {
-  SPEAR_FREE_DEPTH,
-  spearDepth,
-} from "@openfront/engine-lib/game/AttackLogic";
-import { Game, Player, SpearLine } from "../../game/Game";
+import { Game, Player } from "../../game/Game";
 
 /**
- * Salients: land a hostile player's spearhead took deep into a nation, and
- * the neck the nation cuts it at (NationAttackBehavior.answerSalient, Medium
- * and up). Stateless and draws nothing from the PRNG.
+ * Salients: land a hostile player pushed deep into a nation, and the neck
+ * the nation cuts it at (NationAttackBehavior.answerSalient, Medium and up).
+ * Stateless and draws nothing from the PRNG.
  *
- * A salient is the player's land more than SPEAR_FREE_DEPTH deep on one of
- * its spear lines into the nation (Player.spearLine: the line's tip and how
- * deep it got), or a long tongue of its land walled in by the nation alone
- * that the nation's own survey finds (surveySalients).
+ * A salient is a tongue of the player's land, walled in by the nation
+ * alone, whose neck lies NATION_SALIENT_MIN_RINGS or more from its tip, that
+ * the nation's survey of its front finds (surveySalient).
  *
  * The neck is the narrowest cross-section between the tip and the player's
  * main land, and narrower than it lies from the tip: a wider one makes the
- * land a front, not a salient. Cross-sections are the rings of a breadth-first growth of the
- * player's land from the tip, 8-connected: every path of its land from the
- * tip to its main land crosses each ring, so taking one ring cuts off all
- * the land before it. The rings stop at the main land: for a spear line, the
- * first ring reaching back within SPEAR_FREE_DEPTH of the line's origin; for
- * a surveyed tongue, the first ring that fans out to SURVEY_FAN_OUT times the
- * narrowest one before it, or touches anything but the two players' land (a
- * third player, free land, water or the map edge).
+ * land a front, not a salient. Cross-sections are the rings of a
+ * breadth-first growth of the player's land from the tip, 8-connected:
+ * every path of its land from the tip to its main land crosses each ring,
+ * so taking one ring cuts off all the land before it. The rings stop at the
+ * main land: the first ring that touches anything but the two players' land
+ * (a third player, free land, water or the map edge), or once
+ * NATION_SALIENT_SEARCH_TILES are grown.
  */
 
-/** Tiles a neck search grows at most; a bigger salient isn't judged. */
+/** Tiles a neck search grows at most; past them lies the main land. */
 export const NATION_SALIENT_SEARCH_TILES = 4096;
 /**
- * Rings next to the tip that are never the neck: a spear tapers to its tip,
- * so the rings there are narrow without cutting anything worth having.
+ * A salient's neck lies at least this many rings from where the search
+ * starts: deeper than a spearhead's bulge can be (SPEAR_TIP_LEAD).
  */
-export const NATION_NECK_TIP_MARGIN = 6;
+export const NATION_SALIENT_MIN_RINGS = 16;
 /** Tip-like front tiles a survey grows from, per player. */
 const SURVEY_SEEDS = 4;
 /** A front tile is tip-like (a corner) when this many of its 4 neighbors are ours. */
 const SURVEY_TIP_NEIGHBORS = 2;
-/** A surveyed tongue ends where its rings fan out this many times its narrowest. */
-const SURVEY_FAN_OUT = 4;
+/** Half-width of the square a tip-like tile's pointedness is counted in. */
+const SURVEY_TIP_WINDOW = 3;
 
 /** A hostile player's salient into a nation, as a neck search found it. */
 export interface Salient {
@@ -54,72 +48,24 @@ export interface Salient {
 }
 
 /**
- * The tile a spear line's salient is searched from: the line's tip while
- * `owner` holds it, else the deepest tile of `owner`'s within a few tiles
- * of it (null when none is left).
- */
-export function salientTip(
-  game: Game,
-  owner: Player,
-  line: SpearLine,
-): TileRef | null {
-  const map = game.map();
-  const own = owner.smallID();
-  if (map.ownerID(line.tip) === own) return line.tip;
-  const ox = map.x(line.origin);
-  const oy = map.y(line.origin);
-  const tx = map.x(line.tip);
-  const ty = map.y(line.tip);
-  const r = NATION_NECK_TIP_MARGIN * 2;
-  let best: TileRef | null = null;
-  let bestDepth = -1;
-  for (let dy = -r; dy <= r; dy++) {
-    for (let dx = -r; dx <= r; dx++) {
-      const x = tx + dx;
-      const y = ty + dy;
-      if (!map.isValidCoord(x, y)) continue;
-      const t = map.ref(x, y);
-      if (map.ownerID(t) !== own) continue;
-      const d = spearDepth(ox, oy, tx, ty, x, y);
-      if (d > bestDepth) {
-        best = t;
-        bestDepth = d;
-      }
-    }
-  }
-  return bestDepth > SPEAR_FREE_DEPTH ? best : null;
-}
-
-/**
  * The salient of `owner`'s land into `nation` grown from `tip`, and its
- * neck, or null when there is none: the tip isn't `owner`'s, the land
- * before the main land is too short to have a neck past the tip's taper or
- * too big to judge, or the tip is already cut off. `line` is the spear line
- * that took it, which marks where the main land starts; null for a tongue
- * the survey found, which must also be walled in by `nation` alone and be
- * longer than SPEAR_FREE_DEPTH.
+ * neck, or null when there is none: the tip isn't `owner`'s, no ring
+ * NATION_SALIENT_MIN_RINGS or more from it is a neck walled in by `nation`
+ * alone, or the tip is already cut off.
  */
 export function findSalient(
   game: Game,
   nation: Player,
   owner: Player,
   tip: TileRef,
-  line: SpearLine | null,
 ): Salient | null {
   const map = game.map();
   const own = owner.smallID();
   const ours = nation.smallID();
   if (map.ownerID(tip) !== own) return null;
-  const ox = line === null ? 0 : map.x(line.origin);
-  const oy = line === null ? 0 : map.y(line.origin);
-  const tx = map.x(tip);
-  const ty = map.y(tip);
   const nbuf: TileRef[] = [0, 0, 0, 0, 0, 0, 0, 0];
-  // Whether `t` lies in the owner's main land, past the salient.
+  // Whether `t` touches anything but the two players' land: past the tongue.
   const mainLand = (t: TileRef): boolean => {
-    if (line !== null) {
-      return spearDepth(ox, oy, tx, ty, map.x(t), map.y(t)) <= SPEAR_FREE_DEPTH;
-    }
     if (map.isOnEdgeOfMap(t)) return true;
     const n = map.neighbors4(t, nbuf);
     for (let i = 0; i < n; i++) {
@@ -134,22 +80,19 @@ export function findSalient(
   const rings: TileRef[][] = [];
   let ring: TileRef[] = [tip];
   let grown = 0;
-  let narrowest = Infinity;
   let reachedMain = false;
   while (ring.length > 0) {
-    if (
-      ring.some(mainLand) ||
-      (line === null &&
-        ring.length >= SURVEY_FAN_OUT * narrowest &&
-        ring.length > 2 * NATION_NECK_TIP_MARGIN)
-    ) {
+    if (ring.some(mainLand)) {
       reachedMain = true;
       break;
     }
-    narrowest = Math.min(narrowest, ring.length);
     rings.push(ring);
     grown += ring.length;
-    if (grown > NATION_SALIENT_SEARCH_TILES) return null;
+    // Grown this far, the rest is the owner's main land.
+    if (grown > NATION_SALIENT_SEARCH_TILES) {
+      reachedMain = true;
+      break;
+    }
     const next: TileRef[] = [];
     for (const t of ring) {
       const n = map.neighbors8(t, nbuf);
@@ -166,9 +109,8 @@ export function findSalient(
   }
   // Grown out without reaching the main land: already a pocket.
   if (!reachedMain) return null;
-  if (line === null && rings.length <= SPEAR_FREE_DEPTH) return null;
-  if (rings.length <= NATION_NECK_TIP_MARGIN) return null;
-  let best = NATION_NECK_TIP_MARGIN;
+  if (rings.length <= NATION_SALIENT_MIN_RINGS) return null;
+  let best = NATION_SALIENT_MIN_RINGS;
   for (let k = best + 1; k < rings.length; k++) {
     // The narrowest, and nearest the main land on a tie: it cuts off most.
     if (rings[k].length <= rings[best].length) best = k;
@@ -181,10 +123,12 @@ export function findSalient(
 }
 
 /**
- * Salients of `owner` into `nation` the nation's own survey finds, without
- * a spear line: grown from up to SURVEY_SEEDS tip-like tiles of its front
- * (`frontTiles`, owner tiles across our border with at least
- * SURVEY_TIP_NEIGHBORS of their 4 neighbors ours), the first found.
+ * A salient of `owner` into `nation` the nation's survey finds: grown from
+ * the SURVEY_SEEDS most pointed tip-like tiles of its front (`frontTiles`,
+ * owner tiles across our border with at least SURVEY_TIP_NEIGHBORS of their
+ * 4 neighbors ours; pointed: the fewest of the owner's tiles within
+ * SURVEY_TIP_WINDOW, as at a tongue's tip, not at the corners where it
+ * leaves its main land), the one with the narrowest neck.
  */
 export function surveySalient(
   game: Game,
@@ -193,21 +137,42 @@ export function surveySalient(
   frontTiles: readonly TileRef[],
 ): Salient | null {
   const map = game.map();
+  const own = owner.smallID();
   const ours = nation.smallID();
   const nbuf: TileRef[] = [0, 0, 0, 0];
-  const tips: TileRef[] = [];
+  const tips: { tile: TileRef; owned: number }[] = [];
   for (const t of frontTiles) {
     const n = map.neighbors4(t, nbuf);
     let mine = 0;
     for (let i = 0; i < n; i++) if (map.ownerID(nbuf[i]) === ours) mine++;
-    if (mine >= SURVEY_TIP_NEIGHBORS) tips.push(t);
+    if (mine < SURVEY_TIP_NEIGHBORS) continue;
+    const x = map.x(t);
+    const y = map.y(t);
+    let owned = 0;
+    for (let dy = -SURVEY_TIP_WINDOW; dy <= SURVEY_TIP_WINDOW; dy++) {
+      for (let dx = -SURVEY_TIP_WINDOW; dx <= SURVEY_TIP_WINDOW; dx++) {
+        if (!map.isValidCoord(x + dx, y + dy)) continue;
+        if (map.ownerID(map.ref(x + dx, y + dy)) === own) owned++;
+      }
+    }
+    tips.push({ tile: t, owned });
   }
-  const step = Math.max(1, Math.floor(tips.length / SURVEY_SEEDS));
-  for (let i = 0; i < tips.length && i < step * SURVEY_SEEDS; i += step) {
-    const salient = findSalient(game, nation, owner, tips[i], null);
-    if (salient !== null) return salient;
+  // Stable: ties keep the front's order.
+  tips.sort((a, b) => a.owned - b.owned);
+  let best: Salient | null = null;
+  for (let i = 0; i < tips.length && i < SURVEY_SEEDS; i++) {
+    const salient = findSalient(game, nation, owner, tips[i].tile);
+    if (
+      salient !== null &&
+      (best === null ||
+        salient.neck.length < best.neck.length ||
+        (salient.neck.length === best.neck.length &&
+          salient.cutOff > best.cutOff))
+    ) {
+      best = salient;
+    }
   }
-  return null;
+  return best;
 }
 
 /** The neck tiles that border `nation`'s land, where a cut can start. */

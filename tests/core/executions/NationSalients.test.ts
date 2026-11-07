@@ -9,15 +9,16 @@ import {
   Difficulty,
   PlayerInfo,
   PlayerType,
+  UnitType,
 } from "@openfront/engine-api/game/GameTypes";
-import { SPEAR_FREE_DEPTH } from "@openfront/engine-lib/game/AttackLogic";
+import { attackForecast } from "@openfront/engine-lib/game/AttackForecast";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import { AttackExecution } from "@openfront/engine/execution/AttackExecution";
 import { NationAttackBehavior } from "@openfront/engine/execution/nation/NationAttackBehavior";
 import {
   cutOffPiece,
   findSalient,
-  NATION_NECK_TIP_MARGIN,
+  NATION_SALIENT_MIN_RINGS,
   surveySalient,
 } from "@openfront/engine/execution/nation/NationSalients";
 import { surveyFronts } from "@openfront/engine/execution/nation/NationSpearheads";
@@ -68,8 +69,7 @@ function attacksSent(game: Game) {
 /**
  * big_plains: the human holds y < 60, the nation x 20-179 by y 60-159 and a
  * third player the rest. A 5-tile-wide corridor of the human's runs from
- * (98..102, 60) 40 tiles down, narrowed to 3 tiles at y = 80: a spearhead's,
- * whose line starts at (100, 59).
+ * (98..102, 60) 40 tiles down, narrowed to 3 tiles at y = 80.
  */
 async function corridorGame(difficulty: Difficulty) {
   const game = await setup(
@@ -87,7 +87,6 @@ async function corridorGame(difficulty: Difficulty) {
   conquerRect(game, t, 0, 0, 200, 200);
   conquerRect(game, h, 0, 0, 200, 60);
   conquerRect(game, n, 20, 60, 180, 160);
-  h.startSpear(n, game.ref(100, 120));
   conquerRect(game, h, 98, 60, 103, 100);
   for (const x of [98, 102]) n.conquer(game.ref(x, 80));
   h.setTroops(200_000);
@@ -96,23 +95,22 @@ async function corridorGame(difficulty: Difficulty) {
 }
 
 describe("finding a salient's neck", () => {
-  it("is the narrowest ring between the spear line's tip and the main land", async () => {
+  it("is the narrowest ring between the tip and the main land, NATION_SALIENT_MIN_RINGS or more from the tip", async () => {
     const { game, h, n } = await corridorGame(Difficulty.Hard);
-    expect(h.spearLine(n)!.origin).toBe(game.ref(100, 59));
-    h.extendSpear(n, game.ref(100, 99), 40);
-    const salient = findSalient(
-      game,
-      n,
-      h,
-      h.spearLine(n)!.tip,
-      h.spearLine(n),
-    );
+    const salient = findSalient(game, n, h, game.ref(100, 99));
     expect(salient).not.toBeNull();
     expect(salient!.neck.map((t) => game.y(t))).toEqual([80, 80, 80]);
     // The tip side: 5 tiles a row from y = 81 to 99.
     expect(salient!.cutOff).toBe(5 * 19);
-    // Past the tip's taper only.
-    expect(NATION_NECK_TIP_MARGIN).toBe(6);
+    // Deeper than a spearhead's bulge (SPEAR_TIP_LEAD).
+    expect(NATION_SALIENT_MIN_RINGS).toBe(16);
+    // Narrowed nearer the tip than that, it is no neck (a tip's taper): the
+    // corridor's mouth is.
+    conquerRect(game, h, 98, 80, 103, 81);
+    for (const x of [98, 102]) n.conquer(game.ref(x, 90));
+    expect(
+      findSalient(game, n, h, game.ref(100, 99))!.neck.map((t) => game.y(t)),
+    ).toEqual([60, 60, 60, 60, 60]);
   });
 
   it("the nation's own survey finds a long tongue walled in by it alone", async () => {
@@ -121,8 +119,8 @@ describe("finding a salient's neck", () => {
     const salient = surveySalient(game, n, h, front.tiles);
     expect(salient).not.toBeNull();
     expect(salient!.neck.map((t) => game.y(t))).toEqual([80, 80, 80]);
-    // Half as long, a bump on the front: no salient.
-    for (let y = 60 + SPEAR_FREE_DEPTH / 2; y < 100; y++) {
+    // 10 deep, a bump on the front: no salient.
+    for (let y = 70; y < 100; y++) {
       for (let x = 98; x < 103; x++) n.conquer(game.ref(x, y));
     }
     expect(
@@ -134,10 +132,7 @@ describe("finding a salient's neck", () => {
     const { game, h, n } = await corridorGame(Difficulty.Hard);
     // Widen the corridor to 45 tiles: 40 deep, its narrowest ring is wider.
     conquerRect(game, h, 78, 60, 123, 100);
-    h.extendSpear(n, game.ref(100, 99), 40);
-    expect(
-      findSalient(game, n, h, h.spearLine(n)!.tip, h.spearLine(n)),
-    ).toBeNull();
+    expect(findSalient(game, n, h, game.ref(100, 99))).toBeNull();
   });
 
   it("a cut-off piece is the owner's land around it, when it is cut off", async () => {
@@ -157,7 +152,6 @@ describe("answering a salient", () => {
       Difficulty.Impossible,
     ]) {
       const { game, h, n } = await corridorGame(difficulty);
-      h.extendSpear(n, game.ref(100, 99), 40);
       // A spearhead of the human's running on the nation.
       game.addExecution(
         new AttackExecution(50_000, h, n.id(), null, true, game.ref(100, 120)),
@@ -183,7 +177,8 @@ describe("answering a salient", () => {
 
   it("goes out even when the nation would otherwise hold back (below its reserve)", async () => {
     const { game, h, n } = await corridorGame(Difficulty.Medium);
-    h.extendSpear(n, game.ref(100, 99), 40);
+    // At war: the human attacked us a while ago.
+    n.updateRelation(h, -100);
     // Above the 15% expand ratio, below the 35% reserve.
     n.setTroops(game.config().maxTroops(n) * 0.3);
     const sent = attacksSent(game);
@@ -193,7 +188,7 @@ describe("answering a salient", () => {
     expect(game.y(cut[0].focus!)).toBe(80);
   });
 
-  it("Hard severs a human's spearhead 60 tiles in within a minute of it passing 30 deep", async () => {
+  it("Hard severs a human's mushroom 60 tiles deep within a minute", async () => {
     const game = await setup(
       "big_plains",
       { difficulty: Difficulty.Hard },
@@ -206,59 +201,58 @@ describe("answering a salient", () => {
       UseRealAttackLogic,
     );
     const [h, n, t] = ["h", "n", "t"].map((id) => game.player(id));
+    // The human reaches the nation down a 10-wide strip through a third
+    // player's band, and has pushed a 10-wide stem 30 tiles in and a 31-wide
+    // cap past it to 60 deep: what a spearhead down a narrow front leaves.
     conquerRect(game, t, 0, 0, 200, 200);
-    conquerRect(game, h, 0, 0, 200, 60);
+    conquerRect(game, h, 0, 0, 200, 40);
+    conquerRect(game, h, 96, 40, 106, 60);
     conquerRect(game, n, 20, 60, 180, 160);
+    conquerRect(game, h, 96, 60, 106, 90);
+    conquerRect(game, h, 85, 90, 116, 120);
     h.setTroops(600_000);
     n.setTroops(500_000);
     t.setTroops(100_000);
     for (const p of [h, n, t]) game.addExecution(new PlayerExecution(p));
     game.executeNextTick();
     game.addExecution(
-      new AttackExecution(300_000, h, n.id(), null, true, game.ref(97, 119)),
+      new AttackExecution(300_000, h, n.id(), null, true, game.ref(100, 119)),
     );
     const nation = behavior(game, n, 7919);
     const sent = attacksSent(game);
-    let passed30 = -1;
     let severed = -1;
-    for (let i = 0; i < 900 && severed < 0; i++) {
+    for (let i = 0; i < 600 && severed < 0; i++) {
       if (i >= 10 && i % 50 === 0) nation.maybeAttack();
       game.executeNextTick();
-      const line = h.spearLine(n);
-      if (passed30 < 0 && line !== null && line.tipDepth >= 30) passed30 = i;
-      if (passed30 >= 0 && line !== null) {
-        const tip = line.tip;
-        if (game.ownerID(tip) !== h.smallID() || cutOffPiece(game, h, tip)) {
-          severed = i;
-        }
-      }
+      if (cutOffPiece(game, h, game.ref(100, 110)) !== null) severed = i;
     }
-    expect(passed30).toBeGreaterThanOrEqual(0);
+    // Cut at the stem.
     const cuts = sent().filter(
       (a) =>
         a.owner === n &&
         a.target === h.id() &&
         a.focus !== null &&
-        game.y(a.focus) - 59 >= SPEAR_FREE_DEPTH,
+        game.y(a.focus) >= 60 &&
+        game.y(a.focus) < 90,
     );
     expect(cuts.length).toBeGreaterThan(0);
     expect(severed).toBeGreaterThanOrEqual(0);
-    expect(severed - passed30).toBeLessThanOrEqual(600);
   }, 60_000);
 
   it("Impossible hits a neck bordering it on both sides from the cheaper side", async () => {
     const { game, h, n } = await corridorGame(Difficulty.Impossible);
-    h.extendSpear(n, game.ref(100, 99), 40);
-    // The nation's remembered spear line on the human starts west of the
-    // neck, so its east end lies deeper on it (41 tiles against 39) and
-    // costs more.
-    n.startSpear(h, game.ref(80, 59));
-    expect(n.spearLine(h)!.origin).toBe(game.ref(80, 60));
+    n.updateRelation(h, -100);
+    // A defense post of the human's covers the neck's west end (99, 80),
+    // 29.7 tiles off, but not its east end (101, 80), 31.1 off.
+    h.buildUnit(UnitType.DefensePost, game.ref(78, 59), {});
+    const cost = (x: number) =>
+      attackForecast(game, n, h, game.ref(x, 80), n.troops(), null).lossPerTile;
+    expect(cost(101)).toBeLessThan(cost(99));
     const sent = attacksSent(game);
     behavior(game, n).maybeAttack();
     const cut = sent().filter((a) => a.owner === n && a.target === h.id());
     expect(cut).toHaveLength(1);
-    expect(cut[0].focus).toBe(game.ref(99, 80));
+    expect(cut[0].focus).toBe(game.ref(101, 80));
   });
 
   it("a cut-off piece too big to annex is attacked next", async () => {

@@ -780,7 +780,7 @@ export class InputHandler {
         this.activeKeys.clear();
         this.uiState.preventStacking = false;
         this.zoomKeysHeldBeforeControl.clear();
-        this.setShiftHeld(false);
+        this.shiftHeld = false;
         if (this.alternateView) {
           this.alternateView = false;
           this.eventBus.emit(new AlternateViewEvent(false));
@@ -988,7 +988,7 @@ export class InputHandler {
           e.preventDefault();
         }
 
-        this.setShiftHeld(e.shiftKey);
+        this.shiftHeld = e.shiftKey;
 
         const continuousPhysicalCodes = continuousBindings.map(
           (k) => this.parseKeybind(k).code,
@@ -1052,7 +1052,7 @@ export class InputHandler {
           e.preventDefault();
         }
 
-        this.setShiftHeld(e.shiftKey);
+        this.shiftHeld = e.shiftKey;
 
         // When meta (Cmd on macOS) is released, any keys released while Cmd was
         // held will have had their keyup swallowed by the browser (e.g. Cmd+Plus
@@ -1714,12 +1714,6 @@ export class InputHandler {
     return this.shiftHeld;
   }
 
-  // Shared with the hover forecast through uiState (a Shift click spearheads).
-  private setShiftHeld(held: boolean): void {
-    this.shiftHeld = held;
-    this.uiState.shiftHeld = held;
-  }
-
   /**
    * Evaluates whether a continuous movement or zoom action is currently active.
    *
@@ -1971,7 +1965,7 @@ export class InputHandler {
     this.activeKeys.clear();
     this.uiState.preventStacking = false;
     this.zoomKeysHeldBeforeControl.clear();
-    this.setShiftHeld(false);
+    this.shiftHeld = false;
     this.emojiTableOpen = false;
     this.emojiKeysDown.clear();
     this.keybindAndEvent = [];

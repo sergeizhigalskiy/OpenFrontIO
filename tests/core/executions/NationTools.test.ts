@@ -238,6 +238,30 @@ describe("picking fronts with the forecast", () => {
   });
 });
 
+describe("ranking humans", () => {
+  it("every difficulty ranks a human by its troops, as upstream", async () => {
+    for (const difficulty of DIFFICULTIES) {
+      const game = await setup(
+        "plains",
+        { difficulty },
+        [
+          nationInfo("nation"),
+          new PlayerInfo("human", PlayerType.Human, "c_human", "human"),
+        ],
+        undefined,
+        UseRealAttackLogic,
+      );
+      const nation = game.player("nation");
+      const human = game.player("human");
+      conquerRect(game, nation, 0, 0, 50, 100);
+      conquerRect(game, human, 50, 0, 100, 100);
+      human.setTroops(100_000);
+      const b = inside(behaviorFor(game, nation));
+      expect(b.rankWeight(human), difficulty).toBe(100_000);
+    }
+  });
+});
+
 describe("weighing defense posts", () => {
   it("Hard and Impossible rank a front mostly under posts as twice as strong", async () => {
     for (const difficulty of DIFFICULTIES) {

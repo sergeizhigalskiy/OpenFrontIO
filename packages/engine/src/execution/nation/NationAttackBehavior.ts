@@ -13,11 +13,7 @@ import {
   TerraNullius,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
-import {
-  attackForecast,
-  spearDepthAt,
-} from "@openfront/engine-lib/game/AttackForecast";
-import { SPEAR_FREE_DEPTH } from "@openfront/engine-lib/game/AttackLogic";
+import { attackForecast } from "@openfront/engine-lib/game/AttackForecast";
 import { isBossRaid } from "@openfront/engine-lib/game/BossRaid";
 import { NATION_TROOP_DONATION_COOLDOWN_TICKS } from "@openfront/engine-lib/game/Convoys";
 import { terrainFeatureLossMultiplier } from "@openfront/engine-lib/game/TerrainFeatures";
@@ -63,11 +59,9 @@ import {
 } from "./NationEmojiBehavior";
 import {
   cutOffPiece,
-  findSalient,
   medoidTile,
   neckSides,
   Salient,
-  salientTip,
   surveySalient,
 } from "./NationSalients";
 import {
@@ -135,8 +129,6 @@ export const NATION_PIECE_ATTACK_MARGIN = 1.25;
 export const NATION_NECK_REAIM_TILES = 3;
 /** A salient cut is forgotten this many ticks (2 min) after it started. */
 export const NATION_SALIENT_MEMORY_TICKS = 1200;
-/** A spear line counts as running when a spearhead on it ran within this many ticks. */
-const SPEAR_RUNNING_TICKS = 2;
 
 // A landing weighed while planning a boat route (see boatRoute)
 interface LandingCandidate {
@@ -831,8 +823,8 @@ export class NationAttackBehavior extends AiAttackBehavior {
   }
 
   /**
-   * Medium and up cut a hostile player's spearhead (NationSalients): when it
-   * has a spearhead running on us or holds a salient into our land, our next
+   * Medium and up cut a hostile player's salient (NationSalients): when a
+   * player we are fighting holds a tongue of land deep into ours, our next
    * attack goes at it as a spearhead aimed at the salient's neck, sized by
    * the forecast to get across it with NATION_NECK_CUT_MARGIN, plus whatever
    * of its troops are attacking us (they cancel out first). It replaces the
@@ -878,44 +870,25 @@ export class NationAttackBehavior extends AiAttackBehavior {
   }
 
   /**
-   * The salient we answer: the deepest one a hostile player's spear line on
-   * us took past SPEAR_FREE_DEPTH, a running spearhead's first; else one our
-   * survey finds of a player we are fighting.
+   * The salient we answer: the first our survey finds of a player we are
+   * fighting (answers: attacking us, hostile, or at war with an ally), the
+   * one we are already cutting first.
    */
   private salientThreat(): Salient | null {
-    const now = this.game.ticks();
-    let best: Salient | null = null;
-    let bestRank = -Infinity;
     const fighting: Player[] = [];
     for (const id of this.frontSurveys().keys()) {
       const owner = this.game.playerBySmallID(id);
       if (
         !owner.isPlayer() ||
         owner.type() === PlayerType.Bot ||
-        this.player.isFriendly(owner)
+        this.player.isFriendly(owner) ||
+        !this.answers(owner)
       ) {
         continue;
       }
-      const line = owner.spearLine(this.player);
-      if (line !== null && line.tipDepth > SPEAR_FREE_DEPTH) {
-        const tip = salientTip(this.game, owner, line);
-        const salient =
-          tip === null
-            ? null
-            : findSalient(this.game, this.player, owner, tip, line);
-        if (salient !== null) {
-          const running = now - line.lastTick <= SPEAR_RUNNING_TICKS;
-          const rank = (running ? 1e6 : 0) + line.tipDepth;
-          if (rank > bestRank) {
-            best = salient;
-            bestRank = rank;
-          }
-          continue;
-        }
-      }
-      if (this.answers(owner)) fighting.push(owner);
+      if (owner === this.salientCut?.target) fighting.unshift(owner);
+      else fighting.push(owner);
     }
-    if (best !== null) return best;
     for (const owner of fighting) {
       const front = this.frontWith(owner);
       if (front === undefined) continue;
@@ -983,8 +956,6 @@ export class NationAttackBehavior extends AiAttackBehavior {
     if (difficulty !== Difficulty.Impossible) return middle;
     const sides = neckSides(this.game, this.player, salient.neck);
     if (sides === null) return middle;
-    const line = this.player.spearLine(salient.owner);
-    const running = line !== null && this.game.ticks() - line.lastTick <= 1;
     const cost = (tile: TileRef) =>
       attackForecast(
         this.game,
@@ -993,9 +964,6 @@ export class NationAttackBehavior extends AiAttackBehavior {
         tile,
         Math.max(1, this.player.troops()),
         null,
-        true,
-        true,
-        spearDepthAt(this.game, tile, line, this.player.borderTiles(), running),
       ).lossPerTile;
     const [a, b] = sides;
     const ca = cost(a);
@@ -1006,8 +974,8 @@ export class NationAttackBehavior extends AiAttackBehavior {
 
   /**
    * Troops for a spearhead at `focus` on `target` that takes about `tiles`
-   * tiles: the forecast's loss per tile there with that stack (supply lines
-   * included; a small stack loses more per tile) times `tiles` times
+   * tiles: the forecast's loss per tile there with that stack (a small
+   * stack loses more per tile) times `tiles` times
    * `margin`, and at least a twentieth of the target's troops, so the push
    * doesn't crawl; plus the target's troops attacking us, which cancel out
    * first. Never below the expand ratio. Null when what we can send past
@@ -1029,14 +997,6 @@ export class NationAttackBehavior extends AiAttackBehavior {
     if (free < 1) return null;
     const features =
       this.game.config().difficultyFor(this.player) !== Difficulty.Medium;
-    const line = this.player.spearLine(target);
-    const depth = spearDepthAt(
-      this.game,
-      focus,
-      line,
-      this.player.borderTiles(),
-      line !== null && this.game.ticks() - line.lastTick <= 1,
-    );
     const cost = (troops: number) =>
       attackForecast(
         this.game,
@@ -1045,9 +1005,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
         focus,
         troops,
         null,
-        true,
         features,
-        depth,
       ).lossPerTile * tiles;
     if (free < cost(free)) return null;
     // The loss per tile falls as the stack grows: settle on a stack that
@@ -1190,7 +1148,6 @@ export class NationAttackBehavior extends AiAttackBehavior {
         tile,
         troops,
         null,
-        false,
         features,
       ).lossPerTile;
     }
@@ -1416,13 +1373,16 @@ export class NationAttackBehavior extends AiAttackBehavior {
     const troops = p.troops();
     const difficulty = this.game.config().difficultyFor(this.player);
     if (
-      (difficulty === Difficulty.Hard ||
-        difficulty === Difficulty.Impossible) &&
-      postsCoverFront(this.game, p, this.frontWith(p))
+      difficulty !== Difficulty.Hard &&
+      difficulty !== Difficulty.Impossible
     ) {
-      return troops * NATION_POST_FRONT_WEIGHT;
+      return troops;
     }
-    return troops;
+    let weight = troops;
+    if (postsCoverFront(this.game, p, this.frontWith(p))) {
+      weight *= NATION_POST_FRONT_WEIGHT;
+    }
+    return weight;
   }
 
   /**

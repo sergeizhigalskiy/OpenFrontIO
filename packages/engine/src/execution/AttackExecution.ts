@@ -14,10 +14,6 @@ import {
   withEnvironmentCost,
 } from "@openfront/engine-lib/game/AttackEnvironment";
 import {
-  attackBudgetFront,
-  spearDepth,
-} from "@openfront/engine-lib/game/AttackLogic";
-import {
   bossShieldAttackCap,
   isBossRaidBoss,
 } from "@openfront/engine-lib/game/BossRaid";
@@ -53,18 +49,28 @@ const malusForRetreat = 25;
 /** A player holding fewer tiles than this is eliminated (upstream). */
 const ELIMINATION_TILES = 100;
 /**
- * Spearhead attacks: when the player clicks a tile, each border tile is delayed
- * by this many ticks of queue priority per tile it lies further from the click
- * than the tip of the front does. The tip goes first, the flanks follow later.
- * The tick budget comes from at most SPEAR_BUDGET_FRONT front tiles
- * (engine-lib/game/AttackLogic.ts attackBudgetFront).
+ * Spearheads are steered attacks: they spend the same budget as a broad
+ * attack on the same front, but take its tiles nearer the focus first. A
+ * front tile is queued by conquest generation (how many tiles in from where
+ * the attack started) instead of by tick, held back by one generation per
+ * SPEAR_LEAD_SLOPE tiles it lies farther from the focus than the tip does, up
+ * to SPEAR_TIP_LEAD generations. So the tip leads its flanks by at most
+ * SPEAR_TIP_LEAD tiles, 15 with a front's own raggedness, and the front
+ * behind it keeps up: a bulge aimed at the click, moving about as fast as
+ * the front. Clicking again carries the generations on (runningSpearhead).
  */
-export const SPEARHEAD_DELAY_PER_TILE = 2.5;
+export const SPEAR_TIP_LEAD = 14;
+/** ...one generation per this many tiles a front tile lies off the tip... */
+export const SPEAR_LEAD_SLOPE = 1;
 /**
- * Cap on the delay: the flanks start within 4 seconds, so a spear widens
- * into a front instead of stalling them.
+ * ...and no more than (SPEAR_TIP_PACE - 1) times its own generation, so the
+ * tip moves at most SPEAR_TIP_PACE times as fast as its flanks.
  */
-export const SPEARHEAD_MAX_DELAY = 40;
+export const SPEAR_TIP_PACE = 2;
+/** Front tiles a spearhead's bulge adds per tile of lead: its two sides. */
+const SPEAR_BULGE_SIDES = 2;
+/** Queue priority per generation, about a front tile's own spread (10 to 16). */
+const SPEAR_GENERATION_PRIORITY = 13;
 export class AttackExecution implements Execution {
   private active: boolean = true;
   private toConquer = new FlatBinaryHeap();
@@ -98,12 +104,15 @@ export class AttackExecution implements Execution {
   /** Closest any queued tile has come to the focus tile: the tip of the spear. */
   private focusBest = Number.MAX_SAFE_INTEGER;
 
+  /** A spearhead's queued tiles by conquest generation (see SPEAR_TIP_LEAD). */
+  private generations = new Map<TileRef, number>();
   /**
-   * Supply lines: the tile this spearhead's tile depths count from, its
-   * owner's spear line on the target (Player.startSpear); null for a broad
-   * attack or one on free land, a tribe or a city-state.
+   * A spearhead's front when it started, and the deepest conquest generation
+   * it has taken: its tick budget leaves out the two sides of its bulge
+   * (spearBudgetFront), so it gains land no faster than a broad attack.
    */
-  private spearOrigin: TileRef | null = null;
+  private launchFront = 0;
+  private tipGeneration = 0;
 
   public targetID(): PlayerID | null {
     return this._targetID;
@@ -173,21 +182,6 @@ export class AttackExecution implements Execution {
       return;
     }
 
-    // A spearhead on a human or a nation joins its owner's spear line on the
-    // target: the remembered origin, so relaunching from the tip or merging
-    // into a running spearhead keeps the depth (SPEAR_ORIGIN_MEMORY_TICKS).
-    // Tribes and city-states price no supply lines (AttackLogic).
-    if (
-      this.focusTile !== null &&
-      this.target.isPlayer() &&
-      this.target.type() !== PlayerType.Bot
-    ) {
-      this.spearOrigin = this._owner.startSpear(
-        this.target,
-        this.focusTile,
-      ).origin;
-    }
-
     this.startTroops ??= this.mg
       .config()
       .attackAmount(this._owner, this.target);
@@ -206,10 +200,21 @@ export class AttackExecution implements Execution {
       new Set<TileRef>(),
     );
 
+    // A spearhead merging into a running one (a second click) carries its
+    // generations and launch front on, so clicking again neither stretches
+    // the tip farther ahead of its flanks nor widens the budget.
+    const running = this.runningSpearhead();
+    if (running !== null && running.focusTile === this.focusTile) {
+      this.focusBest = running.focusBest;
+    }
     if (this.sourceTile !== null) {
       this.addNeighbors(this.sourceTile);
     } else {
-      this.refreshToConquer();
+      this.refreshToConquer(running?.generations ?? null);
+    }
+    if (this.focusTile !== null) {
+      this.launchFront = running?.launchFront ?? this.attack.borderSize();
+      this.tipGeneration = running?.tipGeneration ?? 0;
     }
 
     // Record stats
@@ -300,7 +305,56 @@ export class AttackExecution implements Execution {
     this.target.updateRelation(this._owner, relationChange);
   }
 
-  private refreshToConquer() {
+  /**
+   * The front a spearhead's tick budget comes from: its front without the
+   * two sides its bulge added (SPEAR_BULGE_SIDES tiles per tile the tip
+   * leads by, which with SPEAR_TIP_PACE 2 is half its generation, up to
+   * SPEAR_TIP_LEAD), but no less than its front at launch, and never more
+   * than its front. A straight front so spends a broad attack's budget, and
+   * one that grows (a blob spreading out) about a broad attack's.
+   */
+  private spearBudgetFront(): number {
+    if (this.attack === null) {
+      throw new Error("Attack not initialized");
+    }
+    const border = this.attack.borderSize();
+    const lead = Math.min(
+      SPEAR_TIP_LEAD,
+      (this.tipGeneration * (SPEAR_TIP_PACE - 1)) / SPEAR_TIP_PACE,
+    );
+    return Math.min(
+      border,
+      Math.max(this.launchFront, Math.ceil(border - SPEAR_BULGE_SIDES * lead)),
+    );
+  }
+
+  /**
+   * The owner's running land spearhead on the same target, which this
+   * spearhead's init is about to absorb; null when this one is broad, a
+   * boat, or there is none.
+   */
+  private runningSpearhead(): AttackExecution | null {
+    if (this.focusTile === null || this.sourceTile !== null) return null;
+    for (const e of this.mg.executions()) {
+      if (
+        e instanceof AttackExecution &&
+        e !== this &&
+        e.isActive() &&
+        e._owner === this._owner &&
+        e.focusTile !== null &&
+        e.sourceTile === null &&
+        e.attack !== null &&
+        e.attack.isActive() &&
+        e.attack.target() === this.target
+      ) {
+        return e;
+      }
+    }
+    return null;
+  }
+
+  // `prior`: the conquest generations of a spearhead being absorbed.
+  private refreshToConquer(prior: ReadonlyMap<TileRef, number> | null = null) {
     if (this.attack === null) {
       throw new Error("Attack not initialized");
     }
@@ -308,7 +362,9 @@ export class AttackExecution implements Execution {
     this.toConquer.clear();
     this.attack.clearBorder();
     // forEach over the dense storage — the values() generator showed up in long-game profiles
-    this._owner.borderTiles().forEach((tile) => this.addNeighbors(tile));
+    this._owner
+      .borderTiles()
+      .forEach((tile) => this.addNeighbors(tile, 0, prior));
   }
 
   private retreat(malusPercent = 0) {
@@ -381,16 +437,11 @@ export class AttackExecution implements Execution {
       return;
     }
 
-    // The spear line stays remembered while this spearhead runs.
-    if (this.spearOrigin !== null && targetPlayer !== null) {
-      this._owner.extendSpear(targetPlayer);
-    }
-
-    // A spearhead spends the budget of at most SPEAR_BUDGET_FRONT tiles of
-    // its front, a broad attack its whole front's.
-    const borderSize =
-      attackBudgetFront(this.attack.borderSize(), this.focusTile !== null) +
-      this.random.nextInt(0, 5);
+    const front =
+      this.focusTile === null
+        ? this.attack.borderSize()
+        : this.spearBudgetFront();
+    const borderSize = front + this.random.nextInt(0, 5);
     // Plague: each tile The Infected takes from a player raises zombies.
     const infects =
       targetPlayer !== null &&
@@ -414,6 +465,9 @@ export class AttackExecution implements Execution {
 
       const tileToConquer = this.toConquer.dequeue();
       this.attack.removeBorderTile(tileToConquer);
+      const generation = this.generations.get(tileToConquer) ?? 0;
+      this.generations.delete(tileToConquer);
+      if (generation > this.tipGeneration) this.tipGeneration = generation;
 
       let onBorder = false;
       const numNeighbors = this.map.neighbors4(tileToConquer, this.nbuf);
@@ -432,7 +486,7 @@ export class AttackExecution implements Execution {
       ) {
         continue;
       }
-      this.addNeighbors(tileToConquer);
+      this.addNeighbors(tileToConquer, generation + 1);
       const input = this.attackLogicInput(
         troopCount,
         tileToConquer,
@@ -453,9 +507,6 @@ export class AttackExecution implements Execution {
       tickBudget -= tickFraction;
       troopCount -= attackerTroopLoss;
       this.attack.setTroops(troopCount);
-      if (targetPlayer && input.spearDepth !== undefined) {
-        this._owner.extendSpear(targetPlayer, tileToConquer, input.spearDepth);
-      }
       if (targetPlayer) {
         if (infects) {
           this._owner.addTroops(
@@ -508,24 +559,7 @@ export class AttackExecution implements Execution {
         ? this.mg.numTilesWithFallout() / this.mg.numLandTiles()
         : null,
       borderSize,
-      spearDepth: this.tileSpearDepth(tile),
     };
-  }
-
-  /** How deep `tile` lies on this spearhead (spearDepth), or undefined when broad. */
-  private tileSpearDepth(tile: TileRef): number | undefined {
-    const origin = this.spearOrigin;
-    const focus = this.focusTile;
-    if (origin === null || focus === null) return undefined;
-    const map = this.map;
-    return spearDepth(
-      map.x(origin),
-      map.y(origin),
-      map.x(focus),
-      map.y(focus),
-      map.x(tile),
-      map.y(tile),
-    );
   }
 
   private rejectIncomingAllianceRequests(target: Player) {
@@ -537,7 +571,14 @@ export class AttackExecution implements Execution {
     }
   }
 
-  private addNeighbors(tile: TileRef) {
+  // `generation` is the conquest generation of `tile`'s neighbors: one more
+  // than the tile's when it was just taken, 0 from the attacker's border
+  // unless `prior` (an absorbed spearhead's) has one for them.
+  private addNeighbors(
+    tile: TileRef,
+    generation = 0,
+    prior: ReadonlyMap<TileRef, number> | null = null,
+  ) {
     if (this.attack === null) {
       throw new Error("Attack not initialized");
     }
@@ -580,15 +621,24 @@ export class AttackExecution implements Execution {
       }
 
       let priority =
-        (this.random.nextInt(0, 7) + 10) * (1 - numOwnedByMe * 0.5 + mag / 2) +
-        tickNow;
-      if (this.focusTile !== null) {
+        (this.random.nextInt(0, 7) + 10) * (1 - numOwnedByMe * 0.5 + mag / 2);
+      if (this.focusTile === null) {
+        priority += tickNow;
+      } else {
+        // Steered: by generation, the farther from the focus the later.
+        const g = prior?.get(neighbor) ?? generation;
         const d = this.map.manhattanDist(neighbor, this.focusTile);
         if (d < this.focusBest) this.focusBest = d;
-        priority += Math.min(
-          SPEARHEAD_MAX_DELAY,
-          (d - this.focusBest) * SPEARHEAD_DELAY_PER_TILE,
+        const lag = Math.min(
+          SPEAR_TIP_LEAD,
+          (d - this.focusBest) / SPEAR_LEAD_SLOPE,
+          (SPEAR_TIP_PACE - 1) * g,
         );
+        priority += SPEAR_GENERATION_PRIORITY * (g + lag);
+        const known = this.generations.get(neighbor);
+        if (known === undefined || g < known) {
+          this.generations.set(neighbor, g);
+        }
       }
 
       this.toConquer.enqueue(neighbor, priority);
@@ -659,7 +709,10 @@ export class AttackExecution implements Execution {
       removeTroops: this.removeTroops,
       focusTile: this.focusTile,
       focusBest: this.focusBest,
-      spearOrigin: this.spearOrigin,
+      generationTiles: [...this.generations.keys()],
+      generations: [...this.generations.values()],
+      launchFront: this.launchFront,
+      tipGeneration: this.tipGeneration,
     });
   }
 
@@ -688,7 +741,12 @@ export class AttackExecution implements Execution {
     this.removeTroops = s.removeTroops;
     this.focusTile = s.focusTile ?? null;
     this.focusBest = s.focusBest ?? Number.MAX_SAFE_INTEGER;
-    this.spearOrigin = s.spearOrigin;
+    this.generations = new Map();
+    for (let i = 0; i < s.generationTiles.length; i++) {
+      this.generations.set(s.generationTiles[i], s.generations[i]);
+    }
+    this.launchFront = s.launchFront;
+    this.tipGeneration = s.tipGeneration;
   }
 }
 
@@ -716,19 +774,33 @@ const AttackExecutionStateSchema = z.object({
   /** Spearhead target. Absent in snapshots taken before spearheads existed. */
   focusTile: zTile().nullable().optional(),
   focusBest: zNum().optional(),
-  /** Supply lines: the spearhead's origin, null when broad. */
-  spearOrigin: zTile().nullable(),
+  /** A spearhead's queued tiles and their conquest generations, in insertion order. */
+  generationTiles: z.array(zTile()),
+  generations: z.array(zInt()),
+  /** A spearhead's front at launch; 0 when broad. */
+  launchFront: zInt(),
+  /** The deepest conquest generation a spearhead took; 0 when broad. */
+  tipGeneration: zInt(),
 });
 type AttackExecutionState = z.infer<typeof AttackExecutionStateSchema>;
 
 export const AttackExecutionSnapshot = execSnapshotType({
   name: "Attack",
-  // v2 added spearOrigin (supply lines).
-  version: 2,
+  // v2 added spearOrigin (supply lines); v3 replaced it with the steered
+  // spearhead's generations and launch front.
+  version: 3,
   schema: AttackExecutionStateSchema,
   cls: () => AttackExecution,
   migrations: {
-    // Older spearheads count no depth, as before supply lines.
     1: (d) => ({ ...(d as Record<string, unknown>), spearOrigin: null }),
+    // A spearhead running before steering goes on with every queued tile at
+    // generation 0 and its whole front's budget (zod strips spearOrigin).
+    2: (d) => ({
+      ...(d as Record<string, unknown>),
+      generationTiles: [],
+      generations: [],
+      launchFront: Number.MAX_SAFE_INTEGER,
+      tipGeneration: 0,
+    }),
   },
 });

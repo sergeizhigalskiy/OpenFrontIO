@@ -91,7 +91,7 @@ async function denseEnemy(difficulty: Difficulty) {
   // Outnumbered past the cheapest ratio, the loss per tile is the same for
   // every stack below 500k: what the forecast prices one front tile at.
   const stack = (troops: number) =>
-    attackForecast(game, nation, enemy, game.ref(50, 50), troops, null, false)
+    attackForecast(game, nation, enemy, game.ref(50, 50), troops, null)
       .lossPerTile * NATION_ATTACK_FRONT_TILES;
   return { game, nation, enemy, stack };
 }
