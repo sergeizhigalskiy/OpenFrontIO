@@ -23,7 +23,7 @@ precision highp sampler2DArray;
 
 #include "camera"
 // Sun, baked shadows, sky openness, relief normals and the smooth coast
-// (uShadow, uRelief, uClimate: coast distance, moisture, cold, variation).
+// (uShadowA/B, uRelief, uClimate: coast distance, moisture, cold, variation).
 #include "terrain-light"
 
 uniform usampler2D uTerrainBytes; // R8UI: bit 7 land, bits 0-4 magnitude
@@ -203,7 +203,10 @@ vec3 shadeWater(vec2 p, float depth, float shore, float sun) {
     // Sun glint: a broad sheen and sharp sparkles off the wave faces.
     vec3 h = normalize(uLightDir + v);
     float nh = max(dot(n, h), 0.0);
-    float glint = 0.07 * pow(nh, 40.0) + 0.9 * pow(nh, 900.0);
+    float glint = 0.05 * pow(nh, 40.0) + 0.35 * pow(nh, 900.0);
+    // Toward a low tilted horizon the glitter would crowd into a white
+    // sheet; keep it to scattered sparkles.
+    glint *= 1.0 - 0.6 * smoothstep(0.3, 0.9, 1.0 - v.z);
     c += vec3(1.0, 0.97, 0.88) * glint * sun * gDetail;
   }
 
@@ -463,19 +466,23 @@ void applySites(vec2 p, inout vec3 albedo, inout vec3 n, out vec3 glow) {
     float r = length(d);
     if (site.z < 0.5) {
       if (r > 3.0) continue;
-      // Ruins: a slab of paving with the footings of two buildings on it.
+      // Ruins: grey paving with the pale broken footings of two buildings
+      // on it, each edged by a soft shadow so it reads as standing stone.
       float a = siteHash(site.xy) * 6.2832;
       vec2 q = mat2(cos(a), -sin(a), sin(a), cos(a)) * d;
-      float paving = 1.0 - smoothstep(1.7, 2.6, r + 0.6 * (noiseAt(p, 3.0).r - 0.5));
+      float paving = 1.0 - smoothstep(1.6, 2.7, r + 0.7 * (noiseAt(p, 3.0).r - 0.5));
       float walls = min(
         abs(sdBox(q - vec2(-0.35, 0.1), vec2(0.95, 0.65))),
         abs(sdBox(q - vec2(0.85, -0.55), vec2(0.45, 0.4)))
       );
-      float broken = step(0.42, noiseAt(q * 1.7 + site.xy, 2.0).r);
-      float wall = (1.0 - smoothstep(0.08, 0.16, walls)) * broken;
-      vec3 stone = vec3(0.80, 0.76, 0.66);
-      albedo = mix(albedo, stone * (0.86 + 0.2 * noiseAt(p, 1.5).r), paving * 0.5);
-      albedo = mix(albedo, stone * 1.05, wall);
+      float broken = smoothstep(0.35, 0.45, noiseAt(q * 1.7 + site.xy, 2.0).r);
+      float wall = (1.0 - smoothstep(0.1, 0.2, walls)) * broken;
+      // The footings' near side darkens: a soft edge shadow.
+      float edge = (1.0 - smoothstep(0.2, 0.34, walls)) * (1.0 - wall) * broken;
+      vec3 stone = vec3(0.70, 0.68, 0.63);
+      albedo = mix(albedo, stone * (0.8 + 0.25 * noiseAt(p, 1.5).r), paving * 0.75);
+      albedo = mix(albedo, vec3(0.88, 0.85, 0.78), wall);
+      albedo *= 1.0 - 0.35 * edge * paving;
       continue;
     }
     if (r > 8.0) continue;
