@@ -3,7 +3,11 @@ import {
   PlayerType,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
-import { AttackExecution } from "@openfront/engine/execution/AttackExecution";
+import { readVersioned } from "@openfront/engine-lib/snapshot/SnapshotType";
+import {
+  AttackExecution,
+  AttackExecutionSnapshot,
+} from "@openfront/engine/execution/AttackExecution";
 import { BoatRetreatExecution } from "@openfront/engine/execution/BoatRetreatExecution";
 import { DonateTroopsExecution } from "@openfront/engine/execution/DonateTroopExecution";
 import { FactoryExecution } from "@openfront/engine/execution/FactoryExecution";
@@ -11,8 +15,11 @@ import { RetreatExecution } from "@openfront/engine/execution/RetreatExecution";
 import { SpawnExecution } from "@openfront/engine/execution/SpawnExecution";
 import { TradeShipExecution } from "@openfront/engine/execution/TradeShipExecution";
 import { TransportShipExecution } from "@openfront/engine/execution/TransportShipExecution";
+import { AiAttackBehaviorSnapshot } from "@openfront/engine/execution/utils/AiAttackBehavior";
 import { WarshipExecution } from "@openfront/engine/execution/WarshipExecution";
 import { Game, Player } from "@openfront/engine/game/Game";
+import { PlayerSnapshot } from "@openfront/engine/game/PlayerImpl";
+import { snapshotGameData } from "@openfront/engine/snapshot/GameSnapshot";
 import { setup } from "../../util/Setup";
 import { expectSnapshotRoundTrip } from "../../util/Snapshot";
 import { executeTicks } from "../../util/utils";
@@ -66,6 +73,51 @@ describe("snapshot: land attacks", () => {
     game.addExecution(new AttackExecution(15_000, a, b.id()));
     executeTicks(game, 4);
     await expectSnapshotRoundTrip(game, MAP, 60);
+  });
+
+  test("spearheads with a remembered spear line, then relaunched from the tip", async () => {
+    const { game, a, b } = await landGame();
+    conquerRect(game, a, 20, 10, 40, 20);
+    a.addTroops(100_000);
+    game.addExecution(
+      new AttackExecution(30_000, a, b.id(), null, true, game.ref(80, 15)),
+    );
+    executeTicks(game, 6);
+    expect(a.spearLine(b)).not.toBeNull();
+    await expectSnapshotRoundTrip(game, MAP, 30);
+    for (const attack of a.outgoingAttacks()) attack.delete();
+    executeTicks(game, 20);
+    // The line outlives the spearhead; a new one joins it.
+    game.addExecution(
+      new AttackExecution(20_000, a, b.id(), null, true, game.ref(85, 25)),
+    );
+    executeTicks(game, 3);
+    await expectSnapshotRoundTrip(game, MAP, 40);
+  });
+
+  test("records from before supply lines load with no spear line or origin", async () => {
+    const { game, a, b } = await landGame();
+    a.startSpear(b, game.ref(60, 15));
+    const root = snapshotGameData(game);
+    const player = root.players.find(
+      (p) => (p.d as { smallID: number }).smallID === a.smallID(),
+    )!;
+    expect(readVersioned(PlayerSnapshot, player).spearLines).toHaveLength(1);
+    const old = { ...(player.d as Record<string, unknown>) };
+    delete old.spearLines;
+    expect(readVersioned(PlayerSnapshot, { v: 6, d: old }).spearLines).toEqual(
+      [],
+    );
+    // An Attack execution v1 and a nation's AiAttackBehavior v3.
+    expect(AttackExecutionSnapshot.version).toBe(2);
+    expect(
+      AttackExecutionSnapshot.migrations[1]({ focusTile: 5, focusBest: 3 }),
+    ).toEqual({ focusTile: 5, focusBest: 3, spearOrigin: null });
+    expect(AiAttackBehaviorSnapshot.version).toBe(4);
+    expect(AiAttackBehaviorSnapshot.migrations[3]({ stallWatch: [] })).toEqual({
+      stallWatch: [],
+      salientCut: null,
+    });
   });
 
   test("retreating attack", async () => {

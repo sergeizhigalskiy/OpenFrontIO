@@ -288,9 +288,8 @@ describe("spearheads", () => {
     expect(sent()).toEqual([{ target: enemy.id(), focus: null }]);
   });
 
-  it("Medium aims at the nearest post covering a quarter of the front, and only at posts", async () => {
+  it("Medium aims at the nearest post covering a quarter of the front, then at the best city", async () => {
     const { game, nation, enemy, front } = await splitPlains(Difficulty.Medium);
-    enemy.buildUnit(UnitType.City, game.ref(70, 50), {});
     expect(
       spearheadFocus(game, nation, enemy, front(), Difficulty.Medium),
     ).toBeNull();
@@ -299,6 +298,11 @@ describe("spearheads", () => {
     expect(
       spearheadFocus(game, nation, enemy, front(), Difficulty.Medium),
     ).toBeNull();
+    // A city 20 tiles behind the front.
+    const city = enemy.buildUnit(UnitType.City, game.ref(70, 50), {});
+    expect(
+      spearheadFocus(game, nation, enemy, front(), Difficulty.Medium),
+    ).toBe(city.tile());
     // 47% of the front, 15 tiles back; and 57%, 10 tiles back.
     enemy.buildUnit(UnitType.DefensePost, game.ref(65, 20), {});
     const near = enemy.buildUnit(UnitType.DefensePost, game.ref(60, 50), {});
@@ -320,9 +324,13 @@ describe("spearheads", () => {
     ).toBeNull();
   });
 
-  it("Hard and Impossible also aim at the best city within 40 tiles of the front", async () => {
+  it("Medium and up aim at the best city within 40 tiles of the front", async () => {
     expect(NATION_CITY_FOCUS_RANGE).toBe(40);
-    for (const difficulty of [Difficulty.Hard, Difficulty.Impossible]) {
+    for (const difficulty of [
+      Difficulty.Medium,
+      Difficulty.Hard,
+      Difficulty.Impossible,
+    ]) {
       const { game, nation, enemy, front } = await splitPlains(difficulty);
       enemy.buildUnit(UnitType.City, game.ref(95, 50), {}); // 45 back
       expect(spearheadFocus(game, nation, enemy, front(), difficulty)).toBe(

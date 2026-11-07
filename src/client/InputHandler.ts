@@ -22,6 +22,8 @@ export class MouseUpEvent implements GameEvent {
   constructor(
     public readonly x: number,
     public readonly y: number,
+    /** Shift+click: an attack spearheads toward the clicked tile. */
+    public readonly shiftKey: boolean = false,
   ) {}
 }
 
@@ -764,7 +766,7 @@ export class InputHandler {
         this.activeKeys.clear();
         this.uiState.preventStacking = false;
         this.zoomKeysHeldBeforeControl.clear();
-        this.shiftHeld = false;
+        this.setShiftHeld(false);
         if (this.alternateView) {
           this.alternateView = false;
           this.eventBus.emit(new AlternateViewEvent(false));
@@ -972,7 +974,7 @@ export class InputHandler {
           e.preventDefault();
         }
 
-        this.shiftHeld = e.shiftKey;
+        this.setShiftHeld(e.shiftKey);
 
         const continuousPhysicalCodes = continuousBindings.map(
           (k) => this.parseKeybind(k).code,
@@ -1036,7 +1038,7 @@ export class InputHandler {
           e.preventDefault();
         }
 
-        this.shiftHeld = e.shiftKey;
+        this.setShiftHeld(e.shiftKey);
 
         // When meta (Cmd on macOS) is released, any keys released while Cmd was
         // held will have had their keyup swallowed by the browser (e.g. Cmd+Plus
@@ -1396,7 +1398,7 @@ export class InputHandler {
         this.uiState.ghostStructure !== null || // Block radial menu on left click if building
         this.gameView.config().gameConfig().tutorial === true // The tutorial teaches the click that attacks
       ) {
-        this.eventBus.emit(new MouseUpEvent(event.x, event.y));
+        this.eventBus.emit(new MouseUpEvent(event.x, event.y, event.shiftKey));
       } else {
         this.eventBus.emit(new ContextMenuEvent(event.clientX, event.clientY));
       }
@@ -1698,6 +1700,12 @@ export class InputHandler {
     return this.shiftHeld;
   }
 
+  // Shared with the hover forecast through uiState (a Shift click spearheads).
+  private setShiftHeld(held: boolean): void {
+    this.shiftHeld = held;
+    this.uiState.shiftHeld = held;
+  }
+
   /**
    * Evaluates whether a continuous movement or zoom action is currently active.
    *
@@ -1949,7 +1957,7 @@ export class InputHandler {
     this.activeKeys.clear();
     this.uiState.preventStacking = false;
     this.zoomKeysHeldBeforeControl.clear();
-    this.shiftHeld = false;
+    this.setShiftHeld(false);
     this.emojiTableOpen = false;
     this.emojiKeysDown.clear();
     this.keybindAndEvent = [];

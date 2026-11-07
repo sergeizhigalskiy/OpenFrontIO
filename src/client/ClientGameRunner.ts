@@ -1303,6 +1303,9 @@ export class ClientGameRunner {
       if (myPlayer === null) return;
       this.myPlayer = myPlayer;
     }
+    // A plain click attacks the whole border; Shift+click spearheads toward
+    // the clicked tile.
+    const focus = event.shiftKey ? tile : null;
     this.myPlayer
       .actions(tile, [UnitType.TransportShip])
       .then((actions) => {
@@ -1311,7 +1314,7 @@ export class ClientGameRunner {
             new SendAttackIntentEvent(
               this.gameView.owner(tile).id(),
               this.myPlayer!.troops() * this.renderer.uiState.attackRatio,
-              tile,
+              focus,
             ),
           );
         } else if (this.canAutoBoat(actions.buildableUnits, tile)) {
@@ -1478,12 +1481,12 @@ export class ClientGameRunner {
     this.myPlayer
       .actions(tile, null)
       .then((actions) => {
+        // The ground attack key attacks the whole border, as a plain click.
         if (actions.canAttack) {
           this.eventBus.emit(
             new SendAttackIntentEvent(
               this.gameView.owner(tile).id(),
               this.myPlayer!.troops() * this.renderer.uiState.attackRatio,
-              tile,
             ),
           );
         }

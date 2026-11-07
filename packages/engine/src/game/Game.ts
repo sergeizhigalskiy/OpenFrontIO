@@ -328,6 +328,25 @@ export interface DisconnectSnapshot {
   wasAlive: boolean;
 }
 
+/**
+ * Supply lines: a player's spearheads on one target share an origin, the
+ * tile every spearhead tile's depth counts from (engine-lib AttackLogic
+ * spearDepth), while the line is remembered: a spearhead on the target ran
+ * within SPEAR_ORIGIN_MEMORY_TICKS. So relaunching from the tip doesn't
+ * reset the depth (Player.startSpear).
+ */
+export interface SpearLine {
+  /** The target's small id. */
+  readonly target: number;
+  /** This player's tile nearest the focus when the line's first spearhead started. */
+  readonly origin: TileRef;
+  /** The last tick a spearhead on the target ran. */
+  readonly lastTick: Tick;
+  /** The deepest tile the line's spearheads took (the origin until one does), and its depth. */
+  readonly tip: TileRef;
+  readonly tipDepth: number;
+}
+
 export interface Player extends PlayerLike {
   // Basic Info
   smallID(): number;
@@ -553,6 +572,23 @@ export interface Player extends PlayerLike {
   recordHostileAct(target: Player): void;
   /** The tick this player last launched one at `target`, if it is kept. */
   lastHostileActTick(target: Player): Tick | undefined;
+  /** This player's remembered spear line on `target` (SpearLine), or null. */
+  spearLine(target: Player): SpearLine | null;
+  /** Every remembered spear line of this player, oldest first. */
+  spearLines(): SpearLine[];
+  /**
+   * The line a spearhead on `target` toward `focus` starting now belongs to:
+   * the remembered one when it merges into a running spearhead or starts
+   * (from this player's tile nearest `focus`) within SPEAR_FREE_DEPTH of the
+   * line's tip; else a new one from that tile, replacing it. Forgets lines
+   * past their memory.
+   */
+  startSpear(target: Player, focus: TileRef): SpearLine;
+  /**
+   * Marks the line on `target` as run this tick, and makes `tile`, taken at
+   * `depth`, its tip when it is the deepest yet. No-op without a line.
+   */
+  extendSpear(target: Player, tile?: TileRef, depth?: number): void;
   orderRetreat(attackID: string): void;
   executeRetreat(attackID: string): void;
 

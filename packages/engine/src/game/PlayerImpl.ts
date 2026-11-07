@@ -33,6 +33,10 @@ import {
 } from "@openfront/engine-api/game/GameUpdates";
 import { ReadonlyTileSet } from "@openfront/engine-api/game/ReadViews";
 import { ClientID } from "@openfront/engine-api/Schemas";
+import {
+  SPEAR_ORIGIN_MEMORY_TICKS,
+  spearOriginFor,
+} from "@openfront/engine-lib/game/AttackLogic";
 import { acrossBossLine } from "@openfront/engine-lib/game/BossRaid";
 import { CONVOY_MAX_IN_FLIGHT } from "@openfront/engine-lib/game/Convoys";
 import { andFN, manhattanDistFN } from "@openfront/engine-lib/game/GameMapImpl";
@@ -78,6 +82,7 @@ import {
   Embargo,
   MutableAlliance,
   Player,
+  SpearLine,
   Unit,
   UnitParams,
 } from "./Game";
@@ -99,6 +104,15 @@ const DECAY_CUE_GRACE_TICKS = 30;
 interface Target {
   tick: Tick;
   target: Player;
+}
+
+/** SpearLine as PlayerImpl keeps it. */
+interface MutableSpearLine {
+  target: number;
+  origin: TileRef;
+  lastTick: Tick;
+  tip: TileRef;
+  tipDepth: number;
 }
 
 class Donation {
@@ -202,6 +216,9 @@ export class PlayerImpl implements Player {
   // the order they were last launched. Entries past WAR_MEMORY_TICKS are
   // dropped as new ones come in.
   private _hostileActs = new Map<Player, Tick>();
+  // Supply lines (SpearLine): this player's spear lines, oldest first.
+  // startSpear drops the ones past SPEAR_ORIGIN_MEMORY_TICKS.
+  private _spearLines: MutableSpearLine[] = [];
 
   public _alliances: MutableAlliance[] = [];
 
@@ -434,6 +451,7 @@ export class PlayerImpl implements Player {
         this._hostileActs.size === 0
           ? EMPTY_NUMBER_ARRAY
           : [...this._hostileActs].flatMap(([p, tick]) => [p.smallID(), tick]),
+      spearOrigins: this.spearOriginUpdate(),
     };
   }
 
@@ -1998,6 +2016,96 @@ export class PlayerImpl implements Player {
   lastHostileActTick(target: Player): Tick | undefined {
     return this._hostileActs.get(target);
   }
+
+  private spearLineIsLive(line: MutableSpearLine): boolean {
+    return this.mg.ticks() - line.lastTick <= SPEAR_ORIGIN_MEMORY_TICKS;
+  }
+
+  spearLine(target: Player): SpearLine | null {
+    const id = target.smallID();
+    for (const line of this._spearLines) {
+      if (line.target === id && this.spearLineIsLive(line)) return line;
+    }
+    return null;
+  }
+
+  spearLines(): SpearLine[] {
+    return this._spearLines.filter((l) => this.spearLineIsLive(l));
+  }
+
+  // The live lines' [targetSmallID, origin, tip] triples, for the client's
+  // forecast.
+  private spearOriginUpdate(): number[] {
+    if (this._spearLines.length === 0) return EMPTY_NUMBER_ARRAY;
+    const out: number[] = [];
+    for (const line of this._spearLines) {
+      if (this.spearLineIsLive(line)) {
+        out.push(line.target, line.origin, line.tip);
+      }
+    }
+    return out.length === 0 ? EMPTY_NUMBER_ARRAY : out;
+  }
+
+  startSpear(target: Player, focus: TileRef): SpearLine {
+    this._spearLines = this._spearLines.filter((l) => this.spearLineIsLive(l));
+    const id = target.smallID();
+    const origin = this.nearestOwnTile(focus) ?? focus;
+    const live = this._spearLines.find((l) => l.target === id);
+    if (live !== undefined) {
+      // One that merges into a running spearhead, or starts from the line's
+      // own spearhead (within SPEAR_FREE_DEPTH of its tip), keeps the
+      // origin. One launched elsewhere on the front starts its own.
+      const map = this.mg.map();
+      const running = this.mg.ticks() - live.lastTick <= 1;
+      if (
+        spearOriginFor(origin, live, running, (a, b) =>
+          map.manhattanDist(a, b),
+        ) === live.origin
+      ) {
+        live.lastTick = this.mg.ticks();
+        return live;
+      }
+      this._spearLines = this._spearLines.filter((l) => l !== live);
+    }
+    const line: MutableSpearLine = {
+      target: id,
+      origin,
+      lastTick: this.mg.ticks(),
+      tip: origin,
+      tipDepth: 0,
+    };
+    this._spearLines.push(line);
+    return line;
+  }
+
+  extendSpear(target: Player, tile?: TileRef, depth?: number): void {
+    const id = target.smallID();
+    const line = this._spearLines.find(
+      (l) => l.target === id && this.spearLineIsLive(l),
+    );
+    if (line === undefined) return;
+    line.lastTick = this.mg.ticks();
+    if (tile !== undefined && depth !== undefined && depth > line.tipDepth) {
+      line.tip = tile;
+      line.tipDepth = depth;
+    }
+  }
+
+  // This player's tile nearest `tile` (manhattan; lowest ref on a tie), or
+  // null without land. The nearest is always a border tile.
+  private nearestOwnTile(tile: TileRef): TileRef | null {
+    const map = this.mg.map();
+    let best: TileRef | null = null;
+    let bestDist = Infinity;
+    this._borderTiles.forEach((t) => {
+      const d = map.manhattanDist(t, tile);
+      if (d < bestDist || (d === bestDist && best !== null && t < best)) {
+        best = t;
+        bestDist = d;
+      }
+    });
+    return best;
+  }
   outgoingAttacks(): Attack[] {
     return this._outgoingAttacks;
   }
@@ -2115,6 +2223,7 @@ export class PlayerImpl implements Player {
         w.player(p),
         tick,
       ]),
+      spearLines: this._spearLines.map((l) => ({ ...l })),
       lastDeleteUnitTick: this.lastDeleteUnitTick,
       lastEmbargoAllTick: this.lastEmbargoAllTick,
       incomingAttacks: this._incomingAttacks.map((a) => w.attack(a)),
@@ -2197,6 +2306,7 @@ export class PlayerImpl implements Player {
     this._hostileActs = new Map(
       s.hostileActs.map(([p, tick]) => [r.player(p), tick] as const),
     );
+    this._spearLines = s.spearLines.map((l) => ({ ...l }));
     this.lastDeleteUnitTick = s.lastDeleteUnitTick;
     this.lastEmbargoAllTick = s.lastEmbargoAllTick;
     this._incomingAttacks = s.incomingAttacks.map((i) => r.attack(i));
@@ -2227,9 +2337,9 @@ export const PlayerSnapshot = snapshotType({
   name: "Player",
   // v2 added the conventional war capital fields, v3 the city-state flags
   // (world features), v4 reworked the capital fields, v5 dropped them with
-  // the removed capitals (zod strips them from older records), and v6 added
-  // hostileActs, the blockades' war record.
-  version: 6,
+  // the removed capitals (zod strips them from older records), v6 added
+  // hostileActs, the blockades' war record, and v7 spearLines (supply lines).
+  version: 7,
   migrations: {
     1: (d) => d,
     // Older builds had no city-states.
@@ -2251,6 +2361,8 @@ export const PlayerSnapshot = snapshotType({
     4: (d) => d,
     // Older games start with no record of who attacked whom.
     5: (d) => ({ ...(d as Record<string, unknown>), hostileActs: [] }),
+    // Older games remember no spearhead origins.
+    6: (d) => ({ ...(d as Record<string, unknown>), spearLines: [] }),
   },
   schema: z.object({
     smallID: zInt(),
@@ -2295,6 +2407,15 @@ export const PlayerSnapshot = snapshotType({
     sentDonations: z.array(z.object({ recipient: zPlayerRef(), tick: zInt() })),
     relations: z.array(z.tuple([zPlayerRef(), zNum()])),
     hostileActs: z.array(z.tuple([zPlayerRef(), zInt()])),
+    spearLines: z.array(
+      z.object({
+        target: zInt(),
+        origin: zTile(),
+        lastTick: zInt(),
+        tip: zTile(),
+        tipDepth: zNum(),
+      }),
+    ),
     lastDeleteUnitTick: zInt(),
     lastEmbargoAllTick: zInt(),
     incomingAttacks: z.array(zRef()),

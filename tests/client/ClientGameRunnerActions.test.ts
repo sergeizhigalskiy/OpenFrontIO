@@ -72,6 +72,7 @@ import {
   LobbyConfig,
 } from "../../src/client/ClientGameRunner";
 import {
+  DoGroundAttackEvent,
   DoRequestAllianceEvent,
   DoTargetPlayerEvent,
   MouseMoveEvent,
@@ -181,6 +182,37 @@ describe("left click", () => {
     expect(attacks[0].troops).toBe(50); // 100 troops * 0.5 attack ratio
   });
 
+  it("attacks the whole border on a plain click: no focus tile", async () => {
+    const { eventBus } = makeRunner({
+      hasOwner: true,
+      actions: { canAttack: true, buildableUnits: [] },
+    });
+    const attacks: SendAttackIntentEvent[] = [];
+    eventBus.on(SendAttackIntentEvent, (e) => attacks.push(e));
+
+    eventBus.emit(new MouseUpEvent(CLICK.x, CLICK.y));
+    await flushPromises();
+
+    expect(attacks).toHaveLength(1);
+    expect(attacks[0].focusTile).toBeNull();
+  });
+
+  it("spearheads toward the clicked tile on a Shift click", async () => {
+    const { eventBus } = makeRunner({
+      hasOwner: true,
+      actions: { canAttack: true, buildableUnits: [] },
+    });
+    const attacks: SendAttackIntentEvent[] = [];
+    eventBus.on(SendAttackIntentEvent, (e) => attacks.push(e));
+
+    eventBus.emit(new MouseUpEvent(CLICK.x, CLICK.y, true));
+    await flushPromises();
+
+    expect(attacks).toHaveLength(1);
+    expect(attacks[0].targetID).toBe("enemy1");
+    expect(attacks[0].focusTile).toBe(TILE);
+  });
+
   it("does nothing when the player is not in the view yet", async () => {
     const { eventBus, gameView } = makeRunner({
       hasOwner: true,
@@ -269,6 +301,20 @@ describe("player actions from keybinds and panel buttons", () => {
     made.gameView.owner = (() => enemy) as never;
     return made;
   }
+
+  it("attacks the whole border with the ground attack key: no focus tile", async () => {
+    const { eventBus } = setup({ actions: { canAttack: true } });
+    const attacks: SendAttackIntentEvent[] = [];
+    eventBus.on(SendAttackIntentEvent, (e) => attacks.push(e));
+
+    eventBus.emit(new MouseMoveEvent(CLICK.x, CLICK.y));
+    eventBus.emit(new DoGroundAttackEvent());
+    await flushPromises();
+
+    expect(attacks).toHaveLength(1);
+    expect(attacks[0].targetID).toBe("enemy1");
+    expect(attacks[0].focusTile).toBeNull();
+  });
 
   it("targets the player under the cursor (the N key)", async () => {
     const { eventBus, myPlayer } = setup({

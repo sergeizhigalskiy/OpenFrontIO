@@ -357,6 +357,44 @@ describe("InputHandler AutoUpgrade", () => {
     });
   });
 
+  describe("Shift+left click spearheads", () => {
+    function fireLeftClick(shiftKey: boolean) {
+      const shared = { button: 0 as const, pointerId: 1, shiftKey };
+      inputHandler["onPointerDown"](
+        new PointerEvent("pointerdown", {
+          ...shared,
+          clientX: 149,
+          clientY: 249,
+        }),
+      );
+      inputHandler["onPointerUp"](
+        new PointerEvent("pointerup", {
+          ...shared,
+          clientX: 150,
+          clientY: 250,
+        }),
+      );
+    }
+
+    test.each([true, false])(
+      "MouseUpEvent carries shiftKey %s, with left click attacking or opening the menu",
+      (opensMenu) => {
+        inputHandler["userSettings"].leftClickOpensMenu = () => opensMenu;
+        const ups: MouseUpEvent[] = [];
+        eventBus.on(MouseUpEvent, (e) => ups.push(e));
+
+        fireLeftClick(true);
+        if (!opensMenu) fireLeftClick(false);
+
+        // Shift+click always attacks (spearheaded); a plain click attacks
+        // the whole border, or opens the menu when left click opens it.
+        expect(ups.map((e) => e.shiftKey)).toEqual(
+          opensMenu ? [true] : [true, false],
+        );
+      },
+    );
+  });
+
   describe("Ctrl+left click (#4918)", () => {
     let isMacDescriptor: PropertyDescriptor | undefined;
 

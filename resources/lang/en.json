@@ -1261,7 +1261,7 @@
     "singleplayer_game_paused": "Game paused"
   },
   "help_modal": {
-    "action_attack_altclick": "Attack (when left click is set to open menu)",
+    "action_attack_altclick": "Spearhead: attack toward the clicked tile first (a plain click attacks the whole border)",
     "action_auto_upgrade": "Auto-upgrade nearest building",
     "action_build": "Open build menu",
     "action_coordinate_grid": "Toggle coordinate grid overlay",

@@ -13,7 +13,11 @@ import {
   TerraNullius,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
-import { attackForecast } from "@openfront/engine-lib/game/AttackForecast";
+import {
+  attackForecast,
+  spearDepthAt,
+} from "@openfront/engine-lib/game/AttackForecast";
+import { SPEAR_FREE_DEPTH } from "@openfront/engine-lib/game/AttackLogic";
 import { isBossRaid } from "@openfront/engine-lib/game/BossRaid";
 import { NATION_TROOP_DONATION_COOLDOWN_TICKS } from "@openfront/engine-lib/game/Convoys";
 import { resourceSiteHolderTile } from "@openfront/engine-lib/game/ResourceSites";
@@ -39,11 +43,13 @@ import type {
 } from "../../snapshot/SnapshotContext";
 import { AttackExecution } from "../AttackExecution";
 import { DonateTroopsExecution } from "../DonateTroopExecution";
+import { pocketAnnexLimit } from "../PlayerExecution";
 import { resourceSitesOf } from "../ResourceSiteExecution";
 import { TransportShipExecution } from "../TransportShipExecution";
 import {
   AiAttackBehavior,
   BoatRoute,
+  SalientCut,
   StallWatch,
 } from "../utils/AiAttackBehavior";
 import { bossFor, withBossStrategy } from "./BossRaidTargeting";
@@ -58,6 +64,15 @@ import {
   NationEmojiBehavior,
 } from "./NationEmojiBehavior";
 import { mineWeightedTroops } from "./NationResourceSiteTargeting";
+import {
+  cutOffPiece,
+  findSalient,
+  medoidTile,
+  neckSides,
+  Salient,
+  salientTip,
+  surveySalient,
+} from "./NationSalients";
 import {
   cheapestFrontTile,
   FrontSurvey,
@@ -113,6 +128,20 @@ export const NATION_STALL_TICKS = 50;
 export const NATION_STALL_SHARE = 0.75;
 /** Tiles of an attack's front watched for a stall. */
 const STALL_WATCH_TILES = 16;
+/**
+ * A cut at a salient's neck (answerSalient) is sized for the tiles it takes
+ * on the way: a neck of w tiles costs about w * w of them (the push widens
+ * around its focus as it crosses), times this margin.
+ */
+export const NATION_NECK_CUT_MARGIN = 1.5;
+/** ...and the cut-off piece behind it for its tiles times this margin. */
+export const NATION_PIECE_ATTACK_MARGIN = 1.25;
+/** Hard and up re-aim a running cut once the neck has moved more than this many tiles (manhattan). */
+export const NATION_NECK_REAIM_TILES = 3;
+/** A salient cut is forgotten this many ticks (2 min) after it started. */
+export const NATION_SALIENT_MEMORY_TICKS = 1200;
+/** A spear line counts as running when a spearhead on it ran within this many ticks. */
+const SPEAR_RUNNING_TICKS = 2;
 
 // A landing weighed while planning a boat route (see boatRoute)
 interface LandingCandidate {
@@ -152,6 +181,11 @@ export class NationAttackBehavior extends AiAttackBehavior {
   private sitesLost: TileRef[] = [];
   // Impossible: our land attacks on players as last seen, for stalls
   private stallWatch: StallWatch[] = [];
+  // Medium and up: the hostile salient we are cutting (answerSalient)
+  private salientCut: SalientCut | null = null;
+  // Only set during a maybeAttack call: where any attack on the salient's
+  // owner goes (its neck, or the piece cut off), so it joins our cut
+  private salientAim: { target: Player; focus: TileRef } | null = null;
 
   constructor(
     random: PseudoRandom,
@@ -176,6 +210,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
         sitesHeld: this.sitesHeld,
         sitesLost: this.sitesLost,
         stallWatch: this.stallWatch,
+        salientCut: this.salientCut,
       },
     );
   }
@@ -200,6 +235,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
     this.landingCandidates = null;
     this.fronts = null;
     this.retaking = null;
+    this.salientAim = null;
     this.botAttackTroopsSent = s.botAttackTroopsSent;
     this.followedLandings = s.followedLandings.map((i) => r.attack(i));
     this.sitesHeld = Array.from(s.sitesHeld);
@@ -209,6 +245,15 @@ export class NationAttackBehavior extends AiAttackBehavior {
       tick: x.tick,
       tiles: Array.from(x.tiles),
     }));
+    this.salientCut =
+      s.salientCut === null
+        ? null
+        : {
+            target: r.player(s.salientCut.target),
+            tip: s.salientCut.tip,
+            focus: s.salientCut.focus,
+            tick: s.salientCut.tick,
+          };
   }
 
   maybeAttack() {
@@ -231,6 +276,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
       this.earlyLaunch = false;
       this.fronts = null;
       this.retaking = null;
+      this.salientAim = null;
     }
     this.clearBlockedLane(routes, landFront);
   }
@@ -290,6 +336,9 @@ export class NationAttackBehavior extends AiAttackBehavior {
   }
 
   private chooseAttack() {
+    // A hostile spearhead's salient into our land comes before everything,
+    // even holding back (Medium and up): we cut it at its neck.
+    if (this.answerSalient()) return;
     // Answering an attack comes first, in every mode: Hard & Impossible hit
     // back at once, even below the reserve and trigger ratios, before free
     // land, boats or a survival threat. Medium and Easy answer through their
@@ -797,6 +846,299 @@ export class NationAttackBehavior extends AiAttackBehavior {
     return ratio >= this.reserveRatio;
   }
 
+  /**
+   * Medium and up cut a hostile player's spearhead (NationSalients): when it
+   * has a spearhead running on us or holds a salient into our land, our next
+   * attack goes at it as a spearhead aimed at the salient's neck, sized by
+   * the forecast to get across it with NATION_NECK_CUT_MARGIN, plus whatever
+   * of its troops are attacking us (they cancel out first). It replaces the
+   * broad counterattack and goes out even when we would otherwise hold back:
+   * no reserve, trigger or weather hold, just never below the expand ratio.
+   * Hard and up re-aim each attack tick while the neck moves; Impossible
+   * hits a neck that borders us on both sides from the side whose forecast
+   * is cheaper. Once cut, the pocket rules apply (PlayerExecution); a piece
+   * too big to be annexed is attacked next. While a cut or that attack is
+   * under way, any other attack we send at the player goes there too
+   * (salientAim), so it joins it instead of turning it broad. Returns
+   * whether it sent an attack, which is then this attack tick's.
+   */
+  private answerSalient(): boolean {
+    const difficulty = this.game.config().difficultyFor(this.player);
+    if (difficulty === Difficulty.Easy) {
+      this.salientCut = null;
+      return false;
+    }
+    let cut = this.salientCut;
+    if (
+      cut !== null &&
+      (this.game.ticks() - cut.tick > NATION_SALIENT_MEMORY_TICKS ||
+        !cut.target.isAlive() ||
+        this.player.isFriendly(cut.target))
+    ) {
+      cut = null;
+    }
+    // After the cut: the piece past the neck, unless the pocket rules take it.
+    if (cut !== null) {
+      const piece = this.cutOffPieceNear(cut);
+      if (piece !== null) {
+        this.salientCut = { ...cut, tip: piece[0] };
+        return this.attackCutOffPiece(cut.target, piece);
+      }
+    }
+    const salient = this.salientThreat();
+    if (salient === null) {
+      this.salientCut = null;
+      return false;
+    }
+    return this.cutSalient(salient, cut);
+  }
+
+  /**
+   * The salient we answer: the deepest one a hostile player's spear line on
+   * us took past SPEAR_FREE_DEPTH, a running spearhead's first; else one our
+   * survey finds of a player we are fighting.
+   */
+  private salientThreat(): Salient | null {
+    const now = this.game.ticks();
+    let best: Salient | null = null;
+    let bestRank = -Infinity;
+    const fighting: Player[] = [];
+    for (const id of this.frontSurveys().keys()) {
+      const owner = this.game.playerBySmallID(id);
+      if (
+        !owner.isPlayer() ||
+        owner.type() === PlayerType.Bot ||
+        this.player.isFriendly(owner)
+      ) {
+        continue;
+      }
+      const line = owner.spearLine(this.player);
+      if (line !== null && line.tipDepth > SPEAR_FREE_DEPTH) {
+        const tip = salientTip(this.game, owner, line);
+        const salient =
+          tip === null
+            ? null
+            : findSalient(this.game, this.player, owner, tip, line);
+        if (salient !== null) {
+          const running = now - line.lastTick <= SPEAR_RUNNING_TICKS;
+          const rank = (running ? 1e6 : 0) + line.tipDepth;
+          if (rank > bestRank) {
+            best = salient;
+            bestRank = rank;
+          }
+          continue;
+        }
+      }
+      if (this.answers(owner)) fighting.push(owner);
+    }
+    if (best !== null) return best;
+    for (const owner of fighting) {
+      const front = this.frontWith(owner);
+      if (front === undefined) continue;
+      const salient = surveySalient(this.game, this.player, owner, front.tiles);
+      if (salient !== null) return salient;
+    }
+    return null;
+  }
+
+  // Aims (or re-aims) our cut at `salient`'s neck; `prev` is the cut we had.
+  private cutSalient(salient: Salient, prev: SalientCut | null): boolean {
+    const target = salient.owner;
+    const difficulty = this.game.config().difficultyFor(this.player);
+    const focus = this.neckFocusTile(salient, difficulty);
+    if (prev !== null && prev.target === target) {
+      if (this.landAttackOn(target) !== null) {
+        // Our cut is under way: Hard and up follow the neck as it moves.
+        let aimed = prev.focus;
+        if (
+          (difficulty === Difficulty.Hard ||
+            difficulty === Difficulty.Impossible) &&
+          this.game.manhattanDist(focus, prev.focus) >
+            NATION_NECK_REAIM_TILES &&
+          this.player.troops() >= 1
+        ) {
+          // A 1-troop spearhead takes the running attack over (they merge).
+          this.game.addExecution(
+            new AttackExecution(1, this.player, target.id(), null, true, focus),
+          );
+          aimed = focus;
+        }
+        this.salientCut = { ...prev, tip: salient.tip, focus: aimed };
+        this.salientAim = { target, focus: aimed };
+        return false;
+      }
+    }
+    const neckTiles = salient.neck.length;
+    const tiles = neckTiles * neckTiles;
+    const troops = this.sizedSpearhead(
+      target,
+      focus,
+      tiles,
+      NATION_NECK_CUT_MARGIN,
+    );
+    if (troops === null) return false;
+    this.game.addExecution(
+      new AttackExecution(troops, this.player, target.id(), null, true, focus),
+    );
+    this.salientCut = {
+      target,
+      tip: salient.tip,
+      focus,
+      tick:
+        prev !== null && prev.target === target ? prev.tick : this.game.ticks(),
+    };
+    this.salientAim = { target, focus };
+    return true;
+  }
+
+  // Where we aim at a neck: its middle, so both sides close in; Impossible,
+  // when the neck borders us on both sides, its end on the side whose
+  // forecast is cheaper, so the push comes from there.
+  private neckFocusTile(salient: Salient, difficulty: Difficulty): TileRef {
+    const middle = medoidTile(this.game, salient.neck);
+    if (difficulty !== Difficulty.Impossible) return middle;
+    const sides = neckSides(this.game, this.player, salient.neck);
+    if (sides === null) return middle;
+    const line = this.player.spearLine(salient.owner);
+    const running = line !== null && this.game.ticks() - line.lastTick <= 1;
+    const cost = (tile: TileRef) =>
+      attackForecast(
+        this.game,
+        this.player,
+        salient.owner,
+        tile,
+        Math.max(1, this.player.troops()),
+        null,
+        true,
+        true,
+        spearDepthAt(this.game, tile, line, this.player.borderTiles(), running),
+      ).lossPerTile;
+    const [a, b] = sides;
+    const ca = cost(a);
+    const cb = cost(b);
+    if (ca === cb) return middle;
+    return ca < cb ? a : b;
+  }
+
+  /**
+   * Troops for a spearhead at `focus` on `target` that takes about `tiles`
+   * tiles: the forecast's loss per tile there with that stack (supply lines
+   * included; a small stack loses more per tile) times `tiles` times
+   * `margin`, and at least a twentieth of the target's troops, so the push
+   * doesn't crawl; plus the target's troops attacking us, which cancel out
+   * first. Never below the expand ratio. Null when what we can send past
+   * those can't take `tiles` tiles even without the margin.
+   */
+  private sizedSpearhead(
+    target: Player,
+    focus: TileRef,
+    tiles: number,
+    margin: number,
+  ): number | null {
+    let incoming = 0;
+    for (const attack of this.player.incomingAttacks()) {
+      if (attack.attacker() === target) incoming += attack.troops();
+    }
+    const maxTroops = this.game.config().maxTroops(this.player);
+    const spare = this.player.troops() - maxTroops * this.expandRatio;
+    const free = spare - incoming;
+    if (free < 1) return null;
+    const features =
+      this.game.config().difficultyFor(this.player) !== Difficulty.Medium;
+    const line = this.player.spearLine(target);
+    const depth = spearDepthAt(
+      this.game,
+      focus,
+      line,
+      this.player.borderTiles(),
+      line !== null && this.game.ticks() - line.lastTick <= 1,
+    );
+    const cost = (troops: number) =>
+      attackForecast(
+        this.game,
+        this.player,
+        target,
+        focus,
+        troops,
+        null,
+        true,
+        features,
+        depth,
+      ).lossPerTile * tiles;
+    if (free < cost(free)) return null;
+    // The loss per tile falls as the stack grows: settle on a stack that
+    // covers its own cost with the margin.
+    let send = Math.max(target.troops() / 20, cost(free) * margin);
+    for (let i = 0; i < 4 && send < free; i++) {
+      send = Math.max(send, cost(Math.min(free, send)) * margin);
+    }
+    return incoming + Math.min(free, send);
+  }
+
+  /**
+   * The target's piece cut off by our cut, still standing (NationSalients
+   * cutOffPiece): grown from the cut's tip, or from the target's nearest
+   * tile to it, which comes first; null when none.
+   */
+  private cutOffPieceNear(cut: SalientCut): TileRef[] | null {
+    const map = this.game.map();
+    const own = cut.target.smallID();
+    if (map.ownerID(cut.tip) === own) {
+      return cutOffPiece(this.game, cut.target, cut.tip);
+    }
+    const reach = 12;
+    const cx = map.x(cut.tip);
+    const cy = map.y(cut.tip);
+    for (let d = 1; d <= reach; d++) {
+      for (let dy = -d; dy <= d; dy++) {
+        for (let dx = -d; dx <= d; dx++) {
+          if (Math.abs(dx) !== d && Math.abs(dy) !== d) continue;
+          if (!map.isValidCoord(cx + dx, cy + dy)) continue;
+          const t = map.ref(cx + dx, cy + dy);
+          if (map.ownerID(t) !== own) continue;
+          return cutOffPiece(this.game, cut.target, t);
+        }
+      }
+    }
+    return null;
+  }
+
+  // The piece behind a cut neck: left to the pocket rules when they annex
+  // it (pocketAnnexLimit), else attacked, spearheaded at it.
+  private attackCutOffPiece(target: Player, piece: TileRef[]): boolean {
+    if (piece.length <= pocketAnnexLimit(target.numTilesOwned())) return false;
+    this.salientAim = { target, focus: piece[0] };
+    if (this.landAttackOn(target) !== null) return false;
+    const troops = this.sizedSpearhead(
+      target,
+      piece[0],
+      piece.length,
+      NATION_PIECE_ATTACK_MARGIN,
+    );
+    if (troops === null) return false;
+    this.game.addExecution(
+      new AttackExecution(
+        troops,
+        this.player,
+        target.id(),
+        null,
+        true,
+        piece[0],
+      ),
+    );
+    return true;
+  }
+
+  // Our running land attack on `target`, if any.
+  private landAttackOn(target: Player): Attack | null {
+    for (const attack of this.player.outgoingAttacks()) {
+      if (attack.target() === target && attack.sourceTile() === null) {
+        return attack;
+      }
+    }
+    return null;
+  }
+
   private retaliate(): boolean {
     const attacker = this.findIncomingAttackPlayer();
     if (attacker === null) return false;
@@ -1065,6 +1407,9 @@ export class NationAttackBehavior extends AiAttackBehavior {
   // A tribe's ruin or unpaid site we go for; a player's (or city-state's)
   // spearhead target by difficulty (NationSpearheads.spearheadFocus)
   protected override playerAttackFocus(target: Player): TileRef | null {
+    if (this.salientAim !== null && this.salientAim.target === target) {
+      return this.salientAim.focus;
+    }
     if (target.type() === PlayerType.Bot && !target.isCityState()) {
       return prizeToSeek(this.game, this.player, target.smallID());
     }

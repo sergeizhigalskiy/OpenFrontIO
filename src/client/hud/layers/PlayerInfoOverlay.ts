@@ -16,6 +16,7 @@ import {
   AttackForecast,
   attackForecast,
   attackFrontSizes,
+  spearDepthAt,
 } from "@openfront/engine-lib/game/AttackForecast";
 import { ResourceSite } from "@openfront/engine-lib/game/ResourceSites";
 import { assetUrl } from "@openfront/shared/AssetUrls";
@@ -172,6 +173,8 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
   private forecastTile: TileRef | null = null;
   /** My attack front per owner small id (attackFrontSizes), when known. */
   private frontSizes: Map<number, number> | null = null;
+  /** My border as last read, for a spearhead's depth (spearDepthAt). */
+  private myBorder: ReadonlySet<TileRef> | null = null;
   private frontSizesFor: PlayerView | null = null;
   private frontSizesFetchedAt = 0;
   private frontSizesPending = false;
@@ -453,7 +456,14 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
         ? null
         : (this.frontSizes.get(owner.smallID()) ?? 0);
     if (front === 0) return null;
-    // A click attacks with the clicked tile as its focus: a spearhead.
+    // A plain click attacks the whole border; a Shift click spearheads at
+    // the tile, priced as deep as it lies from the spear's origin (supply
+    // lines).
+    const spearhead = uiState.shiftHeld === true;
+    const depth =
+      !spearhead || defender === null
+        ? 0
+        : spearDepthAt(game, tile, me.spearLine(defender), this.myBorder ?? []);
     return attackForecast(
       game,
       me,
@@ -461,7 +471,9 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
       tile,
       me.troops() * uiState.attackRatio,
       front,
+      spearhead,
       true,
+      depth,
     );
   }
 
@@ -484,6 +496,7 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
           bt.borderTiles,
           me.smallID(),
         );
+        this.myBorder = bt.borderTiles;
         this.frontSizesFor = me;
         // Now the speed is known (or the tile turns out to be unreachable).
         if (this.forecastTile !== null && this._isInfoVisible) {

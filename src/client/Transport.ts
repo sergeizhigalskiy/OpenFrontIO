@@ -115,7 +115,7 @@ export class SendAttackIntentEvent implements GameEvent {
   constructor(
     public readonly targetID: PlayerID | null,
     public readonly troops: number,
-    /** The clicked tile. The attack spearheads toward it. Null for a broad attack. */
+    /** Shift+click's tile: the attack spearheads toward it. Null for a broad attack. */
     public readonly focusTile: TileRef | null = null,
   ) {}
 }

@@ -38,6 +38,12 @@ export interface AttackLogicInput {
    * spearhead (attackBudgetFront); fixed for the tick.
    */
   borderSize: number;
+  /**
+   * A spearhead tile's depth from the spear's origin (spearDepth), which
+   * prices its supply line (spearOverextension) when a human or a nation
+   * defends it. Unset or 0 for a broad attack.
+   */
+  spearDepth?: number;
 }
 
 export interface AttackLogicResult {
@@ -111,6 +117,83 @@ export function attackBudgetFront(
 }
 
 /**
+ * Supply lines: a spearhead tile deeper than this many tiles from the
+ * spear's origin costs more troops and time, by spearOverextension.
+ */
+export const SPEAR_FREE_DEPTH = 20;
+/** ...one more 1x of both per this many tiles past SPEAR_FREE_DEPTH... */
+export const SPEAR_OVEREXTEND_SCALE = 9;
+/** ...up to this multiple. */
+export const SPEAR_OVEREXTEND_MAX = 3.25;
+/**
+ * A spear's origin is the attacker's tile nearest the focus when its first
+ * spearhead on a target starts. Until this many ticks (60 s) after the last
+ * one ran, a spearhead on that target that merges into a running one, or
+ * starts within SPEAR_FREE_DEPTH of the deepest tile they took, keeps it, so
+ * relaunching from the tip doesn't reset the depth (Player.startSpear).
+ */
+export const SPEAR_ORIGIN_MEMORY_TICKS = 600;
+
+/**
+ * The origin a spearhead counts depth from when it starts with `natural` as
+ * the attacker's tile nearest its focus: the remembered `line`'s origin if it
+ * merges into a running spearhead on the target or starts within
+ * SPEAR_FREE_DEPTH of the line's tip (relaunching from the spear), else
+ * `natural`. `distance` is the map's manhattan distance.
+ */
+export function spearOriginFor(
+  natural: number,
+  line: { origin: number; tip: number } | null,
+  running: boolean,
+  distance: (a: number, b: number) => number,
+): number {
+  if (line === null) return natural;
+  if (running || distance(natural, line.tip) <= SPEAR_FREE_DEPTH) {
+    return line.origin;
+  }
+  return natural;
+}
+
+/**
+ * What a spearhead tile `depth` tiles from the spear's origin multiplies its
+ * troop loss and capture time by: 1 up to SPEAR_FREE_DEPTH, then rising by 1
+ * per SPEAR_OVEREXTEND_SCALE tiles, capped at SPEAR_OVEREXTEND_MAX. A broad
+ * attack has no depth and pays 1x.
+ */
+export function spearOverextension(depth: number): number {
+  return Math.min(
+    SPEAR_OVEREXTEND_MAX,
+    1 + Math.max(0, depth - SPEAR_FREE_DEPTH) / SPEAR_OVEREXTEND_SCALE,
+  );
+}
+
+/**
+ * How deep tile (tx, ty) lies on a spear from origin (ox, oy) toward its
+ * focus (fx, fy): its manhattan distance from the origin measured along the
+ * line to the focus. A tile on that line, the focus itself included, is
+ * exactly its manhattan distance from the origin; a flank tile beside the
+ * attacker's own border, off to the side of the line, is near 0 however far
+ * along the border it lies; a tile behind the origin is 0. Exact arithmetic
+ * on whole tiles, so every client gets the same number.
+ */
+export function spearDepth(
+  ox: number,
+  oy: number,
+  fx: number,
+  fy: number,
+  tx: number,
+  ty: number,
+): number {
+  const ux = fx - ox;
+  const uy = fy - oy;
+  const l1 = Math.abs(ux) + Math.abs(uy);
+  if (l1 === 0) return Math.abs(tx - ox) + Math.abs(ty - oy);
+  const along = (tx - ox) * ux + (ty - oy) * uy;
+  if (along <= 0) return 0;
+  return (along * l1) / (ux * ux + uy * uy);
+}
+
+/**
  * Logistic in log(tiles): ~1 for small territories, easing down to
  * 1 - depth for huge ones, halfway at LARGE_TERRITORY_MIDPOINT.
  */
@@ -154,6 +237,10 @@ export function terrainAttackBase(terrain: TerrainType): {
  * Speed: each tick the attack can take about `borderSize` tiles worth of
  * budget; each tile consumes `tileCost`, scaled by how outnumbered the
  * attack is. The result reports that as a fraction of the tick.
+ *
+ * A spearhead tile on a human's or a nation's land past SPEAR_FREE_DEPTH
+ * from the spear's origin multiplies both its loss and its time by
+ * spearOverextension; free land, tribes and city-states never do.
  */
 export function attackLogic(
   input: AttackLogicInput,
@@ -239,15 +326,22 @@ export function attackLogic(
     attacker.numTiles,
     LARGE_ATTACKER_SPEED_DEPTH,
   );
+  // Supply lines: a deep spearhead tile costs more of both, on a human's
+  // or a nation's land (tribes and city-states have none to cut).
+  const overextension =
+    defender.type === PlayerType.Bot
+      ? 1
+      : spearOverextension(input.spearDepth ?? 0);
   return {
-    attackerTroopLoss,
+    attackerTroopLoss: attackerTroopLoss * overextension,
     defenderTroopLoss,
     tickFraction:
       (speedCost *
         tileCost *
         largeAttackerSpeedBonus *
         largeDefenderBonus *
-        traitorCostMod) /
+        traitorCostMod *
+        overextension) /
       input.borderSize,
   };
 }

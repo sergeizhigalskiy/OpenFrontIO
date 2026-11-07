@@ -30,6 +30,8 @@ import { pocketAnnexLimit } from "../PlayerExecution";
  * Spearheads (spearheadFocus), first that applies:
  *  - Medium and up: the target's nearest defense post covering at least a
  *    quarter of the front (NATION_POST_FOCUS_SHARE);
+ *  - Medium: then the target's best city within NATION_CITY_FOCUS_RANGE
+ *    tiles of the front;
  *  - Hard and up: a neck of at most NATION_NECK_MAX_TILES tiles that would
  *    cut off a pocket small enough to annex (PlayerExecution's
  *    pocketAnnexLimit); then the target's best city within
@@ -52,7 +54,7 @@ export const NATION_POST_FRONT_SHARE = 0.5;
 export const NATION_POST_FOCUS_SHARE = 0.25;
 /** Hard and up spearhead at a neck of at most this many tiles... */
 export const NATION_NECK_MAX_TILES = 12;
-/** ...at the target's best city within this many tiles (manhattan) of the front... */
+/** Medium and up spearhead at the target's best city within this many tiles (manhattan) of the front... */
 export const NATION_CITY_FOCUS_RANGE = 40;
 /** ...and at an enemy rail within this many tiles (manhattan) of the front. */
 export const NATION_RAIL_FOCUS_RANGE = 30;
@@ -193,7 +195,8 @@ export function spearheadFocus(
   if (front === undefined || front.tiles.length === 0) return null;
   const index = new FrontIndex(game, front.tiles);
   const post = postFocus(game, target, front, index);
-  if (post !== null || difficulty === Difficulty.Medium) return post;
+  if (post !== null) return post;
+  if (difficulty === Difficulty.Medium) return cityFocus(game, target, index);
   return (
     neckFocus(game, player, target, front) ??
     cityFocus(game, target, index) ??

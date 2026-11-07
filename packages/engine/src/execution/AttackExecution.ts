@@ -13,7 +13,10 @@ import {
   attackEnvironment,
   withEnvironmentCost,
 } from "@openfront/engine-lib/game/AttackEnvironment";
-import { attackBudgetFront } from "@openfront/engine-lib/game/AttackLogic";
+import {
+  attackBudgetFront,
+  spearDepth,
+} from "@openfront/engine-lib/game/AttackLogic";
 import {
   bossShieldAttackCap,
   isBossRaidBoss,
@@ -95,6 +98,13 @@ export class AttackExecution implements Execution {
   /** Closest any queued tile has come to the focus tile: the tip of the spear. */
   private focusBest = Number.MAX_SAFE_INTEGER;
 
+  /**
+   * Supply lines: the tile this spearhead's tile depths count from, its
+   * owner's spear line on the target (Player.startSpear); null for a broad
+   * attack or one on free land, a tribe or a city-state.
+   */
+  private spearOrigin: TileRef | null = null;
+
   public targetID(): PlayerID | null {
     return this._targetID;
   }
@@ -161,6 +171,21 @@ export class AttackExecution implements Execution {
     if (this.target.isPlayer() && !this._owner.canAttackPlayer(this.target)) {
       this.active = false;
       return;
+    }
+
+    // A spearhead on a human or a nation joins its owner's spear line on the
+    // target: the remembered origin, so relaunching from the tip or merging
+    // into a running spearhead keeps the depth (SPEAR_ORIGIN_MEMORY_TICKS).
+    // Tribes and city-states price no supply lines (AttackLogic).
+    if (
+      this.focusTile !== null &&
+      this.target.isPlayer() &&
+      this.target.type() !== PlayerType.Bot
+    ) {
+      this.spearOrigin = this._owner.startSpear(
+        this.target,
+        this.focusTile,
+      ).origin;
     }
 
     this.startTroops ??= this.mg
@@ -356,6 +381,11 @@ export class AttackExecution implements Execution {
       return;
     }
 
+    // The spear line stays remembered while this spearhead runs.
+    if (this.spearOrigin !== null && targetPlayer !== null) {
+      this._owner.extendSpear(targetPlayer);
+    }
+
     // A spearhead spends the budget of at most SPEAR_BUDGET_FRONT tiles of
     // its front, a broad attack its whole front's.
     const borderSize =
@@ -423,6 +453,9 @@ export class AttackExecution implements Execution {
       tickBudget -= tickFraction;
       troopCount -= attackerTroopLoss;
       this.attack.setTroops(troopCount);
+      if (targetPlayer && input.spearDepth !== undefined) {
+        this._owner.extendSpear(targetPlayer, tileToConquer, input.spearDepth);
+      }
       if (targetPlayer) {
         if (infects) {
           this._owner.addTroops(
@@ -475,7 +508,24 @@ export class AttackExecution implements Execution {
         ? this.mg.numTilesWithFallout() / this.mg.numLandTiles()
         : null,
       borderSize,
+      spearDepth: this.tileSpearDepth(tile),
     };
+  }
+
+  /** How deep `tile` lies on this spearhead (spearDepth), or undefined when broad. */
+  private tileSpearDepth(tile: TileRef): number | undefined {
+    const origin = this.spearOrigin;
+    const focus = this.focusTile;
+    if (origin === null || focus === null) return undefined;
+    const map = this.map;
+    return spearDepth(
+      map.x(origin),
+      map.y(origin),
+      map.x(focus),
+      map.y(focus),
+      map.x(tile),
+      map.y(tile),
+    );
   }
 
   private rejectIncomingAllianceRequests(target: Player) {
@@ -609,6 +659,7 @@ export class AttackExecution implements Execution {
       removeTroops: this.removeTroops,
       focusTile: this.focusTile,
       focusBest: this.focusBest,
+      spearOrigin: this.spearOrigin,
     });
   }
 
@@ -637,6 +688,7 @@ export class AttackExecution implements Execution {
     this.removeTroops = s.removeTroops;
     this.focusTile = s.focusTile ?? null;
     this.focusBest = s.focusBest ?? Number.MAX_SAFE_INTEGER;
+    this.spearOrigin = s.spearOrigin;
   }
 }
 
@@ -664,12 +716,19 @@ const AttackExecutionStateSchema = z.object({
   /** Spearhead target. Absent in snapshots taken before spearheads existed. */
   focusTile: zTile().nullable().optional(),
   focusBest: zNum().optional(),
+  /** Supply lines: the spearhead's origin, null when broad. */
+  spearOrigin: zTile().nullable(),
 });
 type AttackExecutionState = z.infer<typeof AttackExecutionStateSchema>;
 
 export const AttackExecutionSnapshot = execSnapshotType({
   name: "Attack",
-  version: 1,
+  // v2 added spearOrigin (supply lines).
+  version: 2,
   schema: AttackExecutionStateSchema,
   cls: () => AttackExecution,
+  migrations: {
+    // Older spearheads count no depth, as before supply lines.
+    1: (d) => ({ ...(d as Record<string, unknown>), spearOrigin: null }),
+  },
 });

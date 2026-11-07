@@ -12,7 +12,9 @@ import {
   snapshotType,
   Versioned,
   zNum,
+  zPlayerRef,
   zRef,
+  zTile,
   zTiles,
 } from "@openfront/engine-lib/snapshot/SnapshotType";
 import { assertNever } from "@openfront/engine-lib/Util";
@@ -77,6 +79,15 @@ export abstract class AiAttackBehavior {
         tick: s.tick,
         tiles: w.tiles(s.tiles),
       })),
+      salientCut:
+        nation.salientCut === null
+          ? null
+          : {
+              target: w.player(nation.salientCut.target),
+              tip: nation.salientCut.tip,
+              focus: nation.salientCut.focus,
+              tick: nation.salientCut.tick,
+            },
     });
   }
 
@@ -516,6 +527,21 @@ export interface StallWatch {
   tiles: TileRef[];
 }
 
+/**
+ * Medium and up: the cut a nation aims at a hostile player's salient into
+ * its land (NationSalients), kept until the salient and the piece it cuts
+ * off are gone.
+ */
+export interface SalientCut {
+  target: Player;
+  /** The salient's tip: the target's land past the neck. */
+  tip: TileRef;
+  /** Where the cut is aimed. */
+  focus: TileRef;
+  /** The tick the first cut went out. */
+  tick: number;
+}
+
 /** What a nation remembers between attack ticks (tribes: nothing). */
 export interface NationAttackMemory {
   /** Resource sites (by tile) it held at its last look. */
@@ -524,12 +550,15 @@ export interface NationAttackMemory {
   sitesLost: TileRef[];
   /** Impossible: its land attacks on players, as last seen. */
   stallWatch: StallWatch[];
+  /** Medium and up: the salient it is cutting. */
+  salientCut: SalientCut | null;
 }
 
 const EMPTY_NATION_MEMORY: NationAttackMemory = {
   sitesHeld: [],
   sitesLost: [],
   stallWatch: [],
+  salientCut: null,
 };
 
 const AiAttackStateSchema = z.object({
@@ -543,12 +572,21 @@ const AiAttackStateSchema = z.object({
   stallWatch: z.array(
     z.object({ attack: zRef(), tick: zNum(), tiles: zTiles() }),
   ),
+  salientCut: z
+    .object({
+      target: zPlayerRef(),
+      tip: zTile(),
+      focus: zTile(),
+      tick: zNum(),
+    })
+    .nullable(),
 });
 type AiAttackState = z.infer<typeof AiAttackStateSchema>;
 
 export const AiAttackBehaviorSnapshot = snapshotType({
   name: "AiAttackBehavior",
-  version: 3,
+  // v4 added salientCut (nations cut enemy spearheads).
+  version: 4,
   schema: AiAttackStateSchema,
   migrations: {
     // v1 nations never followed up landings
@@ -560,5 +598,7 @@ export const AiAttackBehaviorSnapshot = snapshotType({
       sitesLost: new Uint32Array(0),
       stallWatch: [],
     }),
+    // v3 nations cut no salient
+    3: (d) => ({ ...(d as Record<string, unknown>), salientCut: null }),
   },
 });

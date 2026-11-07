@@ -23,16 +23,13 @@ export class PlayerActionHandler {
     private uiState: UIState,
   ) {}
 
-  handleAttack(
-    player: PlayerView,
-    targetId: string | null,
-    focusTile: TileRef | null = null,
-  ) {
+  // A broad attack on the whole border (the radial menu's attack); only
+  // Shift+click spearheads.
+  handleAttack(player: PlayerView, targetId: string | null) {
     this.eventBus.emit(
       new SendAttackIntentEvent(
         targetId,
         this.uiState.attackRatio * player.troops(),
-        focusTile,
       ),
     );
   }
