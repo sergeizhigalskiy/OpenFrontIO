@@ -46,7 +46,6 @@ import { terrainMapFileLoader } from "./TerrainMapFileLoader";
 import { nationsConfigToSlider } from "./utilities/GameConfigHelpers";
 import {
   disabledUnitsBox,
-  hostCheatsBox,
   LOBBY_SETTING_TAG,
   lobbySettingTagText,
   notableLobbySettings,
@@ -803,7 +802,7 @@ export class JoinLobbyModal extends BaseModal {
             : html``
         }
       </div>
-      ${disabledUnitsBox(c, "mt-4 mb-6")} ${hostCheatsBox(c, "mt-4 mb-6")}
+      ${disabledUnitsBox(c, "mt-4 mb-6")}
     `;
   }
 

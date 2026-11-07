@@ -20,7 +20,6 @@ import { DefenseCoveragePass } from "../../../../src/client/render/gl/passes/Def
 import { TextProgram } from "../../../../src/client/render/gl/passes/name-pass/TextProgram";
 import { RailroadPass } from "../../../../src/client/render/gl/passes/RailroadPass";
 import { ReloadBarPass } from "../../../../src/client/render/gl/passes/ReloadBarPass";
-import { ResourceSitePass } from "../../../../src/client/render/gl/passes/ResourceSitePass";
 import { RuinsPass } from "../../../../src/client/render/gl/passes/RuinsPass";
 import { StructurePass } from "../../../../src/client/render/gl/passes/StructurePass";
 import { TerrainPass } from "../../../../src/client/render/gl/passes/TerrainPass";
@@ -138,12 +137,6 @@ const PASSES: PassCase[] = [
       pass.setFeatures(new Uint8Array(MAP_W * MAP_H));
       return pass;
     },
-    camera: true,
-  },
-  // resources: mine icons
-  {
-    name: "ResourceSitePass",
-    build: (gl) => new ResourceSitePass(gl),
     camera: true,
   },
   // defense-lines: stamped in tile space, read by the territory overlay

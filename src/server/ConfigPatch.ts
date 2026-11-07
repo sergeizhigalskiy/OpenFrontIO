@@ -38,7 +38,6 @@ const COPIED_KEYS = [
   "plague",
   "seasons",
   "weather",
-  "resourceSites",
   "anonymizeNames",
   "nameReveals",
   "nameRevealPublicIds",
@@ -119,10 +118,6 @@ export function applyGameConfigPatch(
     target.bossRaid =
       patch.bossRaid === null ? undefined : { boss: patch.bossRaid.boss };
   }
-  // Unconditional on purpose: the host clears cheats by omitting hostCheats
-  // (the full config it sends has hostCheats: undefined when the toggle is
-  // off), so `undefined` here means "clear", not "leave unchanged".
-  target.hostCheats = patch.hostCheats;
 }
 
 // The config `patch` would leave, without changing `target`: what the
@@ -134,16 +129,4 @@ export function previewGameConfigPatch(
   const preview = structuredClone(target);
   applyGameConfigPatch(preview, patch);
   return preview;
-}
-
-// Whether the host-only cheat block actually grants anything: mere presence
-// isn't enough, the client can send hostCheats with every field off.
-export function hostCheatsEnabled(hc: GameConfig["hostCheats"]): boolean {
-  return (
-    hc !== undefined &&
-    (hc.infiniteGold === true ||
-      hc.infiniteTroops === true ||
-      typeof hc.goldMultiplier === "number" ||
-      typeof hc.startingGold === "number")
-  );
 }

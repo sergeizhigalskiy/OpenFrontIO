@@ -108,16 +108,42 @@ describe("snapshot: land attacks", () => {
     expect(readVersioned(PlayerSnapshot, { v: 6, d: old }).spearLines).toEqual(
       [],
     );
-    // An Attack execution v1 and a nation's AiAttackBehavior v3.
+    // An Attack execution v1.
     expect(AttackExecutionSnapshot.version).toBe(2);
     expect(
       AttackExecutionSnapshot.migrations[1]({ focusTile: 5, focusBest: 3 }),
     ).toEqual({ focusTile: 5, focusBest: 3, spearOrigin: null });
-    expect(AiAttackBehaviorSnapshot.version).toBe(4);
-    expect(AiAttackBehaviorSnapshot.migrations[3]({ stallWatch: [] })).toEqual({
+    expect(AiAttackBehaviorSnapshot.version).toBe(5);
+    const nation = {
+      botAttackTroopsSent: 0,
+      followedLandings: [],
+      triggerRatio: 0.5,
+      reserveRatio: 0.3,
+      expandRatio: 0.1,
       stallWatch: [],
-      salientCut: null,
-    });
+    };
+    const cut = { target: 2, tip: 7, focus: 9, tick: 40 };
+    // A v4 of the spearhead round (with sites and a cut) and one without
+    // either (gameplay-updates' v4), and a v3, all load.
+    const sites = {
+      sitesHeld: new Uint32Array(0),
+      sitesLost: new Uint32Array(0),
+    };
+    expect(
+      readVersioned(AiAttackBehaviorSnapshot, {
+        v: 4,
+        d: { ...nation, ...sites, salientCut: cut },
+      }),
+    ).toEqual({ ...nation, salientCut: cut });
+    expect(
+      readVersioned(AiAttackBehaviorSnapshot, { v: 4, d: nation }),
+    ).toEqual({ ...nation, salientCut: null });
+    expect(
+      readVersioned(AiAttackBehaviorSnapshot, {
+        v: 3,
+        d: { ...nation, ...sites },
+      }),
+    ).toEqual({ ...nation, salientCut: null });
   });
 
   test("retreating attack", async () => {

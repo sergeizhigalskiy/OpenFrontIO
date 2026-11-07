@@ -10,8 +10,8 @@ float sdBox(vec2 p, vec2 b) {
   return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
 }
 
-// A badge in the resource sites' style (resource-site.frag.glsl): a dark
-// disc with a light emblem, an unheld grey ring and a thin dark outline.
+// A badge: a dark disc with a light emblem, a grey ring and a thin dark
+// outline.
 // The emblem is a stone slab with three columns on it, the middle one broken
 // off. Drawn in quad units, so it keeps its shape at every zoom.
 void main() {

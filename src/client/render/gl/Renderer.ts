@@ -57,10 +57,6 @@ import { PointLightPass } from "./passes/PointLightPass";
 import { RailroadPass } from "./passes/RailroadPass";
 import { RangeCirclePass } from "./passes/RangeCirclePass";
 import { ReloadBarPass } from "./passes/ReloadBarPass";
-import {
-  ResourceSiteMarker,
-  ResourceSitePass,
-} from "./passes/ResourceSitePass";
 import { RuinMarker, RuinsPass } from "./passes/RuinsPass";
 import { SAMRadiusPass } from "./passes/SamRadiusPass";
 import { SelectionBoxPass } from "./passes/SelectionBoxPass";
@@ -166,7 +162,6 @@ export class GPURenderer {
   private tideWarningPass: TideWarningPass;
   private weatherPass: WeatherPass;
   private blockadePass: BlockadePass;
-  private resourceSitePass: ResourceSitePass;
   private samRadiusPass: SAMRadiusPass;
   private crosshairPass: CrosshairPass;
   private railroadPass: RailroadPass;
@@ -597,8 +592,6 @@ export class GPURenderer {
     this.weatherPass = new WeatherPass(gl, mapW, mapH, this.terrainBytesTex!);
     // --- Blockade rings on ports (trade-route cutting) ---
     this.blockadePass = new BlockadePass(gl);
-    // --- Resource sites (everyone sees them) ---
-    this.resourceSitePass = new ResourceSitePass(gl);
 
     // --- SAM radius overlay (dashed green circles during build mode) ---
     this.samRadiusPass = new SAMRadiusPass(gl, mapW, this.settings);
@@ -1204,11 +1197,6 @@ export class GPURenderer {
     this.blockadePass.update(ports);
   }
 
-  /** The gold mines (and later other resource sites) to draw. */
-  updateResourceSites(sites: ResourceSiteMarker[]): void {
-    this.resourceSitePass.update(sites);
-  }
-
   updateSmallPlayerGlow(set: Uint8Array | null): void {
     this.smallPlayerGlowPass.update(set);
   }
@@ -1518,7 +1506,6 @@ export class GPURenderer {
     this.ruinsPass.draw(cam, zoom);
     this.volcanoPass.draw(cam);
     this.blockadePass.draw(cam);
-    this.resourceSitePass.draw(cam, zoom);
     // Small-player glow draws after structures so buildings can't hide it.
     this.smallPlayerGlowPass.draw(cam);
     if (pe.bar) this.barPass.draw(cam);
@@ -1674,7 +1661,6 @@ export class GPURenderer {
     this.tideWarningPass.dispose();
     this.weatherPass.dispose();
     this.blockadePass.dispose();
-    this.resourceSitePass.dispose();
     this.samRadiusPass.dispose();
     this.crosshairPass.dispose();
     this.structurePass.dispose();

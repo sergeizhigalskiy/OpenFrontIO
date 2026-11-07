@@ -185,12 +185,6 @@ export function notableLobbySettings(
       label: translateText("game_settings.water_nukes"),
       value: enabled,
     });
-  // On by default, so only turning them off is worth surfacing.
-  if (c.resourceSites === false)
-    items.push({
-      label: translateText("game_settings.resource_sites"),
-      value: disabled,
-    });
   if (c.doomsdayClock?.enabled)
     items.push({
       label: translateText("game_settings.doomsday_clock"),
@@ -290,50 +284,6 @@ export function disabledUnitsBox(
             >${key ? translateText(key) : unit}</span
           >`;
         })}
-      </div>
-    </div>
-  `;
-}
-
-/** The lobby host's cheats, as a yellow box; null when there are none. */
-export function hostCheatsBox(
-  c: GameConfig,
-  className: string,
-): TemplateResult | null {
-  const hc = c.hostCheats;
-  if (!hc) return null;
-  const cheats: string[] = [];
-  if (hc.infiniteGold)
-    cheats.push(translateText("game_settings.infinite_gold"));
-  if (hc.infiniteTroops)
-    cheats.push(translateText("game_settings.infinite_troops"));
-  if (hc.goldMultiplier)
-    cheats.push(
-      `${translateText("game_settings.gold_multiplier")}: x${hc.goldMultiplier}`,
-    );
-  if (hc.startingGold)
-    cheats.push(
-      `${translateText("private_lobby.starting_gold")}: ${millions(hc.startingGold)}`,
-    );
-  if (cheats.length === 0) return null;
-  return html`
-    <div
-      data-host-cheats
-      class="${className} p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg"
-    >
-      <div
-        class="text-xs font-bold text-yellow-400 uppercase tracking-widest mb-2"
-      >
-        ${translateText("private_lobby.host_cheats")}
-      </div>
-      <div class="flex flex-wrap gap-2">
-        ${cheats.map(
-          (cheat) =>
-            html`<span
-              class="px-2 py-1 bg-yellow-500/20 text-yellow-200 text-xs rounded font-bold border border-yellow-500/30"
-              >${cheat}</span
-            >`,
-        )}
       </div>
     </div>
   `;

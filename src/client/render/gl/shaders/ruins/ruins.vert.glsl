@@ -12,6 +12,6 @@ out vec2 vLocal; // [-1, +1] local coords within the quad
 
 void main() {
   vLocal = aPos * 2.0 - 1.0;
-  // A badge: upright in 3D, like the resource sites and structure icons.
+  // A badge: upright in 3D, like the structure icons.
   gl_Position = billboardToClip(uCenter + 0.5, vLocal * uRadius);
 }

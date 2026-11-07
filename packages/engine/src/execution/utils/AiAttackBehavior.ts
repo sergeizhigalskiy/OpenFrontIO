@@ -72,8 +72,6 @@ export abstract class AiAttackBehavior {
       triggerRatio: this.triggerRatio,
       reserveRatio: this.reserveRatio,
       expandRatio: this.expandRatio,
-      sitesHeld: w.tiles(nation.sitesHeld),
-      sitesLost: w.tiles(nation.sitesLost),
       stallWatch: nation.stallWatch.map((s) => ({
         attack: w.attack(s.attack),
         tick: s.tick,
@@ -544,10 +542,6 @@ export interface SalientCut {
 
 /** What a nation remembers between attack ticks (tribes: nothing). */
 export interface NationAttackMemory {
-  /** Resource sites (by tile) it held at its last look. */
-  sitesHeld: TileRef[];
-  /** Sites it held and a hostile player has taken since. */
-  sitesLost: TileRef[];
   /** Impossible: its land attacks on players, as last seen. */
   stallWatch: StallWatch[];
   /** Medium and up: the salient it is cutting. */
@@ -555,8 +549,6 @@ export interface NationAttackMemory {
 }
 
 const EMPTY_NATION_MEMORY: NationAttackMemory = {
-  sitesHeld: [],
-  sitesLost: [],
   stallWatch: [],
   salientCut: null,
 };
@@ -567,8 +559,6 @@ const AiAttackStateSchema = z.object({
   triggerRatio: zNum(),
   reserveRatio: zNum(),
   expandRatio: zNum(),
-  sitesHeld: zTiles(),
-  sitesLost: zTiles(),
   stallWatch: z.array(
     z.object({ attack: zRef(), tick: zNum(), tiles: zTiles() }),
   ),
@@ -585,8 +575,9 @@ type AiAttackState = z.infer<typeof AiAttackStateSchema>;
 
 export const AiAttackBehaviorSnapshot = snapshotType({
   name: "AiAttackBehavior",
-  // v4 added salientCut (nations cut enemy spearheads).
-  version: 4,
+  // v4 dropped the resource sites on gameplay-updates and added salientCut on
+  // the spearhead round, each on its own; v5 is both.
+  version: 5,
   schema: AiAttackStateSchema,
   migrations: {
     // v1 nations never followed up landings
@@ -598,7 +589,13 @@ export const AiAttackBehaviorSnapshot = snapshotType({
       sitesLost: new Uint32Array(0),
       stallWatch: [],
     }),
-    // v3 nations cut no salient
+    // v3 nations cut no salient; zod strips the resource sites they held.
     3: (d) => ({ ...(d as Record<string, unknown>), salientCut: null }),
+    // A v4 from either side: the spearhead round's carries salientCut and
+    // the sites (stripped), gameplay-updates' neither.
+    4: (d) => {
+      const rest = d as Record<string, unknown>;
+      return { ...rest, salientCut: rest.salientCut ?? null };
+    },
   },
 });

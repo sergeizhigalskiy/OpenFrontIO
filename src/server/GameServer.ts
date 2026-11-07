@@ -69,11 +69,7 @@ import WebSocket from "ws";
 import { z } from "zod";
 import { archive, finalizeGameRecord } from "./Archive";
 import { Client } from "./Client";
-import {
-  applyGameConfigPatch,
-  hostCheatsEnabled,
-  previewGameConfigPatch,
-} from "./ConfigPatch";
+import { applyGameConfigPatch, previewGameConfigPatch } from "./ConfigPatch";
 import { LiveStatsVote, voteKey, WinnerVote } from "./Consensus";
 import { fetchCustomTribes } from "./CustomTribes";
 import { DesyncDetector } from "./DesyncDetector";
@@ -1913,12 +1909,6 @@ export class GameServer {
     return (this.gameConfig.allowedPublicIds?.length ?? 0) > 0;
   }
 
-  // Whether any host-only cheat is actually granted. A lobby with host
-  // cheats must not be publicly listed.
-  public hasHostCheats(): boolean {
-    return hostCheatsEnabled(this.gameConfig.hostCheats);
-  }
-
   public isCreator(persistentId: string): boolean {
     return (
       this.creatorPersistentID !== undefined &&
@@ -2187,7 +2177,7 @@ export class GameServer {
           stats,
           cosmetics: player.cosmetics,
           // Simulation inputs: teamIndex pins matchmade teams, friends bias
-          // team grouping, isLobbyCreator gates host cheats. Replays rebuild
+          // team grouping, isLobbyCreator gates pausing. Replays rebuild
           // GameStartInfo from these records, so dropping any of them makes
           // the replay diverge from the recorded hashes (desync errors).
           teamIndex: player.teamIndex,

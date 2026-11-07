@@ -27,8 +27,9 @@ const config = makeConfig();
 // Enough port levels to be past smallEconomySpawnBoost.
 const BIG_ECONOMY = 10;
 
-function player(isLobbyCreator = false): Player {
-  return { isLobbyCreator: () => isLobbyCreator } as unknown as Player;
+// Outside Boss Raid the formulas read nothing from the player.
+function player(): Player {
+  return {} as unknown as Player;
 }
 
 const DISTANCES = [
@@ -57,15 +58,6 @@ describe("trade ship golden values", () => {
         table[`mult=${mult} dist=${dist}`] = c.tradeShipGold(dist, player());
       }
     }
-    const hostCheat = makeConfig({ hostCheats: { goldMultiplier: 5 } });
-    table["hostCheat=5 creator dist=500"] = hostCheat.tradeShipGold(
-      500,
-      player(true),
-    );
-    table["hostCheat=5 non-creator dist=500"] = hostCheat.tradeShipGold(
-      500,
-      player(false),
-    );
     expect(table).toMatchSnapshot();
   });
 
@@ -124,17 +116,6 @@ describe("train golden values", () => {
         table[`mult=${mult} rel=${rel}`] = c.trainGold(rel, 0, player());
       }
     }
-    const hostCheat = makeConfig({ hostCheats: { goldMultiplier: 5 } });
-    table["hostCheat=5 creator rel=self"] = hostCheat.trainGold(
-      "self",
-      0,
-      player(true),
-    );
-    table["hostCheat=5 non-creator rel=self"] = hostCheat.trainGold(
-      "self",
-      0,
-      player(false),
-    );
     expect(table).toMatchSnapshot();
   });
 

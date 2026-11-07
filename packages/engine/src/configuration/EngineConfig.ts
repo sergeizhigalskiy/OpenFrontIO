@@ -84,7 +84,7 @@ export class EngineConfig extends Config {
     if (playerInfo.playerType === PlayerType.Bot) {
       return 0n;
     }
-    return this.startingGoldFor(playerInfo);
+    return BigInt(this._gameConfig.startingGold ?? 0);
   }
 
   /**
@@ -228,12 +228,6 @@ export class EngineConfig extends Config {
     );
   }
 
-  private hasInfiniteGoldFor(player: PlayerLike): boolean {
-    if (this.infiniteGold()) return true;
-    const hc = this._gameConfig.hostCheats;
-    return (hc?.infiniteGold ?? false) && player.isLobbyCreator();
-  }
-
   override unitInfo(type: UnitType): EngineUnitInfo {
     const cached = this.engineUnitInfoCache.get(type);
     if (cached !== undefined) {
@@ -263,10 +257,7 @@ export class EngineConfig extends Config {
         return this.costWrapper(() => 5_000_000, UnitType.HydrogenBomb);
       case UnitType.MIRV:
         return (game: Game, player: Player) => {
-          if (
-            player.type() === PlayerType.Human &&
-            this.hasInfiniteGoldFor(player)
-          ) {
+          if (player.type() === PlayerType.Human && this.infiniteGold()) {
             return 0n;
           }
           return 25_000_000n + BigInt(game.mirvsLaunched()) * 15_000_000n;
@@ -307,19 +298,8 @@ export class EngineConfig extends Config {
     }
   }
 
-  private hasInfiniteTroopsForInfo(playerInfo: PlayerInfo): boolean {
-    if (this.infiniteTroops()) return true;
-    return (
-      (this._gameConfig.hostCheats?.infiniteTroops ?? false) &&
-      playerInfo.isLobbyCreator
-    );
-  }
-
   private goldMultiplierFor(player: PlayerLike): number {
-    const base = this.goldMultiplier();
-    const hc = this._gameConfig.hostCheats;
-    const multiplier =
-      hc?.goldMultiplier && player.isLobbyCreator() ? hc.goldMultiplier : base;
+    const multiplier = this.goldMultiplier();
     // Boss Raid: only the Boss's income scales, so no one else's changes.
     if (isBossRaidBoss(this._gameConfig, player)) {
       return (
@@ -340,24 +320,12 @@ export class EngineConfig extends Config {
     }
   }
 
-  private startingGoldFor(playerInfo: PlayerInfo): Gold {
-    const base = BigInt(this._gameConfig.startingGold ?? 0);
-    const hc = this._gameConfig.hostCheats;
-    if (hc?.startingGold && playerInfo.isLobbyCreator) {
-      return base + BigInt(hc.startingGold);
-    }
-    return base;
-  }
-
   private costWrapper(
     costFn: (units: number) => number,
     ...types: UnitType[]
   ): (g: Game, p: Player, extraUnits?: number) => bigint {
     return (game: Game, player: Player, extraUnits: number = 0) => {
-      if (
-        player.type() === PlayerType.Human &&
-        this.hasInfiniteGoldFor(player)
-      ) {
+      if (player.type() === PlayerType.Human && this.infiniteGold()) {
         return 0n;
       }
       const numUnits = types.reduce(
@@ -478,7 +446,7 @@ export class EngineConfig extends Config {
     // The onboarding tutorial's player starts about half full, where troops
     // grow fastest, so the first attacks take more land.
     if (this._gameConfig.tutorial) return 60_000;
-    return this.hasInfiniteTroopsForInfo(playerInfo) ? 1_000_000 : 25_000;
+    return this.infiniteTroops() ? 1_000_000 : 25_000;
   }
 
   goldAdditionRate(player: PlayerLike): Gold {
@@ -492,13 +460,6 @@ export class EngineConfig extends Config {
       baseRate = 100n;
     }
     return BigInt(Math.floor(Number(baseRate) * multiplier));
-  }
-
-  /** What a resource site paying `goldPerTick` gives `player` per tick. */
-  resourceSiteGold(player: PlayerLike, goldPerTick: Gold): Gold {
-    return BigInt(
-      Math.floor(Number(goldPerTick) * this.goldMultiplierFor(player)),
-    );
   }
 
   /**

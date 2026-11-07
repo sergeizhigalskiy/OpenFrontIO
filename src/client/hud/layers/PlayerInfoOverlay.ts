@@ -18,7 +18,6 @@ import {
   attackFrontSizes,
   spearDepthAt,
 } from "@openfront/engine-lib/game/AttackForecast";
-import { ResourceSite } from "@openfront/engine-lib/game/ResourceSites";
 import { assetUrl } from "@openfront/shared/AssetUrls";
 import { EventBus } from "@openfront/shared/EventBus";
 import { html, LitElement, TemplateResult } from "lit";
@@ -56,10 +55,6 @@ import { ShowPlayerEmojiMenuEvent } from "./EmojiTable";
 import { ImmunityBarVisibleEvent } from "./ImmunityTimer";
 import { CloseRadialMenuEvent } from "./RadialMenu";
 import "./RelationSmiley";
-import {
-  renderResourceSiteCard,
-  resourceSiteUnderCursor,
-} from "./ResourceSiteCard";
 import { SpawnBarVisibleEvent } from "./SpawnTimer";
 import { renderTerrainFeatureLine } from "./TerrainFeatureHover";
 const soldierIconAquarius = assetUrl("images/SoldierIconAquarius.svg");
@@ -186,10 +181,6 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
   @state()
   private terrainFeature: TerrainFeature = TerrainFeature.None;
 
-  /** The gold mine (resource site) under the cursor, shown above the rest. */
-  @state()
-  private site: ResourceSite | null = null;
-
   @state()
   private _isInfoVisible: boolean = false;
 
@@ -299,7 +290,6 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
     this.onRuins = false;
     this.weather = null;
     this.terrainFeature = TerrainFeature.None;
-    this.site = null;
   }
 
   public maybeShow(x: number, y: number) {
@@ -327,9 +317,6 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
       this.setVisible(true);
       return;
     }
-
-    this.site = resourceSiteUnderCursor(this.game, tile);
-    if (this.site !== null) this.setVisible(true);
 
     const owner = this.game.owner(tile);
     const feature = this.game.terrainFeature(tile);
@@ -1231,7 +1218,6 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
           @mouseleave=${this.onPanelLeave}
         >
           ${this.weather !== null ? this.renderWeather(this.weather) : ""}
-          ${this.site ? renderResourceSiteCard(this.game, this.site) : ""}
           ${this.player ? this.renderPlayerInfo(this.player) : ""}
           ${this.unit ? this.renderUnitInfo(this.unit) : ""}
           ${renderTerrainFeatureLine(this.terrainFeature, this.player !== null)}

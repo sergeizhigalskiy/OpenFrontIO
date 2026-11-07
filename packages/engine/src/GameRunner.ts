@@ -37,7 +37,6 @@ import { Executor } from "./execution/ExecutionManager";
 import { HordeNightExecution } from "./execution/HordeNightExecution";
 import { PlagueExecution } from "./execution/PlagueExecution";
 import { RecomputeRailClusterExecution } from "./execution/RecomputeRailClusterExecution";
-import { ResourceSiteExecution } from "./execution/ResourceSiteExecution";
 import { RisingTideExecution } from "./execution/RisingTideExecution";
 import { RuinsExecution } from "./execution/RuinsExecution";
 import { SpawnTimerExecution } from "./execution/SpawnTimerExecution";
@@ -212,13 +211,6 @@ export class GameRunner {
       );
     }
     this.game.addExecution(new WinCheckExecution());
-    // Ahead of the ruins: both place on the same tick once the spawn phase
-    // is over, mines first, so no ruin lands on one (StartPlacements).
-    if (this.game.config().resourceSites()) {
-      this.game.addExecution(
-        new ResourceSiteExecution(this.execManager.gameID()),
-      );
-    }
     if (this.game.config().ruinsEnabled()) {
       this.game.addExecution(new RuinsExecution(this.execManager.gameID()));
     }

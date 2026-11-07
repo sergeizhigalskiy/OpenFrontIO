@@ -23,8 +23,6 @@ exports[`trade ship golden values > tradeShipGold: distance sweep 1`] = `
 
 exports[`trade ship golden values > tradeShipGold: gold multipliers 1`] = `
 {
-  "hostCheat=5 creator dist=500": 499072n,
-  "hostCheat=5 non-creator dist=500": 99814n,
   "mult=0.5 dist=100": 2592n,
   "mult=0.5 dist=2000": 87500n,
   "mult=0.5 dist=500": 49907n,
@@ -152,8 +150,6 @@ exports[`train golden values > smallEconomySpawnBoost: trade and train rates by 
 
 exports[`train golden values > trainGold: gold multipliers 1`] = `
 {
-  "hostCheat=5 creator rel=self": 50000n,
-  "hostCheat=5 non-creator rel=self": 10000n,
   "mult=0.5 rel=other": 12500n,
   "mult=0.5 rel=self": 5000n,
   "mult=10 rel=other": 250000n,

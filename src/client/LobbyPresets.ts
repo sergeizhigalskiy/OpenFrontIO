@@ -52,7 +52,6 @@ export const LobbyPresetConfigSchema = z.object({
   plague: z.boolean().optional(),
   seasons: z.boolean().optional(),
   weather: z.boolean().optional(),
-  resourceSites: z.boolean().optional(),
   doomsdayClock: z.boolean().optional(),
   doomsdayClockSpeed: z.enum(DOOMSDAY_CLOCK_SPEEDS).optional(),
   overtime: z.boolean().optional(),
@@ -67,13 +66,6 @@ export const LobbyPresetConfigSchema = z.object({
   anonymizeNames: z.boolean().optional(),
   whitelistEnabled: z.boolean().optional(),
   allowedPublicIds: z.string().optional(),
-  hostCheatsEnabled: z.boolean().optional(),
-  hostCheatInfiniteGold: z.boolean().optional(),
-  hostCheatInfiniteTroops: z.boolean().optional(),
-  hostCheatGoldMultiplier: z.boolean().optional(),
-  hostCheatGoldMultiplierValue: z.number().min(0.1).max(1000).optional(),
-  hostCheatStartingGold: z.boolean().optional(),
-  hostCheatStartingGoldValue: z.number().min(0.1).max(1000).optional(),
 });
 
 export type LobbyPresetConfig = z.infer<typeof LobbyPresetConfigSchema>;

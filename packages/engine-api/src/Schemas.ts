@@ -351,14 +351,6 @@ export const GameConfigSchema = z.object({
   playerTeams: TeamCountConfigSchema.optional(),
   goldMultiplier: zb.float({ min: 0.1, max: 1000 }).nullable().optional(),
   startingGold: zb.uint({ max: 1000000000 }).nullable().optional(),
-  hostCheats: z
-    .object({
-      infiniteGold: z.boolean().optional(),
-      infiniteTroops: z.boolean().optional(),
-      goldMultiplier: zb.float({ min: 0.1, max: 1000 }).nullable().optional(),
-      startingGold: zb.uint({ max: 1000000000 }).nullable().optional(),
-    })
-    .optional(),
   // Stripped from gameStartInfo and from the advertised lobby config: sibling
   // ids are private lobby ids, which are join secrets.
   pool: PoolConfigSchema.optional(),
@@ -387,10 +379,6 @@ export const GameConfigSchema = z.object({
   // Weather systems: mud fronts, sea storms and fog drifting over the map
   // (see engine-lib/game/Weather.ts). On when absent.
   weather: z.boolean().optional(),
-  // Resource sites: gold mines placed at game start that pay whoever holds
-  // their tile (see engine-lib/game/ResourceSites.ts). Off when absent, so
-  // older records replay unchanged; the lobbies and GameManager turn it on.
-  resourceSites: z.boolean().optional(),
   // Teams whose nations play one difficulty harder because the humans are
   // stacked on other teams (engine-lib/game/TeamAssignment.ts). Not a lobby
   // setting: the engine fills it in when it creates the game.

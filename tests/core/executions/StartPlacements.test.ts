@@ -1,19 +1,16 @@
 /**
  * The features placed at game start keep out of each other on a real map
  * (the world test map), in their fixed order: city-states, then volcanoes,
- * then gold mines, then ruins (engine/game/StartPlacements.ts). Placed as a
- * real game places them, through GameRunner.init, and the same game id
- * places the same.
+ * then ruins (engine/game/StartPlacements.ts). Placed as a real game places
+ * them, through GameRunner.init, and the same game id places the same.
  */
 import { TileRef } from "@openfront/engine-api/game/GameMap";
 import { Difficulty } from "@openfront/engine-api/game/GameTypes";
 import { VOLCANO_WARNING_RADIUS } from "@openfront/engine-lib/game/Volcanoes";
 import { CITY_STATE_RADIUS } from "@openfront/engine-lib/game/WorldFeatures";
 import { Executor } from "@openfront/engine/execution/ExecutionManager";
-import { resourceSitesOf } from "@openfront/engine/execution/ResourceSiteExecution";
 import { volcanoSitesOf } from "@openfront/engine/execution/VolcanoExecution";
 import { Game } from "@openfront/engine/game/Game";
-import { MINE_KEEP_OUT_RADIUS } from "@openfront/engine/game/StartPlacements";
 import { GameRunner } from "@openfront/engine/GameRunner";
 import { setup } from "../../util/Setup";
 import { executeTicks } from "../../util/utils";
@@ -21,7 +18,6 @@ import { executeTicks } from "../../util/utils";
 interface Placed {
   cityStates: TileRef[];
   volcanoes: TileRef[];
-  mines: TileRef[];
   ruins: TileRef[];
 }
 
@@ -31,7 +27,6 @@ async function placeAll(gameID: string): Promise<{ game: Game; p: Placed }> {
     {
       difficulty: Difficulty.Medium,
       volcanoes: true,
-      resourceSites: true,
       ruins: true,
       cityStates: true,
     },
@@ -52,7 +47,6 @@ async function placeAll(gameID: string): Promise<{ game: Game; p: Placed }> {
         .filter((pl) => pl.isCityState())
         .map((pl) => pl.spawnTile()!),
       volcanoes: [...volcanoSitesOf(game)],
-      mines: resourceSitesOf(game).map((s) => s.tile),
       ruins: [...game.ruins().keys()],
     },
   };
@@ -64,7 +58,7 @@ function dist(game: Game, a: TileRef, b: TileRef): number {
 
 describe("start features keep out of each other", () => {
   test.each(Array.from({ length: 24 }, (_, i) => `placement_${i}`))(
-    "on the world map, in order: city-states, volcanoes, mines, ruins (%s)",
+    "on the world map, in order: city-states, volcanoes, ruins (%s)",
     async (gameID) => {
       const { game, p } = await placeAll(gameID);
       // Every kind is there to check.
@@ -78,21 +72,15 @@ describe("start features keep out of each other", () => {
             VOLCANO_WARNING_RADIUS + CITY_STATE_RADIUS,
           );
         }
-        // No mine or ruin inside its disc.
-        for (const t of [...p.mines, ...p.ruins]) {
-          expect(dist(game, cs, t)).toBeGreaterThan(CITY_STATE_RADIUS);
-        }
-      }
-      // No mine or ruin inside a volcano's warning ring.
-      for (const v of p.volcanoes) {
-        for (const t of [...p.mines, ...p.ruins]) {
-          expect(dist(game, v, t)).toBeGreaterThan(VOLCANO_WARNING_RADIUS);
-        }
-      }
-      // No ruin on or next to a mine.
-      for (const m of p.mines) {
+        // No ruin inside its disc.
         for (const r of p.ruins) {
-          expect(dist(game, m, r)).toBeGreaterThan(MINE_KEEP_OUT_RADIUS);
+          expect(dist(game, cs, r)).toBeGreaterThan(CITY_STATE_RADIUS);
+        }
+      }
+      // No ruin inside a volcano's warning ring.
+      for (const v of p.volcanoes) {
+        for (const r of p.ruins) {
+          expect(dist(game, v, r)).toBeGreaterThan(VOLCANO_WARNING_RADIUS);
         }
       }
     },

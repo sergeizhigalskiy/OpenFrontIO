@@ -13,9 +13,6 @@ export const COLUMN_IDS = [
   "shipTradeGoldPerMin",
   "piracyGoldPerMin",
   "trainTradeGoldPerMin",
-  // Resource sites held, and the gold per minute they pay.
-  "mines",
-  "mineGoldPerMin",
   // Military.
   "troops",
   "maxtroops",

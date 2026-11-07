@@ -324,13 +324,14 @@ describe("in-game menu opens the shared settings modal", () => {
     ]);
   });
 
-  it("shows the disabled units and host cheats with the modifiers", async () => {
+  it("shows the disabled units with the modifiers, and no host cheats", async () => {
+    // Host cheats are gone; a config from before still carries the block.
     menu.gameConfig = {
       ...publicFfa,
       gameType: GameType.Private,
       difficulty: Difficulty.Easy,
       disabledUnits: [UnitType.City, UnitType.MIRV],
-      hostCheats: { infiniteTroops: true, goldMultiplier: 3 },
+      ...{ hostCheats: { infiniteTroops: true, goldMultiplier: 3 } },
     };
     await openMenu();
 
@@ -343,10 +344,9 @@ describe("in-game menu opens the shared settings modal", () => {
       "unit_type.city",
       "unit_type.mirv",
     ]);
-    expect(texts("[data-host-cheats]")).toEqual([
-      "game_settings.infinite_troops",
-      "game_settings.gold_multiplier: x3",
-    ]);
+    expect(menu.querySelector("[data-host-cheats]")).toBeNull();
+    expect(menu.textContent).not.toContain("game_settings.infinite_troops");
+    expect(menu.textContent).not.toContain("game_settings.gold_multiplier");
   });
 
   it("leaves the modifiers out of a game without any", async () => {

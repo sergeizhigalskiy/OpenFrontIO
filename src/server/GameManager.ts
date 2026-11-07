@@ -106,8 +106,6 @@ export class GameManager {
           gameMode: GameMode.FFA,
           bots: 400,
           disabledUnits: [],
-          // On by default for private lobbies and public games alike.
-          resourceSites: true,
           ...gameConfig,
         },
         creatorPersistentID,

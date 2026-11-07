@@ -1094,7 +1094,6 @@
     "overtime": "Overtime after (minutes)",
     "plague": "Zombie plague",
     "random_spawn": "Random spawn",
-    "resource_sites": "Resource sites",
     "rising_tide": "Rising tide",
     "ruins": "Ruins",
     "seasons": "Seasons",
@@ -1380,7 +1379,6 @@
     "empty_teams": "Empty Teams",
     "hard_nations": "Hard Nations",
     "host_badge": "Host",
-    "host_cheats": "Host Cheats",
     "leave_confirmation": "Are you sure you want to leave the lobby?",
     "list_lobby_body": "Your lobby will appear in the public lobby list. It starts automatically when the timer runs out or the lobby fills up. Settings can't be changed once it's listed.",
     "list_lobby_confirm": "List lobby",
@@ -1497,8 +1495,6 @@
     "goldIncomePerMin": "Gold Income/min",
     "launchers": "Launchers",
     "maxtroops": "Max Troops",
-    "mineGoldPerMin": "Site gold/min",
-    "mines": "Sites",
     "owned": "Owned",
     "piracyGoldPerMin": "Piracy Gold/min",
     "player": "Player",
@@ -2158,12 +2154,10 @@
     "enter_id": "Enter Lobby ID",
     "error": "An error occurred. Please try again or contact support.",
     "game_length": "Game length",
-    "host_cheats": "Host Cheats",
     "join_lobby": "Join Lobby",
     "joined_waiting": "Lobby joined! Waiting for host to start...",
     "listing_failed": "Failed to update the lobby listing. Please try again.",
     "listing_full": "The public lobby list is full. Please try again later.",
-    "listing_host_cheats_enabled": "Disable host cheats to list your lobby publicly.",
     "listing_limit_reached": "You already have a publicly listed lobby.",
     "listing_max_players_too_low": "Max players must be higher than the number of players already in the lobby.",
     "listing_requires_subscription": "A Warlord or Sovereign subscription is required to list a lobby publicly.",
@@ -2373,15 +2367,6 @@
   "report_thanks": {
     "body": "A person who you recently reported has been banned, thanks for keeping openfront a safer and more enjoyable place",
     "heading": "Thank you"
-  },
-  "resource_sites": {
-    "fishing_grounds": "Fishing grounds",
-    "gold_mine": "Gold mine",
-    "held_by": "Held by {name}",
-    "income": "+{gold} gold/s to a human or nation holding it, for their best 3 sites",
-    "oil_field": "Oil field",
-    "unclaimed": "Unclaimed: take its land to hold it",
-    "unclaimed_coast": "Unclaimed: take the nearest coast to hold it"
   },
   "reward_track": {
     "after_level": "After level {level}",

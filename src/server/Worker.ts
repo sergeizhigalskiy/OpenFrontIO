@@ -273,7 +273,7 @@ export function registerListingRoute(opts: {
         }
 
         // Re-verify after the async entitlement check to close the race window
-        // where the host could alter lobby settings (e.g. enable host cheats).
+        // where the host could alter lobby settings (e.g. add a whitelist).
         const raceError = getListingEligibilityError(game, maxPlayers);
         if (raceError !== null) {
           return res.status(409).json({ error: raceError });
@@ -1124,9 +1124,6 @@ export function getListingEligibilityError(
   }
   if (game.hasJoinWhitelist()) {
     return "listing_whitelist_enabled";
-  }
-  if (game.hasHostCheats()) {
-    return "listing_host_cheats_enabled";
   }
   const cap =
     maxPlayers ?? (game.isListed() ? undefined : game.gameConfig.maxPlayers);

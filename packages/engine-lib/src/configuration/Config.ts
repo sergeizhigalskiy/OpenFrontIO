@@ -282,11 +282,6 @@ export class Config implements AttackRules {
     return this.seasonsEnabled() && isWinterAt(ticksSinceStart);
   }
 
-  /** Gold mines on the map (see game/ResourceSites.ts). Off when absent. */
-  resourceSites(): boolean {
-    return this._gameConfig.resourceSites ?? false;
-  }
-
   isUnitDisabled(unitType: UnitType): boolean {
     return this._gameConfig.disabledUnits?.includes(unitType) ?? false;
   }
@@ -377,13 +372,6 @@ export class Config implements AttackRules {
     return info;
   }
 
-  private hasInfiniteTroopsFor(player: PlayerLike): boolean {
-    if (this.infiniteTroops()) return true;
-    return (
-      (this._gameConfig.hostCheats?.infiniteTroops ?? false) &&
-      player.isLobbyCreator()
-    );
-  }
   deletionMarkDuration(): Tick {
     return 30 * 10;
   }
@@ -463,7 +451,7 @@ export class Config implements AttackRules {
       : 0;
     const landTroops = 2 * (pow(player.numTilesOwned(), 0.6) * 1000 + 50000);
     const maxTroops =
-      player.type() === PlayerType.Human && this.hasInfiniteTroopsFor(player)
+      player.type() === PlayerType.Human && this.infiniteTroops()
         ? 1_000_000_000
         : landTroops + cityTroops;
 

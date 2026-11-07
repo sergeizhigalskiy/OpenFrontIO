@@ -1,28 +1,21 @@
 import { TileRef } from "@openfront/engine-api/game/GameMap";
 import { Difficulty, PlayerType } from "@openfront/engine-api/game/GameTypes";
-import {
-  paidByResourceSites,
-  resourceSiteHolderTile,
-} from "@openfront/engine-lib/game/ResourceSites";
 import { assertNever } from "@openfront/engine-lib/Util";
 import { Game, Player } from "../../game/Game";
-import { resourceSitesOf } from "../ResourceSiteExecution";
 
 /**
- * How nations treat the world features (engine-lib/game/WorldFeatures.ts and
- * ResourceSites.ts). Stateless, and only asked on a nation's attack ticks: a
- * scan of the few ruins and sites, or of the city-states the nation
- * borders. With the features off (or none left) none of it costs a PRNG
- * draw.
+ * How nations treat the world features (engine-lib/game/WorldFeatures.ts).
+ * Stateless, and only asked on a nation's attack ticks: a scan of the few
+ * ruins, or of the city-states the nation borders. With the features off
+ * (or none left) none of it costs a PRNG draw.
  *
- * Prizes: a nation goes for the nearest unclaimed ruin or unpaid resource
- * site (one that pays nobody: on free land or under a tribe or city-state)
- * within its range: Easy ruins only within 15 tiles, Medium 40, Hard 80,
- * Impossible 120 (prizeSeekRange), measured from its land's bounding box.
- * On free land its expansion spearheads at the prize; under a tribe, its
- * attack on that tribe does (NationAttackBehavior). Impossible also sends
- * boats to ruins on islands within ISLAND_RUIN_BOAT_RANGE. Retaking a lost
- * site is NationAttackBehavior's (it remembers which it held).
+ * Prizes: a nation goes for the nearest unclaimed ruin (on free land or
+ * under a tribe or city-state) within its range: Easy only within 15 tiles,
+ * Medium 40, Hard 80, Impossible 120 (ruinSeekRange), measured from its
+ * land's bounding box. On free land its expansion spearheads at the prize;
+ * under a tribe, its attack on that tribe does (NationAttackBehavior).
+ * Impossible also sends boats to ruins on islands within
+ * ISLAND_RUIN_BOAT_RANGE.
  */
 
 /** Impossible boats to an unclaimed ruin on an island within this many tiles. */
@@ -49,14 +42,6 @@ export function ruinSeekRange(difficulty: Difficulty): number {
   }
 }
 
-/**
- * ...and for an unpaid resource site, or to retake a lost one. Easy
- * nations don't.
- */
-export function siteSeekRange(difficulty: Difficulty): number {
-  return difficulty === Difficulty.Easy ? 0 : ruinSeekRange(difficulty);
-}
-
 /** Manhattan tiles from `player`'s land's bounding box (else its spawn) to each tile; null with neither. */
 export function boxGapTo(
   game: Game,
@@ -81,18 +66,21 @@ export function boxGapTo(
   };
 }
 
-/** Whether `owner` (a small id) leaves a ruin or site up for grabs: nobody, or a tribe or city-state. */
+/** Whether `owner` (a small id) leaves a ruin up for grabs: nobody, or a tribe or city-state. */
 function heldByNoOne(game: Game, owner: number): boolean {
   if (owner === 0) return true;
   const holder = game.playerBySmallID(owner);
-  return holder.isPlayer() && !paidByResourceSites(holder.type());
+  return (
+    holder.isPlayer() &&
+    holder.type() !== PlayerType.Human &&
+    holder.type() !== PlayerType.Nation
+  );
 }
 
 /**
- * The prize `player` goes for: the tile of the nearest unclaimed ruin or
- * unpaid site (for a fishing ground, the coast tile that holds it) within
- * its range, ties to ruins and then to the first placed. With `holder`, only
- * prizes on that owner's land (0: free land). Null when there is none.
+ * The prize `player` goes for: the tile of the nearest unclaimed ruin within
+ * its range, ties to the first placed. With `holder`, only prizes on that
+ * owner's land (0: free land). Null when there is none.
  */
 export function prizeToSeek(
   game: Game,
@@ -102,9 +90,7 @@ export function prizeToSeek(
   const difficulty = game.config().difficultyFor(player);
   const ruins = game.ruins();
   const ruinRange = ruins.size > 0 ? ruinSeekRange(difficulty) : 0;
-  const sites = resourceSitesOf(game);
-  const siteRange = sites.length > 0 ? siteSeekRange(difficulty) : 0;
-  if (ruinRange === 0 && siteRange === 0) return null;
+  if (ruinRange === 0) return null;
   const gapTo = boxGapTo(game, player);
   if (gapTo === null) return null;
   const map = game.map();
@@ -121,15 +107,7 @@ export function prizeToSeek(
       bestGap = gap;
     }
   };
-  if (ruinRange > 0) {
-    for (const tile of ruins.keys()) consider(tile, ruinRange);
-  }
-  if (siteRange > 0) {
-    for (const site of sites) {
-      const tile = resourceSiteHolderTile(map, site);
-      if (tile !== null) consider(tile, siteRange);
-    }
-  }
+  for (const tile of ruins.keys()) consider(tile, ruinRange);
   return best;
 }
 
@@ -181,7 +159,7 @@ function onIsland(game: Game, player: Player, tile: TileRef): boolean {
   return true;
 }
 
-/** The unclaimed ruin or unpaid site on free land `player`'s expansion spearheads at, or null. */
+/** The unclaimed ruin on free land `player`'s expansion spearheads at, or null. */
 export function ruinToSeek(game: Game, player: Player): TileRef | null {
   return prizeToSeek(game, player, 0);
 }

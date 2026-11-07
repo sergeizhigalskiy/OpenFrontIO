@@ -23,15 +23,14 @@ import { ServerEnv } from "./ServerEnv";
 
 // The game config advertised for a listed private lobby: everything the
 // host configured minus host-only fields. The server already rejects
-// enabling the whitelist or host cheats while listed; stripping them here
-// just keeps host-only data off the wire. A new host-only GameConfig field
+// enabling the whitelist while listed; stripping it here just keeps
+// host-only data off the wire. A new host-only GameConfig field
 // must be added to this delete list.
 function publicLobbyGameConfig(gc: GameConfig): GameConfig {
   const sanitized = { ...gc };
   delete sanitized.allowedPublicIds;
   delete sanitized.nameReveals;
   delete sanitized.nameRevealPublicIds;
-  delete sanitized.hostCheats;
   delete sanitized.pool;
   return sanitized;
 }

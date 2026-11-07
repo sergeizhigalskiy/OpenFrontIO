@@ -20,7 +20,6 @@ import {
 import { SPEAR_FREE_DEPTH } from "@openfront/engine-lib/game/AttackLogic";
 import { isBossRaid } from "@openfront/engine-lib/game/BossRaid";
 import { NATION_TROOP_DONATION_COOLDOWN_TICKS } from "@openfront/engine-lib/game/Convoys";
-import { resourceSiteHolderTile } from "@openfront/engine-lib/game/ResourceSites";
 import { terrainFeatureLossMultiplier } from "@openfront/engine-lib/game/TerrainFeatures";
 import { CITY_STATE_ELIMINATION_TILES } from "@openfront/engine-lib/game/WorldFeatures";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
@@ -44,7 +43,6 @@ import type {
 import { AttackExecution } from "../AttackExecution";
 import { DonateTroopsExecution } from "../DonateTroopExecution";
 import { pocketAnnexLimit } from "../PlayerExecution";
-import { resourceSitesOf } from "../ResourceSiteExecution";
 import { TransportShipExecution } from "../TransportShipExecution";
 import {
   AiAttackBehavior,
@@ -63,7 +61,6 @@ import {
   EMOJI_ASSIST_TARGET_ME,
   NationEmojiBehavior,
 } from "./NationEmojiBehavior";
-import { mineWeightedTroops } from "./NationResourceSiteTargeting";
 import {
   cutOffPiece,
   findSalient,
@@ -100,14 +97,12 @@ import {
   routeStormTiles,
 } from "./NationWeatherBehavior";
 import {
-  boxGapTo,
   cityStateAttackOdds,
   cityStateToAttack,
   holdsPrize,
   islandRuinToSeek,
   prizeToSeek,
   ruinToSeek,
-  siteSeekRange,
 } from "./NationWorldFeatures";
 
 // Reusable neighbor buffer for hot loops; the simulation is single-threaded.
@@ -176,9 +171,6 @@ export class NationAttackBehavior extends AiAttackBehavior {
   private fronts: Map<number, FrontSurvey> | null = null;
   // Only set while we retake a cut rail tile from this player: it answers
   private retaking: Player | null = null;
-  // Resource sites (by tile) we held at our last look, and ones we lost
-  private sitesHeld: TileRef[] = [];
-  private sitesLost: TileRef[] = [];
   // Impossible: our land attacks on players as last seen, for stalls
   private stallWatch: StallWatch[] = [];
   // Medium and up: the hostile salient we are cutting (answerSalient)
@@ -207,8 +199,6 @@ export class NationAttackBehavior extends AiAttackBehavior {
       this.botAttackTroopsSent,
       this.followedLandings,
       {
-        sitesHeld: this.sitesHeld,
-        sitesLost: this.sitesLost,
         stallWatch: this.stallWatch,
         salientCut: this.salientCut,
       },
@@ -238,8 +228,6 @@ export class NationAttackBehavior extends AiAttackBehavior {
     this.salientAim = null;
     this.botAttackTroopsSent = s.botAttackTroopsSent;
     this.followedLandings = s.followedLandings.map((i) => r.attack(i));
-    this.sitesHeld = Array.from(s.sitesHeld);
-    this.sitesLost = Array.from(s.sitesLost);
     this.stallWatch = s.stallWatch.map((x) => ({
       attack: r.attack(x.attack),
       tick: x.tick,
@@ -261,7 +249,6 @@ export class NationAttackBehavior extends AiAttackBehavior {
     this.boatRoutes = routes;
     let landFront = false;
     try {
-      this.trackSites();
       this.chooseAttack();
       this.reaimStalledAttacks();
       for (const neighbor of this.landNeighbors ?? []) {
@@ -387,11 +374,10 @@ export class NationAttackBehavior extends AiAttackBehavior {
       if (n.isPlayer()) borderingPlayerSet.add(n);
     }
     // Weakest first (rankWeight), Hard & Impossible ranking a front mostly
-    // under posts as NATION_POST_FRONT_WEIGHT times as strong. A target
-    // holding resource sites counts as a bit weaker,
+    // under posts as NATION_POST_FRONT_WEIGHT times as strong,
     // and for Hard & Impossible one behind a snow front in winter or a mud
     // front as stronger (NationWeatherBehavior.frontHardness).
-    // Weighed once per player up front: fishing grounds look for their coast.
+    // Weighed once per player up front.
     const fronts = ranksFrontsByWeather(this.game, this.player)
       ? frontWeatherByOwner(this.game, this.player)
       : null;
@@ -734,8 +720,6 @@ export class NationAttackBehavior extends AiAttackBehavior {
       return target !== null ? this.sendAttack(target) : false;
     };
 
-    const retakeSite = (): boolean => this.retakeLostSite();
-
     const hated = (): boolean => {
       for (const relation of this.player.allRelationsSorted()) {
         if (relation.relation !== Relation.Hostile) continue;
@@ -810,16 +794,16 @@ export class NationAttackBehavior extends AiAttackBehavior {
         break;
       case Difficulty.Medium:
         // prettier-ignore
-        order = [bots, nuked, assist, betray, retakeSite, hated, afk, traitor, crown, weakest, island, donate];
+        order = [bots, nuked, assist, betray, hated, afk, traitor, crown, weakest, island, donate];
         break;
       case Difficulty.Hard:
         // Strong veryWeak and juicy strats after the distracting hated strat, to make the nations weaker than impossible
         // prettier-ignore
-        order = [bots, assist, betray, nuked, traitor, afk, retakeSite, hated, veryWeak, juicy, victim, crown, weakest, island, donate];
+        order = [bots, assist, betray, nuked, traitor, afk, hated, veryWeak, juicy, victim, crown, weakest, island, donate];
         break;
       case Difficulty.Impossible:
         // prettier-ignore
-        order = [bots, veryWeak, betray, assist, victim, crown, traitor, juicy, afk, nuked, retakeSite, hated, weakest, island, donate];
+        order = [bots, veryWeak, betray, assist, victim, crown, traitor, juicy, afk, nuked, hated, weakest, island, donate];
         break;
       default:
         assertNever(difficulty);
@@ -1396,7 +1380,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
 
   // Free-land expansion pushes toward higher ground in rising tide
   // (NationCataclysm; null in other games), else toward the nearest unclaimed
-  // ruin or unpaid site on free land in range (NationWorldFeatures)
+  // ruin on free land in range (NationWorldFeatures)
   protected override expansionFocus(): TileRef | null {
     return (
       highGroundFocusTile(this.game, this.player) ??
@@ -1404,7 +1388,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
     );
   }
 
-  // A tribe's ruin or unpaid site we go for; a player's (or city-state's)
+  // A tribe's ruin we go for; a player's (or city-state's)
   // spearhead target by difficulty (NationSpearheads.spearheadFocus)
   protected override playerAttackFocus(target: Player): TileRef | null {
     if (this.salientAim !== null && this.salientAim.target === target) {
@@ -1424,12 +1408,12 @@ export class NationAttackBehavior extends AiAttackBehavior {
 
   /**
    * What we rank `p` by among the players we could attack, lowest first:
-   * its troops, as upstream, discounted for the resource sites it holds;
+   * its troops, as upstream;
    * Hard and Impossible double it when posts cover more than half the front
    * (NationSpearheads.postsCoverFront).
    */
   private rankWeight(p: Player): number {
-    const troops = mineWeightedTroops(this.game, this.player, p);
+    const troops = p.troops();
     const difficulty = this.game.config().difficultyFor(this.player);
     if (
       (difficulty === Difficulty.Hard ||
@@ -1462,79 +1446,6 @@ export class NationAttackBehavior extends AiAttackBehavior {
     } finally {
       this.retaking = null;
     }
-  }
-
-  /**
-   * Medium and up remember the resource sites they hold, and which of them
-   * a hostile player took since (sitesLost), until they hold them again or
-   * the taker is no longer an enemy holding them.
-   */
-  private trackSites(): void {
-    const difficulty = this.game.config().difficultyFor(this.player);
-    const sites = resourceSitesOf(this.game);
-    if (difficulty === Difficulty.Easy || sites.length === 0) {
-      this.sitesHeld = [];
-      this.sitesLost = [];
-      return;
-    }
-    const map = this.game.map();
-    const own = this.player.smallID();
-    const held: TileRef[] = [];
-    const lost: TileRef[] = [];
-    for (const site of sites) {
-      const holderTile = resourceSiteHolderTile(map, site);
-      const id = holderTile === null ? 0 : map.ownerID(holderTile);
-      if (id === own) {
-        held.push(site.tile);
-        continue;
-      }
-      if (
-        !this.sitesHeld.includes(site.tile) &&
-        !this.sitesLost.includes(site.tile)
-      ) {
-        continue;
-      }
-      const holder = id === 0 ? null : this.game.playerBySmallID(id);
-      if (
-        holder !== null &&
-        holder.isPlayer() &&
-        !this.player.isFriendly(holder)
-      ) {
-        lost.push(site.tile);
-      }
-    }
-    this.sitesHeld = held;
-    this.sitesLost = lost;
-  }
-
-  /**
-   * Medium and up retake a resource site a hostile player took from us,
-   * within the range they go for sites, ranked where they hit hated enemies
-   * (and with the same guard): an attack spearheaded at the site.
-   */
-  private retakeLostSite(): boolean {
-    if (this.sitesLost.length === 0) return false;
-    const difficulty = this.game.config().difficultyFor(this.player);
-    const range = siteSeekRange(difficulty);
-    const gapTo = boxGapTo(this.game, this.player);
-    if (range === 0 || gapTo === null) return false;
-    const map = this.game.map();
-    for (const site of resourceSitesOf(this.game)) {
-      if (!this.sitesLost.includes(site.tile)) continue;
-      const tile = resourceSiteHolderTile(map, site);
-      if (tile === null || gapTo(tile) > range) continue;
-      const holder = this.game.owner(tile);
-      if (!holder.isPlayer() || this.player.isFriendly(holder)) continue;
-      if (this.isFFA() && holder.troops() > this.player.troops() * 3) continue;
-      if (this.bordersByLand(holder)) {
-        if (this.sendLandAttack(holder, undefined, undefined, tile)) {
-          return true;
-        }
-        continue;
-      }
-      if (this.canReach(holder) && this.sendAttack(holder)) return true;
-    }
-    return false;
   }
 
   /**

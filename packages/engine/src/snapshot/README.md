@@ -61,6 +61,12 @@ migrations (zod strips the dropped keys), so upstream records still load:
 `Player` v5 (no capital fields) and `NationNukeBehavior` v4 (no
 `ballisticPerceivedCost`, `ballisticLastLaunch`).
 
+The resource sites (gold mines, oil fields and fishing grounds) were removed
+the same way, with no replacement and old fork saves accepted as broken:
+their execution record `ResourceSite` is gone from the registry (never reuse
+the name), and `AiAttackBehavior` v4 drops the nation's `sitesHeld` and
+`sitesLost` with an identity migration.
+
 The map file itself is not stored. A snapshot records a hash of the map's
 terrain, and a restore onto a different map file fails.
 
