@@ -12,6 +12,7 @@
 import type { WeatherCell } from "@openfront/engine-api/game/GameUpdates";
 import type { MapLayer } from "@openfront/engine-api/game/MapFiles";
 import type { Config } from "@openfront/engine-lib/configuration/Config";
+import { SNOW_NORTH_PERCENT } from "@openfront/engine-lib/game/Seasons";
 import { translateText } from "../../Utils";
 import type { SpiralRibbon } from "../frame/SpiralTrails";
 import type {
@@ -70,6 +71,7 @@ import { SpiralRibbonPass } from "./passes/SpiralRibbonPass";
 import { StructureLevelPass } from "./passes/StructureLevelPass";
 import { StructurePass } from "./passes/StructurePass";
 import { TerrainPass } from "./passes/TerrainPass";
+import type { TerrainLighting } from "./passes/TerrainPass";
 import { TerritoryPass } from "./passes/TerritoryPass";
 import { TideWarningPass } from "./passes/TideWarningPass";
 import { TrailPass } from "./passes/TrailPass";
@@ -80,7 +82,9 @@ import { WorldTextPass } from "./passes/WorldTextPass";
 import type { RenderSettings } from "./RenderSettings";
 import { HeightField } from "./terrain/HeightField";
 import { MapSurface } from "./terrain/MapSurface";
-import { HEIGHT_UNITS_PER_LEVEL } from "./terrain/Relief";
+import { HEIGHT_UNITS_PER_LEVEL, lightDirection } from "./terrain/Relief";
+import { ReliefBake } from "./terrain/ReliefBake";
+import { shadowWeights, sunAzimuthDeg } from "./terrain/SceneLight";
 import { AffiliationPalette } from "./utils/Affiliation";
 import {
   EFFECT_PALETTE_BLOCKS,
@@ -133,8 +137,14 @@ export class GPURenderer {
    */
   readonly glLimited: { renderer: string; maxTextureSize: number } | null;
 
-  /** Smoothed elevation (hillshade, 3D surface, picking). */
+  /** Relief heights (3D surface, lighting, picking). */
   private heightField: HeightField;
+  /** Shadows and sky openness baked from the relief heights. */
+  private reliefBake: ReliefBake;
+  /** This frame's terrain light (bindCamera fills it). */
+  private terrainLight!: TerrainLighting;
+  /** Winter strength on the snow band, 0-1 (updateWeather). */
+  private winter = 0;
   /** Camera uniform block every map shader reads (camera/CameraBlock.ts). */
   private cameraUniforms: CameraUniforms;
   /** Chunked LOD terrain mesh, drawn by full-map passes in 3D mode. */
@@ -321,6 +331,7 @@ export class GPURenderer {
       mapW,
       mapH,
       this.terrainColors(),
+      this.settings.mapView.quality,
     );
     this.heightField = new HeightField(
       gl,
@@ -329,7 +340,7 @@ export class GPURenderer {
       mapW,
       mapH,
     );
-    this.terrainPass.setRelief(this.settings.mapView);
+    this.reliefBake = new ReliefBake(gl, mapW, mapH);
     this.mapSurface = new MapSurface(gl, mapW, mapH);
 
     // --- Shared palette texture (RGBA32F, 4096×2) ---
@@ -530,6 +541,9 @@ export class GPURenderer {
     this.borderStampPass.setDefenseCoverageTex(
       this.defenseCoveragePass.getCoverageTex(),
     );
+    // Territory fill and border lines stop at the terrain's smooth coast.
+    this.borderStampPass.setClimateTex(this.terrainPass.climateTex);
+    this.territoryPass.setClimateTex(this.terrainPass.climateTex);
 
     // --- Fallout bloom (needs tileTex, heatManager) ---
     this.bloomPass = new FalloutBloomPass(
@@ -1200,6 +1214,7 @@ export class GPURenderer {
     winter: number,
   ): void {
     this.weatherPass.update(cells, tick, winter);
+    this.winter = winter;
   }
 
   /** Fog: players (smallIDs) whose name label shows no troop count. */
@@ -1388,6 +1403,19 @@ export class GPURenderer {
   }
 
   private computeTextures(): void {
+    // Shadows and sky openness: baked once, again when the heights change
+    // (floods) or the height scale or sun altitude is tuned.
+    const view = this.settings.mapView;
+    this.terrainPass.setQuality(view.quality);
+    this.reliefBake.update(
+      this.heightField.tex,
+      {
+        heightScale: view.heightScale,
+        sunAltitudeDeg: view.lightAltitudeDeg,
+        flatAzimuthDeg: view.lightAzimuthDeg,
+      },
+      this.heightField.takeDirty(),
+    );
     if (this.settings.passEnabled.borderCompute) this.borderPass.draw();
     // Re-stamp defense coverage if posts/territory changed (dirty-gated).
     // Leaves the default framebuffer bound; renderFrame resets the viewport.
@@ -1436,6 +1464,21 @@ export class GPURenderer {
       });
     }
     this.mapSurface.setActive(relief);
+    // The sun stays at the top-left of the screen (SceneLight.ts).
+    const sunAz = sunAzimuthDeg(view.mode, yaw, view.lightAzimuthDeg);
+    const weights = shadowWeights(view.mode, sunAz);
+    this.terrainLight = {
+      shadeStrength: view.hillshade ? view.hillshadeStrength : 0,
+      heightTiles: (255 / HEIGHT_UNITS_PER_LEVEL) * view.heightScale,
+      lightDir: lightDirection(sunAz, view.lightAltitudeDeg),
+      shadowWeights: weights.iso,
+      shadowFlat: weights.flat,
+      shadowTex: this.reliefBake.shadowTex,
+      reliefTex: this.reliefBake.reliefTex,
+      winter: this.winter,
+      snowRows: (this.mapH * SNOW_NORTH_PERCENT) / 100,
+    };
+    this.territoryPass.setLighting(this.terrainLight);
     this.cameraUniforms.bind(
       frame,
       {
@@ -1485,7 +1528,7 @@ export class GPURenderer {
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.disable(gl.BLEND);
     // Terrain draws the map's features (forests, rivers, fords) too.
-    if (pe.terrain) this.terrainPass.draw(cam);
+    if (pe.terrain) this.terrainPass.draw(cam, this.terrainLight);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     // Map layers sit between terrain and territory. Alt view hides the land
@@ -1653,6 +1696,7 @@ export class GPURenderer {
     }
     this.terrainPass.dispose();
     this.heightField.dispose();
+    this.reliefBake.dispose();
     this.cameraUniforms.dispose();
     this.mapSurface.dispose();
     this.territoryPass.dispose();

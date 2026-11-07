@@ -11,7 +11,7 @@ import { calculateExplosionDurationMs, FxPass } from "../gl/passes/fx-pass";
 import { RailroadPass } from "../gl/passes/RailroadPass";
 import { SpiralRibbonPass } from "../gl/passes/SpiralRibbonPass";
 import { StructurePass } from "../gl/passes/StructurePass";
-import { TerrainPass } from "../gl/passes/TerrainPass";
+import { FLAT_LIGHTING, TerrainPass } from "../gl/passes/TerrainPass";
 import { TrailPass } from "../gl/passes/TrailPass";
 import { UnitPass } from "../gl/passes/UnitPass";
 import { applyGraphicsOverrides } from "../gl/RenderOverrides";
@@ -447,7 +447,7 @@ export class CosmeticPreviewRenderer {
 
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.BLEND);
-    this.terrainPass.draw(camMat);
+    this.terrainPass.draw(camMat, FLAT_LIGHTING);
 
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);

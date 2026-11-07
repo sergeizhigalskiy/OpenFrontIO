@@ -48,6 +48,7 @@ export class BorderStampPass {
   private borderTex: WebGLTexture;
   private defenseCoverageTex: WebGLTexture | null = null;
   private affiliationTex: WebGLTexture | null = null;
+  private climateTex: WebGLTexture | null = null;
   private altView = false;
 
   constructor(
@@ -111,6 +112,7 @@ export class BorderStampPass {
     gl.uniform1i(gl.getUniformLocation(this.program, "uBorderTex"), 2);
     gl.uniform1i(gl.getUniformLocation(this.program, "uAffiliation"), 3);
     gl.uniform1i(gl.getUniformLocation(this.program, "uDefenseCoverageTex"), 4);
+    gl.uniform1i(gl.getUniformLocation(this.program, "uClimate"), 5);
 
     this.vao = createMapQuad(gl, mapW, mapH);
   }
@@ -121,6 +123,11 @@ export class BorderStampPass {
   setAffiliationTex(tex: WebGLTexture): void {
     this.affiliationTex = tex;
   }
+  /** The climate field (TerrainPass.climateTex): the smooth coast. */
+  setClimateTex(tex: WebGLTexture): void {
+    this.climateTex = tex;
+  }
+
   setDefenseCoverageTex(tex: WebGLTexture): void {
     this.defenseCoverageTex = tex;
   }
@@ -172,6 +179,11 @@ export class BorderStampPass {
       gl.activeTexture(gl.TEXTURE4);
       gl.bindTexture(gl.TEXTURE_2D, this.defenseCoverageTex);
     }
+    if (this.climateTex) {
+      gl.activeTexture(gl.TEXTURE5);
+      gl.bindTexture(gl.TEXTURE_2D, this.climateTex);
+    }
+    gl.activeTexture(gl.TEXTURE0);
 
     drawMapSurface(gl, this.vao);
   }

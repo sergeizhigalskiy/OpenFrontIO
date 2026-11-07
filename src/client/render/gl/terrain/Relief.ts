@@ -119,7 +119,7 @@ export function smoothHeights(
  * (i + 0.5, j + 0.5). Returns raw height units (0-255).
  */
 export function sampleHeight(
-  heights: Uint8Array,
+  heights: ArrayLike<number>,
   w: number,
   h: number,
   x: number,

@@ -3,9 +3,10 @@ precision highp float;
 precision highp usampler2D;
 precision highp sampler2DArray;
 
-// uHeightMap (the smoothed height field, R = height / 255, G = 1 where land
-// may be shaded) comes with the camera block.
+// The relief heights (uHeightMap) come with the camera block; the sun,
+// baked shadows, sky openness and the smooth coast with terrain-light.
 #include "camera"
+#include "terrain-light"
 
 uniform usampler2D uTileTex;      // R16UI — tile state per cell
 uniform sampler2D  uPalette;      // RGBA32F — player colors
@@ -32,30 +33,22 @@ uniform float uSaturation;         // 1 = full color, 0 = grayscale
 uniform float uTerritoryAlpha;     // absolute fill opacity; 1 = fully opaque
 uniform sampler2D uAffiliation;    // RGBA8 — alt-view relation colors (row 0)
 uniform float uAltFillAlpha;       // alt-view translucent fill opacity
-// Relief carried by the fill: the terrain's hillshade, applied to the fill
-// colour too, so blending the fill over the terrain doesn't flatten it.
+// Relief carried by the fill: the terrain's light (sun, shadows, sky),
+// applied to the fill colour too, so blending the fill over the terrain
+// doesn't flatten it.
 uniform float uShadeStrength;      // 0 = flat fill
-uniform float uReliefScale;        // world tiles per height-map unit
-uniform vec3 uLightDir;            // unit vector toward the light
 
 in vec2 vWorldPos;
 out vec4 fragColor;
 
-// The terrain pass's hillshade factor at this point (terrain.frag.glsl), or
-// 1 where the terrain isn't shaded.
-float reliefShade(ivec2 tc) {
+// The terrain's light at this point (terrain.frag.glsl), at the fill's
+// strength. `px` is tiles per pixel.
+float reliefShade(vec2 p, float px) {
   if (uShadeStrength <= 0.0) return 1.0;
-  if (texelFetch(uHeightMap, tc, 0).g < 0.5) return 1.0;
-  vec2 texel = 1.0 / uMapSize;
-  vec2 uv = vWorldPos * texel;
-  float l = texture(uHeightMap, uv - vec2(texel.x, 0.0)).r;
-  float r = texture(uHeightMap, uv + vec2(texel.x, 0.0)).r;
-  float u = texture(uHeightMap, uv - vec2(0.0, texel.y)).r;
-  float d = texture(uHeightMap, uv + vec2(0.0, texel.y)).r;
-  float zScale = 255.0 * uReliefScale * 0.5;
-  vec3 n = normalize(vec3(-(r - l) * zScale, -(d - u) * zScale, 1.0));
-  float lambert = max(dot(n, uLightDir), 0.0);
-  float shade = 1.0 + uShadeStrength * (lambert / max(uLightDir.z, 1e-3) - 1.0);
+  vec2 inv = 1.0 / uMapSize;
+  vec2 uv = p * inv;
+  vec3 n = reliefNormal(p, clamp(1.2 * px, 0.75, 6.0), inv);
+  float shade = lightAt(n, sunVisibility(uv), skyOpenness(uv), uShadeStrength);
   return clamp(shade, 0.45, 1.45);
 }
 
@@ -64,9 +57,19 @@ vec3 applyShade(vec3 c, float shade) {
 }
 
 void main() {
-  ivec2 tc = ivec2(floor(vWorldPos));
+  vec2 p = vWorldPos;
+  vec2 fw = abs(dFdx(p)) + abs(dFdy(p));
+  float tpx = max(fw.x, fw.y);
+  ivec2 tc = ivec2(floor(p));
   if (tc.x < 0 || tc.y < 0 || tc.x >= int(uMapSize.x) || tc.y >= int(uMapSize.y))
     discard;
+  // The smooth coast (terrain.frag.glsl draws the same line): the fill stops
+  // at it, and reaches past the tile edge where the land does.
+  float coast = coastSdfAt(p / uMapSize);
+  float aa = max(0.6 * tpx, 0.02);
+  float landMask = smoothstep(-aa, aa, coast);
+  if (landMask <= 0.0) discard;
+  tc = coastTile(p, tc, uMapSize);
 
   uint raw = texelFetch(uTileTex, tc, 0).r;
   uint owner = raw & uint(OWNER_MASK);
@@ -80,7 +83,7 @@ void main() {
   if (fallout) {
     float h = fract(sin(float(tc.x) * 12.9898 + float(tc.y) * 78.233) * 43758.5453);
     float noise = uStaleNukeBase + h * uStaleNukeVariation;
-    fragColor = vec4(uStaleNukeColor + vec3(noise), uStaleNukeAlpha);
+    fragColor = vec4(uStaleNukeColor + vec3(noise), uStaleNukeAlpha * landMask);
     return;
   }
 
@@ -88,7 +91,7 @@ void main() {
   // border color BorderStampPass draws in alt-view).
   if (uAltView != 0) {
     vec3 rel = texelFetch(uAffiliation, ivec2(int(owner), 0), 0).rgb;
-    fragColor = vec4(rel, uAltFillAlpha);
+    fragColor = vec4(rel, uAltFillAlpha * landMask);
     return;
   }
 
@@ -163,9 +166,9 @@ void main() {
   }
 
   // Shade the fill like the terrain under it, so the relief survives.
-  color.rgb = applyShade(color.rgb, reliefShade(tc));
+  color.rgb = applyShade(color.rgb, reliefShade(p, tpx));
 
-  color.a = uTerritoryAlpha;
+  color.a = uTerritoryAlpha * landMask;
 
   fragColor = color;
 }

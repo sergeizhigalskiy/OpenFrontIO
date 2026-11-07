@@ -1,25 +1,32 @@
 /**
- * TerrainPass — draws the map surface: land coloured by elevation, water
- * shaded by depth with a shoreline and a gently moving surface, the map's
- * terrain features (forest canopy, rivers, fords), and a hillshade.
+ * TerrainPass — draws the map surface: textured, lit land in biomes (grass,
+ * steppe, desert, dirt, rock, tundra, snow), water shaded by depth with
+ * waves, fresnel, sun glint and shore foam, a soft coastline, and the map's
+ * terrain features (forest canopy, rivers, fords).
  *
- * Tile kinds come from the raw terrain bytes (the shared R8UI texture), so
- * coasts and walls stay tile-crisp. Smooth quantities — water depth, coast
- * and wall distance, palette elevation — come from the SurfaceField, built
- * once at load and patched when terrain floods. Colours are uniforms derived
- * from settings.terrain, so changing them needs no re-bake.
+ * Tile kinds and features come from the raw terrain bytes and the feature
+ * texture. Smooth quantities come from per-tile fields sampled LINEAR:
+ * the SurfaceField (water depth, coast and wall distance, palette
+ * elevation) and the ClimateField (signed coast distance, moisture, cold,
+ * broad variation), both built at load and patched when terrain floods.
+ * Colours are uniforms derived from settings.terrain, so changing them needs
+ * no re-bake.
  *
- * With hillshade on (setRelief), land is lit from the palette elevation:
- * normals from neighbouring heights, one light (the mapView azimuth and
- * altitude), plus a soft bevel along coasts and contact shadows.
+ * Light comes from the renderer each draw (TerrainLighting): the sun for
+ * the current view (SceneLight.ts), the relief bake's shadow and openness
+ * textures (ReliefBake.ts), and the relief heights through the camera
+ * include. The ground detail is a procedural texture array
+ * (DetailTextures.ts). setQuality picks the shader variant (low, medium,
+ * high).
  */
 
 import type { TerrainRect } from "../../types";
-import type { RenderSettings } from "../RenderSettings";
+import type { TerrainQuality } from "../GraphicsOverrides";
 import terrainFragSrc from "../shaders/terrain/terrain.frag.glsl?raw";
 import terrainVertSrc from "../shaders/terrain/terrain.vert.glsl?raw";
+import { ClimateField } from "../terrain/ClimateField";
+import { createDetailTextures } from "../terrain/DetailTextures";
 import { drawMapSurface } from "../terrain/MapSurface";
-import { lightDirection } from "../terrain/Relief";
 import { packTerrainFeatures } from "../terrain/SurfaceData";
 import { SurfaceField } from "../terrain/SurfaceField";
 import { createTerrainNoiseTexture } from "../terrain/TerrainNoise";
@@ -47,29 +54,81 @@ const PALETTE_UNIFORMS = [
   ["uMountain", "mountain"],
 ] as const;
 
+/** QUALITY define per terrain quality setting. */
+export const QUALITY_LEVEL: Record<TerrainQuality, number> = {
+  low: 0,
+  medium: 1,
+  high: 2,
+};
+
+/** What the terrain is lit with this frame (filled by the renderer). */
+export interface TerrainLighting {
+  /** Relief lighting strength: 0 = flat (hillshade off), 1 = full. */
+  shadeStrength: number;
+  /** World tiles of height per unit of the height map (camera include). */
+  heightTiles: number;
+  /** Unit vector toward the sun. */
+  lightDir: readonly [number, number, number];
+  /** Weights of the shadow texture's channels (isometric azimuths). */
+  shadowWeights: readonly [number, number, number, number];
+  /** Weight of the relief texture's flat-view shadow channel. */
+  shadowFlat: number;
+  /** The relief bake's textures; null reads as open ground in full sun. */
+  shadowTex: WebGLTexture | null;
+  reliefTex: WebGLTexture | null;
+  /** Winter snow over the snow band, 0-1. */
+  winter: number;
+  /** Tile rows of the snow band, from the top of the map. */
+  snowRows: number;
+}
+
+/** Light for a flat, unshaded surface (no relief bake). */
+export const FLAT_LIGHTING: TerrainLighting = {
+  shadeStrength: 0,
+  heightTiles: 0,
+  lightDir: [0, 0, 1],
+  shadowWeights: [0, 0, 0, 0],
+  shadowFlat: 1,
+  shadowTex: null,
+  reliefTex: null,
+  winter: 0,
+  snowRows: 0,
+};
+
+interface TerrainUniforms {
+  shadeStrength: WebGLUniformLocation | null;
+  heightTiles: WebGLUniformLocation | null;
+  lightDir: WebGLUniformLocation | null;
+  shadowW: WebGLUniformLocation | null;
+  shadowFlat: WebGLUniformLocation | null;
+  winter: WebGLUniformLocation | null;
+  snowRows: WebGLUniformLocation | null;
+  time: WebGLUniformLocation | null;
+  hasFeatures: WebGLUniformLocation | null;
+  palette: (WebGLUniformLocation | null)[];
+}
+
 export class TerrainPass {
-  private program: WebGLProgram;
+  private program!: WebGLProgram;
+  private u!: TerrainUniforms;
   private vao: WebGLVertexArrayObject;
   private surface: SurfaceField;
+  private climate: ClimateField;
   private noiseTex: WebGLTexture;
+  private detailTex: WebGLTexture;
   private featureTex: WebGLTexture | null = null;
+  /** 1×1 white: full sun and open sky, when there is no relief bake. */
+  private whiteTex: WebGLTexture;
   private palette: TerrainPalette;
   private paletteDirty = true;
-  private uShadeStrength: WebGLUniformLocation | null;
-  private uReliefScale: WebGLUniformLocation | null;
-  private uLightDir: WebGLUniformLocation | null;
-  private uTime: WebGLUniformLocation | null;
-  private uHasFeatures: WebGLUniformLocation | null;
-  private uPalette: (WebGLUniformLocation | null)[];
-  /** Live mapView settings (hillshade, light); null = relief off. */
-  private relief: RenderSettings["mapView"] | null = null;
+  private quality: TerrainQuality;
   private readonly startTime = performance.now();
 
   constructor(
     private gl: WebGL2RenderingContext,
     // Regenerates the current per-tile terrain bytes (reflecting floods) for
-    // surface-field patches. A provider instead of a retained buffer:
-    // terrain bytes are map-sized (8 MB on the giant map).
+    // field patches. A provider instead of a retained buffer: terrain bytes
+    // are map-sized (8 MB on the giant map).
     private terrainSource: () => Uint8Array,
     terrainBytes: Uint8Array,
     /** Terrain-bytes R8UI texture (shared, kept current by the renderer). */
@@ -77,41 +136,76 @@ export class TerrainPass {
     private mapW: number,
     private mapH: number,
     terrainColors?: TerrainColorOverrides,
+    quality: TerrainQuality = "high",
   ) {
     this.palette = resolveTerrainPalette(terrainColors);
-    const defines = { MAP_W: mapW, MAP_H: mapH };
-    this.program = createProgram(
+    this.quality = quality;
+    this.buildProgram();
+    this.surface = new SurfaceField(gl, terrainBytes, mapW, mapH);
+    this.climate = new ClimateField(gl, terrainBytes, mapW, mapH);
+    this.noiseTex = createTerrainNoiseTexture(gl);
+    this.detailTex = createDetailTextures(gl);
+    this.whiteTex = createTexture2D(gl, {
+      width: 1,
+      height: 1,
+      internalFormat: gl.RGBA8,
+      format: gl.RGBA,
+      type: gl.UNSIGNED_BYTE,
+      data: new Uint8Array([255, 255, 255, 255]),
+    });
+    this.vao = createMapQuad(gl, mapW, mapH);
+  }
+
+  private buildProgram(): void {
+    const gl = this.gl;
+    const defines = {
+      MAP_W: this.mapW,
+      MAP_H: this.mapH,
+      QUALITY: QUALITY_LEVEL[this.quality],
+    };
+    const p = createProgram(
       gl,
       shaderSrc(terrainVertSrc, defines),
       shaderSrc(terrainFragSrc, defines),
       "TerrainPass",
     );
-    const p = this.program;
-    this.uShadeStrength = gl.getUniformLocation(p, "uShadeStrength");
-    this.uReliefScale = gl.getUniformLocation(p, "uReliefScale");
-    this.uLightDir = gl.getUniformLocation(p, "uLightDir");
-    this.uTime = gl.getUniformLocation(p, "uTime");
-    this.uHasFeatures = gl.getUniformLocation(p, "uHasFeatures");
-    this.uPalette = PALETTE_UNIFORMS.map(([name]) =>
-      gl.getUniformLocation(p, name),
-    );
+    const at = (name: string) => gl.getUniformLocation(p, name);
+    this.u = {
+      shadeStrength: at("uShadeStrength"),
+      heightTiles: at("uHeightTiles"),
+      lightDir: at("uLightDir"),
+      shadowW: at("uShadowW"),
+      shadowFlat: at("uShadowFlat"),
+      winter: at("uWinter"),
+      snowRows: at("uSnowRows"),
+      time: at("uTime"),
+      hasFeatures: at("uHasFeatures"),
+      palette: PALETTE_UNIFORMS.map(([name]) => at(name)),
+    };
     gl.useProgram(p);
-    gl.uniform1i(gl.getUniformLocation(p, "uTerrainBytes"), 0);
-    gl.uniform1i(gl.getUniformLocation(p, "uSurface"), 1);
-    gl.uniform1i(gl.getUniformLocation(p, "uFeatures"), 2);
-    gl.uniform1i(gl.getUniformLocation(p, "uNoise"), 3);
-
-    this.surface = new SurfaceField(gl, terrainBytes, mapW, mapH);
-    this.noiseTex = createTerrainNoiseTexture(gl);
-    this.vao = createMapQuad(gl, mapW, mapH);
+    gl.uniform1i(at("uTerrainBytes"), 0);
+    gl.uniform1i(at("uSurface"), 1);
+    gl.uniform1i(at("uFeatures"), 2);
+    gl.uniform1i(at("uNoise"), 3);
+    gl.uniform1i(at("uClimate"), 4);
+    gl.uniform1i(at("uShadow"), 5);
+    gl.uniform1i(at("uRelief"), 6);
+    gl.uniform1i(at("uDetail"), 7);
+    this.program = p;
+    this.paletteDirty = true;
   }
 
-  /**
-   * Hillshade from the live mapView settings slice (read every draw, so the
-   * toggle and light take effect at once). Null turns relief off.
-   */
-  setRelief(view: RenderSettings["mapView"] | null): void {
-    this.relief = view;
+  /** Switch the shader variant (Low, Medium, High). */
+  setQuality(quality: TerrainQuality): void {
+    if (quality === this.quality) return;
+    this.quality = quality;
+    this.gl.deleteProgram(this.program);
+    this.buildProgram();
+  }
+
+  /** The climate field (signed coast distance etc.), for overlay passes. */
+  get climateTex(): WebGLTexture {
+    return this.climate.tex;
   }
 
   /** Replace the terrain colours (graphics settings). No re-bake needed. */
@@ -122,12 +216,14 @@ export class TerrainPass {
 
   /**
    * The map's terrain features, one TerrainFeature per tile (0 none,
-   * 1 forest, 2 river, 3 ford), or null for none. Static per map.
+   * 1 forest, 2 river, 3 ford), or null for none. Static per map. Rivers
+   * and forests also wet the ground around them (the climate field).
    */
   setFeatures(features: Uint8Array | null): void {
     const gl = this.gl;
     if (this.featureTex !== null) gl.deleteTexture(this.featureTex);
     this.featureTex = null;
+    this.climate.setFeatures(this.terrainSource(), features);
     if (features === null) return;
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     this.featureTex = createTexture2D(gl, {
@@ -144,40 +240,42 @@ export class TerrainPass {
   /**
    * Terrain changed inside these rects (land → water from a water nuke or a
    * rising tide). The shared terrain-bytes texture is updated by the
-   * renderer; this patches the surface field around the flooded tiles.
+   * renderer; this patches the surface and climate fields around the
+   * flooded tiles.
    */
   applyTerrainRects(rects: readonly TerrainRect[]): void {
     if (rects.length === 0) return;
-    this.surface.applyTerrainRects(rects, this.terrainSource());
+    const terrain = this.terrainSource();
+    this.surface.applyTerrainRects(rects, terrain);
+    this.climate.applyTerrainRects(rects, terrain);
   }
 
   /** Render the terrain. Call with depth test disabled, no blending. */
-  draw(_cameraMatrix: Float32Array): void {
+  draw(_cameraMatrix: Float32Array, light: TerrainLighting): void {
     const gl = this.gl;
+    const u = this.u;
     gl.useProgram(this.program);
 
     if (this.paletteDirty) {
       this.paletteDirty = false;
       PALETTE_UNIFORMS.forEach(([, key], i) => {
         const [r, g, b] = this.palette[key];
-        gl.uniform3f(this.uPalette[i], r / 255, g / 255, b / 255);
+        gl.uniform3f(u.palette[i], r / 255, g / 255, b / 255);
       });
     }
 
-    const v = this.relief;
-    const shade = v !== null && v.hillshade ? v.hillshadeStrength : 0;
-    gl.uniform1f(this.uShadeStrength, shade);
-    if (v !== null && shade > 0) {
-      gl.uniform1f(this.uReliefScale, v.reliefScale);
-      const [lx, ly, lz] = lightDirection(
-        v.lightAzimuthDeg,
-        v.lightAltitudeDeg,
-      );
-      gl.uniform3f(this.uLightDir, lx, ly, lz);
-    }
+    gl.uniform1f(u.shadeStrength, light.shadeStrength);
+    gl.uniform1f(u.heightTiles, light.heightTiles);
+    const [lx, ly, lz] = light.lightDir;
+    gl.uniform3f(u.lightDir, lx, ly, lz);
+    const [w0, w1, w2, w3] = light.shadowWeights;
+    gl.uniform4f(u.shadowW, w0, w1, w2, w3);
+    gl.uniform1f(u.shadowFlat, light.shadowFlat);
+    gl.uniform1f(u.winter, light.winter);
+    gl.uniform1f(u.snowRows, light.snowRows);
     const seconds = (performance.now() - this.startTime) / 1000;
-    gl.uniform1f(this.uTime, seconds % TIME_PERIOD_S);
-    gl.uniform1i(this.uHasFeatures, this.featureTex !== null ? 1 : 0);
+    gl.uniform1f(u.time, seconds % TIME_PERIOD_S);
+    gl.uniform1i(u.hasFeatures, this.featureTex !== null ? 1 : 0);
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.terrainBytesTex);
@@ -189,6 +287,14 @@ export class TerrainPass {
     gl.bindTexture(gl.TEXTURE_2D, this.featureTex ?? this.terrainBytesTex);
     gl.activeTexture(gl.TEXTURE3);
     gl.bindTexture(gl.TEXTURE_2D, this.noiseTex);
+    gl.activeTexture(gl.TEXTURE4);
+    gl.bindTexture(gl.TEXTURE_2D, this.climate.tex);
+    gl.activeTexture(gl.TEXTURE5);
+    gl.bindTexture(gl.TEXTURE_2D, light.shadowTex ?? this.whiteTex);
+    gl.activeTexture(gl.TEXTURE6);
+    gl.bindTexture(gl.TEXTURE_2D, light.reliefTex ?? this.whiteTex);
+    gl.activeTexture(gl.TEXTURE7);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.detailTex);
     gl.activeTexture(gl.TEXTURE0);
 
     drawMapSurface(gl, this.vao);
@@ -199,7 +305,10 @@ export class TerrainPass {
     const gl = this.gl;
     gl.deleteProgram(this.program);
     this.surface.dispose();
+    this.climate.dispose();
     gl.deleteTexture(this.noiseTex);
+    gl.deleteTexture(this.detailTex);
+    gl.deleteTexture(this.whiteTex);
     if (this.featureTex !== null) gl.deleteTexture(this.featureTex);
     gl.deleteVertexArray(this.vao);
   }

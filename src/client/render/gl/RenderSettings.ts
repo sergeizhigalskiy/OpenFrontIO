@@ -1,6 +1,10 @@
 import colorblindTheme from "./colorblind-theme.json";
 import defaultTheme from "./default-theme.json";
-import { PALETTE_NAMES, type MapViewMode } from "./GraphicsOverrides";
+import {
+  PALETTE_NAMES,
+  type MapViewMode,
+  type TerrainQuality,
+} from "./GraphicsOverrides";
 import defaults from "./render-settings.json";
 
 /**
@@ -108,8 +112,10 @@ export interface RenderSettings {
     heightScale: number;
     /** terrain3d: target on-screen spacing of mesh vertices, pixels. */
     lodTargetPx: number;
-    /** Shade land by elevation (hillshade). */
+    /** Shade land by elevation (hillshade): relief light and shadows. */
     hillshade: boolean;
+    /** Terrain shading quality (TERRAIN_QUALITIES). */
+    quality: TerrainQuality;
     /** Hillshade contrast: 0 = none, 1 = full Lambert relative to flat. */
     hillshadeStrength: number;
     /** Hillshade vertical exaggeration: world tiles per elevation level. */

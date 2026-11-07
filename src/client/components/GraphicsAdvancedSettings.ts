@@ -8,6 +8,8 @@ import {
   COSMETICS_SHOW_FROM,
   MAP_VIEW_MODES,
   type MapViewMode,
+  TERRAIN_QUALITIES,
+  type TerrainQuality,
 } from "../render/gl/GraphicsOverrides";
 import renderDefaults from "../render/gl/render-settings.json";
 import {
@@ -41,6 +43,12 @@ const MAP_VIEW_MODE_LABELS: Record<MapViewMode, string> = {
   tilt: "graphics_setting.map_view_tilt",
   terrain3d: "graphics_setting.map_view_terrain3d",
   isometric: "graphics_setting.map_view_isometric",
+};
+
+const TERRAIN_QUALITY_LABELS: Record<TerrainQuality, string> = {
+  low: "graphics_setting.terrain_quality_low",
+  medium: "graphics_setting.terrain_quality_medium",
+  high: "graphics_setting.terrain_quality_high",
 };
 
 type CosmeticCategory = Exclude<
@@ -592,6 +600,20 @@ export class GraphicsAdvancedSettings extends LitElement {
     this.patchMapView({ hillshade: !this.currentHillshade() });
   }
 
+  private currentTerrainQuality(): TerrainQuality {
+    return (
+      this.userSettings.graphicsOverrides().mapView?.quality ??
+      (renderDefaults.mapView.quality as TerrainQuality)
+    );
+  }
+
+  private onTerrainQualityChange(event: Event) {
+    const value = detailValue(event);
+    const quality = TERRAIN_QUALITIES.find((option) => option === value);
+    if (quality === undefined) return;
+    this.patchMapView({ quality });
+  }
+
   // ---- Map ----
 
   private currentNavalHighlight(): boolean {
@@ -1107,6 +1129,18 @@ export class GraphicsAdvancedSettings extends LitElement {
         .checked=${this.currentHillshade()}
         @change=${this.onToggleHillshade}
       ></setting-toggle>
+
+      <setting-select
+        label=${translateText("graphics_setting.terrain_quality_label")}
+        description=${translateText("graphics_setting.terrain_quality_desc")}
+        id="terrain-quality-select"
+        .options=${TERRAIN_QUALITIES.map((value) => ({
+          value,
+          label: translateText(TERRAIN_QUALITY_LABELS[value]),
+        }))}
+        .value=${this.currentTerrainQuality()}
+        @change=${this.onTerrainQualityChange}
+      ></setting-select>
 
       <!-- 💡 Lighting -->
       ${GraphicsAdvancedSettings.section("graphics_setting.section_lighting")}

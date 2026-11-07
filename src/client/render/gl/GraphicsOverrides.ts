@@ -21,6 +21,15 @@ export const MAP_VIEW_MODES = [
 ] as const;
 export type MapViewMode = (typeof MAP_VIEW_MODES)[number];
 
+/**
+ * Terrain shading quality (RenderSettings.mapView.quality): low drops the
+ * ground detail textures and the wave layers, medium has one detail scale
+ * and one wave layer, high adds detail normals, a second detail scale and a
+ * second wave layer. Relief, shadows and the soft coast stay at every level.
+ */
+export const TERRAIN_QUALITIES = ["low", "medium", "high"] as const;
+export type TerrainQuality = (typeof TERRAIN_QUALITIES)[number];
+
 export const COSMETICS_SHOW_FROM = [
   "everyone",
   "teammates",
@@ -131,6 +140,8 @@ export const GraphicsOverridesSchema = z
         mode: z.enum(MAP_VIEW_MODES),
         // Shade land by elevation so mountains and coasts read as relief.
         hillshade: z.boolean(),
+        // Terrain shading quality: ground detail and water waves.
+        quality: z.enum(TERRAIN_QUALITIES),
       })
       .partial(),
     lighting: z

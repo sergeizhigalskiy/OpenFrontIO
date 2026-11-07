@@ -5,8 +5,9 @@
  *   - Owned territory (player color fill)
  *   - Any fallout tile (stale-nuke ground, overrides owned territory)
  *
- * The fill carries the terrain's hillshade (territory.frag.glsl), so the
- * relief reads through it. No borders, embers or trails — those are
+ * The fill carries the terrain's light — sun, baked shadows, sky openness
+ * (territory.frag.glsl, shaders/shared/terrain-light.glsl) — so the relief
+ * reads through it, and it stops at the same smooth coast as the ground. No borders, embers or trails — those are
  * handled by BorderStampPass and TrailPass at full brightness.
  *
  * Owns the CPU-side tile state and the drip queue that staggers tile
@@ -18,7 +19,7 @@ import { getPaletteSize } from "../utils/ColorUtils";
 import { createMapQuad, createProgram, shaderSrc } from "../utils/GlUtils";
 import { FALLOUT_BIT, OWNER_MASK, TILE_DEFINES } from "../utils/TileCodec";
 
-import { HEIGHT_UNITS_PER_LEVEL, lightDirection } from "../terrain/Relief";
+import type { TerrainLighting } from "./TerrainPass";
 
 import overlayVertSrc from "../shaders/map-overlay/overlay.vert.glsl?raw";
 import territoryFragSrc from "../shaders/map-overlay/territory.frag.glsl?raw";
@@ -47,8 +48,16 @@ export class TerritoryPass {
   private uTerritoryAlpha: WebGLUniformLocation;
   private uAltFillAlpha: WebGLUniformLocation;
   private uShadeStrength: WebGLUniformLocation;
-  private uReliefScale: WebGLUniformLocation;
-  private uLightDir: WebGLUniformLocation;
+  private uLight: {
+    shadowW: WebGLUniformLocation | null;
+    shadowFlat: WebGLUniformLocation | null;
+    lightDir: WebGLUniformLocation | null;
+    heightTiles: WebGLUniformLocation | null;
+  };
+  /** This frame's terrain light (setLighting), null before the first. */
+  private light: TerrainLighting | null = null;
+  /** The climate field (smooth coast), from the terrain pass. */
+  private climateTex: WebGLTexture | null = null;
   private highlightOwner = 0;
   private isTeamMode = false;
 
@@ -191,8 +200,12 @@ export class TerritoryPass {
       this.program,
       "uShadeStrength",
     )!;
-    this.uReliefScale = gl.getUniformLocation(this.program, "uReliefScale")!;
-    this.uLightDir = gl.getUniformLocation(this.program, "uLightDir")!;
+    this.uLight = {
+      shadowW: gl.getUniformLocation(this.program, "uShadowW"),
+      shadowFlat: gl.getUniformLocation(this.program, "uShadowFlat"),
+      lightDir: gl.getUniformLocation(this.program, "uLightDir"),
+      heightTiles: gl.getUniformLocation(this.program, "uHeightTiles"),
+    };
 
     gl.useProgram(this.program);
     gl.uniform1i(gl.getUniformLocation(this.program, "uTileTex"), 0);
@@ -203,7 +216,10 @@ export class TerritoryPass {
     gl.uniform1i(gl.getUniformLocation(this.program, "uSkinLayer"), 5);
     gl.uniform1i(gl.getUniformLocation(this.program, "uSkinAnchor"), 6);
     gl.uniform1i(gl.getUniformLocation(this.program, "uDefenseCoverageTex"), 7);
+    gl.uniform1i(gl.getUniformLocation(this.program, "uClimate"), 8);
     gl.uniform1i(gl.getUniformLocation(this.program, "uAffiliation"), 9);
+    gl.uniform1i(gl.getUniformLocation(this.program, "uShadow"), 10);
+    gl.uniform1i(gl.getUniformLocation(this.program, "uRelief"), 11);
 
     this.vao = createMapQuad(gl, mapW, mapH);
 
@@ -416,6 +432,16 @@ export class TerritoryPass {
     this.defenseCoverageTex = tex;
   }
 
+  /** The terrain light this frame (renderer, before drawing). */
+  setLighting(light: TerrainLighting): void {
+    this.light = light;
+  }
+
+  /** The climate field (TerrainPass.climateTex): the smooth coast. */
+  setClimateTex(tex: WebGLTexture): void {
+    this.climateTex = tex;
+  }
+
   /** Affiliation palette (row 0 = border/relation colors) for the alt-view fill. */
   setAffiliationTex(tex: WebGLTexture): void {
     this.affiliationTex = tex;
@@ -451,18 +477,28 @@ export class TerritoryPass {
     gl.uniform1f(this.uSaturation, mo.territorySaturation);
     gl.uniform1f(this.uTerritoryAlpha, mo.territoryAlpha);
     gl.uniform1f(this.uAltFillAlpha, this.settings.altView.fillAlpha);
-    // The terrain's hillshade (TerrainPass), for the fill to carry.
-    const view = this.settings.mapView;
-    const shade = view.hillshade
-      ? view.hillshadeStrength * mo.territoryRelief
-      : 0;
-    gl.uniform1f(this.uShadeStrength, shade);
-    gl.uniform1f(this.uReliefScale, view.reliefScale / HEIGHT_UNITS_PER_LEVEL);
-    const [lx, ly, lz] = lightDirection(
-      view.lightAzimuthDeg,
-      view.lightAltitudeDeg,
+    // The terrain's light (TerrainPass), for the fill to carry.
+    const light = this.light;
+    gl.uniform1f(
+      this.uShadeStrength,
+      light === null ? 0 : light.shadeStrength * mo.territoryRelief,
     );
-    gl.uniform3f(this.uLightDir, lx, ly, lz);
+    if (
+      light !== null &&
+      light.shadowTex !== null &&
+      light.reliefTex !== null
+    ) {
+      const [w0, w1, w2, w3] = light.shadowWeights;
+      gl.uniform4f(this.uLight.shadowW, w0, w1, w2, w3);
+      gl.uniform1f(this.uLight.shadowFlat, light.shadowFlat);
+      const [lx, ly, lz] = light.lightDir;
+      gl.uniform3f(this.uLight.lightDir, lx, ly, lz);
+      gl.uniform1f(this.uLight.heightTiles, light.heightTiles);
+      gl.activeTexture(gl.TEXTURE10);
+      gl.bindTexture(gl.TEXTURE_2D, light.shadowTex);
+      gl.activeTexture(gl.TEXTURE11);
+      gl.bindTexture(gl.TEXTURE_2D, light.reliefTex);
+    }
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.tileTex);
@@ -486,6 +522,11 @@ export class TerritoryPass {
       gl.activeTexture(gl.TEXTURE9);
       gl.bindTexture(gl.TEXTURE_2D, this.affiliationTex);
     }
+    if (this.climateTex) {
+      gl.activeTexture(gl.TEXTURE8);
+      gl.bindTexture(gl.TEXTURE_2D, this.climateTex);
+    }
+    gl.activeTexture(gl.TEXTURE0);
 
     drawMapSurface(gl, this.vao);
   }

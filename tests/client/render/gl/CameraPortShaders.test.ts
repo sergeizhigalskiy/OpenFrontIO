@@ -30,6 +30,7 @@ import { UnitPass } from "../../../../src/client/render/gl/passes/UnitPass";
 import { VolcanoPass } from "../../../../src/client/render/gl/passes/VolcanoPass";
 import { WeatherPass } from "../../../../src/client/render/gl/passes/WeatherPass";
 import { createRenderSettings } from "../../../../src/client/render/gl/RenderSettings";
+import { ReliefBake } from "../../../../src/client/render/gl/terrain/ReliefBake";
 import { ALL_UNIT_TYPES } from "../../../../src/client/render/types";
 import {
   CapturedProgram,
@@ -139,6 +140,31 @@ const PASSES: PassCase[] = [
       return pass;
     },
     camera: true,
+  },
+  // graphics-civ: the terrain's low and medium quality variants
+  ...(["low", "medium"] as const).map((quality): PassCase => ({
+    name: `TerrainPass.${quality}`,
+    build: (gl) => {
+      const terrain = new Uint8Array(MAP_W * MAP_H).fill(0x85);
+      return new TerrainPass(
+        gl,
+        () => terrain,
+        terrain,
+        tex,
+        MAP_W,
+        MAP_H,
+        undefined,
+        quality,
+      );
+    },
+    camera: true,
+  })),
+  // graphics-civ: shadows and sky openness baked from the relief heights
+  // (and the ground detail generator, built by TerrainPass above)
+  {
+    name: "ReliefBake",
+    build: (gl) => new ReliefBake(gl, MAP_W, MAP_H),
+    camera: false,
   },
   // defense-lines: stamped in tile space, read by the territory overlay
   {

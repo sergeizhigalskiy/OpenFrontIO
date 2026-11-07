@@ -32,6 +32,7 @@
     "heightScale": 0.3,
     "lodTargetPx": 10,
     "hillshade": true,
+    "quality": "high",
     "hillshadeStrength": 0.75,
     "reliefScale": 0.6,
     "lightAzimuthDeg": 315,

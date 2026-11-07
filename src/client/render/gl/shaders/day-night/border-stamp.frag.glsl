@@ -2,6 +2,11 @@
 precision highp float;
 precision highp usampler2D;
 
+// The smooth coast (uClimate) comes with terrain-light, which reads the
+// camera block's height map.
+#include "camera"
+#include "terrain-light"
+
 uniform usampler2D uTileTex;
 uniform sampler2D uPalette;
 uniform sampler2D uBorderTex;     // RGBA8 — border flags from BorderComputePass
@@ -35,6 +40,14 @@ uint ownerAt(ivec2 c) {
   return texelFetch(uTileTex, c, 0).r & uint(OWNER_MASK);
 }
 
+// Water tiles: the coast there is drawn along the smooth coastline instead
+// of the tile edge.
+bool isWater(ivec2 c) {
+  if (c.x < 0 || c.y < 0 || c.x >= int(uMapSize.x) || c.y >= int(uMapSize.y))
+    return false;
+  return tileCoastSdf(c) < 0.0;
+}
+
 // Borders are anti-aliased lines along the tile edges an owned tile shares
 // with another owner (or with unowned land and water), at a near-constant
 // on-screen width: a thin dark seam right at the edge, so neighbouring
@@ -43,6 +56,11 @@ uint ownerAt(ivec2 c) {
 // edge draws its own half, so two empires meet as line | seam | seam | line.
 // Zoomed far out a tile is under a pixel and the line simply covers the edge
 // tiles, as the old tile stamp did.
+//
+// Along the sea the line follows the smooth coastline the terrain draws
+// (shaders/shared/terrain-light.glsl), not the tile edge: an edge toward a
+// water tile is replaced by the distance to that line, a water tile the land
+// bulges into draws its land neighbour's line, and nothing is drawn past it.
 void main() {
   // Screen footprint of a tile, taken before any branch so the derivatives
   // are well defined: tiles per pixel along each world axis. It is the local
@@ -51,8 +69,17 @@ void main() {
   float tpx = max(length(vec2(dFdx(p.x), dFdy(p.x))), 1e-5);
   float tpy = max(length(vec2(dFdx(p.y), dFdy(p.y))), 1e-5);
 
+  // Pixels from the smooth coastline (+ inland), taken before any branch.
+  float coast = coastSdfAt(p / uMapSize);
+  float coastRate = max(length(vec2(dFdx(coast), dFdy(coast))), 1e-5);
+  float dCoast = coast / coastRate;
+
   ivec2 tc = ivec2(floor(p));
   if (tc.x < 0 || tc.y < 0 || tc.x >= int(uMapSize.x) || tc.y >= int(uMapSize.y)) discard;
+  if (dCoast < -1.0) discard;
+  // A water tile shows the land that bulges into it, and only its coast.
+  bool onWater = isWater(tc);
+  if (onWater) tc = coastTile(p, tc, uMapSize);
 
   uint owner = texelFetch(uTileTex, tc, 0).r & uint(OWNER_MASK);
   if (owner == 0u) discard;
@@ -68,34 +95,45 @@ void main() {
   // Widest the line can get (a hovered player's is thicker), plus AA.
   float reach = max(lineW * 1.75, bandW) + 1.0;
 
-  // Distance in pixels from this pixel to each edge of its tile.
-  vec2 f = p - vec2(tc);
-  float dl = f.x / tpx;
-  float dr = (1.0 - f.x) / tpx;
-  float dt = f.y / tpy;
-  float db = (1.0 - f.y) / tpy;
-  if (min(min(dl, dr), min(dt, db)) > reach) discard;
-
-  bool nl = dl < reach;
-  bool nr = dr < reach;
-  bool nt = dt < reach;
-  bool nb = db < reach;
   // Pixels to the nearest edge shared with another owner (d), and to the
   // nearest one shared with another empire rather than unowned land or water
-  // (dEmpire): only those get the dark seam.
-  float d = 1e6;
+  // (dEmpire): only those get the dark seam. The sea counts from the smooth
+  // coastline instead of the tile edge.
+  float d = max(dCoast, 0.0);
   float dEmpire = 1e6;
-  uint o;
-  if (nl && (o = ownerAt(tc + ivec2(-1, 0))) != owner) { d = min(d, dl); if (o != 0u) dEmpire = min(dEmpire, dl); }
-  if (nr && (o = ownerAt(tc + ivec2(1, 0))) != owner) { d = min(d, dr); if (o != 0u) dEmpire = min(dEmpire, dr); }
-  if (nt && (o = ownerAt(tc + ivec2(0, -1))) != owner) { d = min(d, dt); if (o != 0u) dEmpire = min(dEmpire, dt); }
-  if (nb && (o = ownerAt(tc + ivec2(0, 1))) != owner) { d = min(d, db); if (o != 0u) dEmpire = min(dEmpire, db); }
-  // Corners where only the diagonal neighbour differs, so the lines meeting
-  // at an inside corner join without a notch.
-  if (nl && nt && (o = ownerAt(tc + ivec2(-1, -1))) != owner) { float c = length(vec2(dl, dt)); d = min(d, c); if (o != 0u) dEmpire = min(dEmpire, c); }
-  if (nr && nt && (o = ownerAt(tc + ivec2(1, -1))) != owner) { float c = length(vec2(dr, dt)); d = min(d, c); if (o != 0u) dEmpire = min(dEmpire, c); }
-  if (nl && nb && (o = ownerAt(tc + ivec2(-1, 1))) != owner) { float c = length(vec2(dl, db)); d = min(d, c); if (o != 0u) dEmpire = min(dEmpire, c); }
-  if (nr && nb && (o = ownerAt(tc + ivec2(1, 1))) != owner) { float c = length(vec2(dr, db)); d = min(d, c); if (o != 0u) dEmpire = min(dEmpire, c); }
+  if (!onWater) {
+    // Distance in pixels from this pixel to each edge of its tile.
+    vec2 f = p - vec2(tc);
+    float dl = f.x / tpx;
+    float dr = (1.0 - f.x) / tpx;
+    float dt = f.y / tpy;
+    float db = (1.0 - f.y) / tpy;
+    if (min(min(dl, dr), min(dt, db)) > reach && d > reach) discard;
+
+    bool nl = dl < reach;
+    bool nr = dr < reach;
+    bool nt = dt < reach;
+    bool nb = db < reach;
+    uint o;
+    ivec2 q = tc + ivec2(-1, 0);
+    if (nl && !isWater(q) && (o = ownerAt(q)) != owner) { d = min(d, dl); if (o != 0u) dEmpire = min(dEmpire, dl); }
+    q = tc + ivec2(1, 0);
+    if (nr && !isWater(q) && (o = ownerAt(q)) != owner) { d = min(d, dr); if (o != 0u) dEmpire = min(dEmpire, dr); }
+    q = tc + ivec2(0, -1);
+    if (nt && !isWater(q) && (o = ownerAt(q)) != owner) { d = min(d, dt); if (o != 0u) dEmpire = min(dEmpire, dt); }
+    q = tc + ivec2(0, 1);
+    if (nb && !isWater(q) && (o = ownerAt(q)) != owner) { d = min(d, db); if (o != 0u) dEmpire = min(dEmpire, db); }
+    // Corners where only the diagonal neighbour differs, so the lines
+    // meeting at an inside corner join without a notch.
+    q = tc + ivec2(-1, -1);
+    if (nl && nt && !isWater(q) && (o = ownerAt(q)) != owner) { float c = length(vec2(dl, dt)); d = min(d, c); if (o != 0u) dEmpire = min(dEmpire, c); }
+    q = tc + ivec2(1, -1);
+    if (nr && nt && !isWater(q) && (o = ownerAt(q)) != owner) { float c = length(vec2(dr, dt)); d = min(d, c); if (o != 0u) dEmpire = min(dEmpire, c); }
+    q = tc + ivec2(-1, 1);
+    if (nl && nb && !isWater(q) && (o = ownerAt(q)) != owner) { float c = length(vec2(dl, db)); d = min(d, c); if (o != 0u) dEmpire = min(dEmpire, c); }
+    q = tc + ivec2(1, 1);
+    if (nr && nb && !isWater(q) && (o = ownerAt(q)) != owner) { float c = length(vec2(dr, db)); d = min(d, c); if (o != 0u) dEmpire = min(dEmpire, c); }
+  }
   if (d >= reach) discard;
 
   // Pre-computed border flags from BorderComputePass
@@ -140,7 +178,8 @@ void main() {
   vec3 bandColor = mix(fill, bc, 0.5) * uBandDarken;
   vec3 color = mix(bandColor, bc, line);
   color = mix(color, bc * uSeamDarken, seam);
-  float alpha = max(line, band);
+  // Nothing past the coastline.
+  float alpha = max(line, band) * clamp(dCoast + 0.5, 0.0, 1.0);
   if (alpha < 0.004) discard;
   fragColor = vec4(color, alpha);
 }

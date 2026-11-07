@@ -8,12 +8,23 @@ import {
   HEIGHT_MAP_UNIT,
 } from "../camera/CameraBlock";
 import cameraGlsl from "../shaders/shared/camera.glsl?raw";
+import terrainLightGlsl from "../shaders/shared/terrain-light.glsl?raw";
 
-/** Expand `#include "camera"` (see camera/CameraBlock.ts). */
+/** The terrain light and coast include (shaders/shared/terrain-light.glsl). */
+export const TERRAIN_LIGHT_INCLUDE = '#include "terrain-light"';
+
+/**
+ * Expand `#include "camera"` (see camera/CameraBlock.ts) and
+ * `#include "terrain-light"` (after the camera, which it reads).
+ */
 export function expandShaderIncludes(source: string): string {
-  return source.includes(CAMERA_INCLUDE)
-    ? source.replace(CAMERA_INCLUDE, cameraGlsl)
-    : source;
+  let out = source;
+  if (out.includes(CAMERA_INCLUDE))
+    out = out.replace(CAMERA_INCLUDE, cameraGlsl);
+  if (out.includes(TERRAIN_LIGHT_INCLUDE)) {
+    out = out.replace(TERRAIN_LIGHT_INCLUDE, terrainLightGlsl);
+  }
+  return out;
 }
 
 /**
