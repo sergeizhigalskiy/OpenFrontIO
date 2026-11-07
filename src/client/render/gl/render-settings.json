@@ -27,7 +27,7 @@
   "mapView": {
     "mode": "isometric",
     "tiltDeg": 30,
-    "isoElevationDeg": 30,
+    "isoElevationDeg": 45,
     "fovDeg": 40,
     "heightScale": 0.3,
     "lodTargetPx": 10,

@@ -7,7 +7,10 @@ import { GameUpdateType } from "@openfront/engine-api/game/GameUpdates";
 import { LitElement, html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { Controller } from "../../Controller";
-import { translateText } from "../../Utils";
+import { Platform } from "../../Platform";
+import renderDefaults from "../../render/gl/render-settings.json";
+import { UserSettings } from "../../UserSettings";
+import { formatKeyForDisplay, translateText } from "../../Utils";
 import { GameView } from "../../view";
 
 const COLLUSION_WARNING_CLOSED_KEY = "hasClosedCollusionWarning";
@@ -231,6 +234,32 @@ export class HeadsUpMessage extends LitElement implements Controller {
       : translateText("heads_up_message.choose_spawn");
   }
 
+  /**
+   * While the banner shows the spawn prompt in the isometric view, a second
+   * line with the camera controls (the player's own Orbit Camera and Reset
+   * View keys). Null otherwise, and on touch devices, which have no keys.
+   */
+  private cameraHint(): string | null {
+    if (
+      this.isCatchingUp ||
+      this.isPaused ||
+      this.isImmunityActive ||
+      this.isOvertimeNotice ||
+      Platform.isTouch
+    ) {
+      return null;
+    }
+    const settings = new UserSettings();
+    const mode =
+      settings.graphicsOverrides().mapView?.mode ?? renderDefaults.mapView.mode;
+    if (mode !== "isometric") return null;
+    const keybinds = settings.keybinds(Platform.isMac);
+    return translateText("heads_up_message.camera_hint", {
+      orbit: keyName(keybinds.orbitModifier ?? "AltLeft"),
+      reset: keyName(keybinds.resetView ?? "KeyV"),
+    });
+  }
+
   private onCloseCollusionWarning = (): void => {
     localStorage.setItem(COLLUSION_WARNING_CLOSED_KEY, "true");
     this.hasClosedCollusionWarning = true;
@@ -302,7 +331,7 @@ export class HeadsUpMessage extends LitElement implements Controller {
             ? html`
                 <div
                   class="fixed top-[15%] left-1/2 -translate-x-1/2 z-[799]
-                            inline-flex items-center justify-center min-h-8 lg:min-h-10
+                            inline-flex flex-col items-center justify-center min-h-8 lg:min-h-10
                             w-fit max-w-[90vw]
                             bg-gray-800/70 rounded-md lg:rounded-lg
                             backdrop-blur-xs text-white text-md lg:text-xl px-3 lg:px-4 py-1
@@ -311,6 +340,17 @@ export class HeadsUpMessage extends LitElement implements Controller {
                   @contextmenu=${(e: MouseEvent) => e.preventDefault()}
                 >
                   ${this.getMessage()}
+                  ${(() => {
+                    const hint = this.cameraHint();
+                    return hint === null
+                      ? null
+                      : html`<div
+                          data-camera-hint
+                          class="text-xs lg:text-sm text-white/80"
+                        >
+                          ${hint}
+                        </div>`;
+                  })()}
                 </div>
               `
             : null
@@ -348,4 +388,13 @@ export class HeadsUpMessage extends LitElement implements Controller {
       </div>
     `;
   }
+}
+
+/** A key code as the camera hint names it: "AltLeft" reads as "Alt". */
+function keyName(code: string): string {
+  if (/^Alt(Left|Right)$/.test(code)) return "Alt";
+  if (/^Control(Left|Right)$/.test(code)) return "Ctrl";
+  if (/^Shift(Left|Right)$/.test(code)) return "Shift";
+  if (/^Meta(Left|Right)$/.test(code)) return Platform.isMac ? "Cmd" : "Win";
+  return formatKeyForDisplay(code);
 }

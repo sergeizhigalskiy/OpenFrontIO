@@ -12,6 +12,7 @@ import {
   type MapViewSource,
 } from "../../src/client/render/gl/camera/MapViewSource";
 import {
+  DEFAULT_ELEVATION_DEG,
   ISO_BASE_YAW_DEG,
   MAX_ELEVATION_DEG,
   MIN_ELEVATION_DEG,
@@ -215,8 +216,10 @@ describe.each(ORBITS)(
 );
 
 describe("isometric orbit", () => {
-  it("starts as 2:1 isometric with north up and to the right", () => {
-    const { handler } = makeHandler();
+  it("starts looking north from the bottom of the map, 45 degrees up", () => {
+    expect(ISO_BASE_YAW_DEG).toBe(0);
+    expect(DEFAULT_ELEVATION_DEG).toBe(45);
+    const { handler } = makeHandler(ISO_BASE_YAW_DEG, DEFAULT_ELEVATION_DEG);
     const corners = [
       [400, 300],
       [401, 300],
@@ -227,11 +230,13 @@ describe("isometric orbit", () => {
     const ys = corners.map((c) => c.y);
     const w = Math.max(...xs) - Math.min(...xs);
     const h = Math.max(...ys) - Math.min(...ys);
-    expect(w / h).toBeCloseTo(2, 6);
-    expect(w).toBeCloseTo(Math.SQRT2 * 2.5, 6);
+    // Square to the screen: a tile keeps its width and is foreshortened by
+    // the sine of the elevation.
+    expect(w).toBeCloseTo(2.5, 6);
+    expect(h / w).toBeCloseTo(Math.SQRT1_2, 6);
     const a = handler.worldToScreenCoordinates(new Cell(400, 300));
     const n = handler.worldToScreenCoordinates(new Cell(400, 290));
-    expect(n.x).toBeGreaterThan(a.x);
+    expect(n.x).toBeCloseTo(a.x, 6);
     expect(n.y).toBeLessThan(a.y);
   });
 
@@ -285,9 +290,9 @@ describe("ViewOrbit", () => {
     const o = new ViewOrbit(30, 100);
     expect(o.yawDeg()).toBe(ISO_BASE_YAW_DEG);
     o.orbit(50, 0);
-    expect(o.yawDeg()).toBeCloseTo(5, 9);
-    o.orbit(-12.5, 0);
-    expect(o.yawDeg()).toBeCloseTo(352.5, 9);
+    expect(o.yawDeg()).toBeCloseTo(50, 9);
+    o.orbit(-62.5, 0);
+    expect(o.yawDeg()).toBeCloseTo(347.5, 9);
   });
 
   it("keeps the tilt between a low oblique view and nearly top-down", () => {

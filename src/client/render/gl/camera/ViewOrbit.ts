@@ -5,10 +5,11 @@
  * no GL or DOM.
  *
  * The yaw is the compass azimuth of the ground direction pointing up the
- * screen. The default view is classic 2:1 isometric: yaw ISO_BASE_YAW_DEG
- * (north-west up, so the map's top-left corner, tile 0,0, is the top of the
- * diamond and north points up and to the right) at the default elevation
- * (mapView.isoElevationDeg). orbit() turns the camera by a delta: positive
+ * screen. The default view looks north from the bottom edge of the map:
+ * yaw ISO_BASE_YAW_DEG (north up, the map square to the screen) at the
+ * default elevation (mapView.isoElevationDeg, 45 degrees), the designer's
+ * pick over the old diamond (north-west up, 30 degrees). orbit() turns the
+ * camera by a delta: positive
  * yaw turns it to its left (the map turns counter-clockwise on screen),
  * positive elevation raises it toward top-down.
  *
@@ -17,10 +18,10 @@
  * picks, so a click mid-orbit still lands on the tile drawn under it.
  */
 
-/** Yaw of the default view: north-west points up the screen. */
-export const ISO_BASE_YAW_DEG = 315;
-/** Elevation of the default view: 2:1 dimetric. */
-export const DEFAULT_ELEVATION_DEG = 30;
+/** Yaw of the default view: north points up the screen. */
+export const ISO_BASE_YAW_DEG = 0;
+/** Elevation of the default view: 45 degrees above the ground. */
+export const DEFAULT_ELEVATION_DEG = 45;
 /** Lowest camera elevation: a low oblique view across the land. */
 export const MIN_ELEVATION_DEG = 20;
 /** Highest camera elevation: nearly straight down. */
