@@ -1,7 +1,7 @@
 /**
  * Smoke run of the merged game: every default-on feature at once (ruins,
- * city-states, seasons, weather, gold mines, defense post levels, rail cuts
- * and blockades), plus each lobby mode in turn: Boss Raid, Horde Night, the
+ * city-states, seasons, weather, defense post levels, rail cuts and
+ * blockades), plus each lobby mode in turn: Boss Raid, Horde Night, the
  * plague, volcanoes and the rising tide. Each game runs through GameRunner
  * with the real production rules and nations on the world test map, long
  * enough for its mode to act, and must never throw.
@@ -33,7 +33,6 @@ import { RISING_TIDE_FIRST_WAVE_TICKS } from "@openfront/engine-lib/game/RisingT
 import { VOLCANO_FIRST_RUMBLE_TICKS } from "@openfront/engine-lib/game/Volcanoes";
 import { EngineConfig } from "@openfront/engine/configuration/EngineConfig";
 import { Executor } from "@openfront/engine/execution/ExecutionManager";
-import { resourceSitesOf } from "@openfront/engine/execution/ResourceSiteExecution";
 import { SpawnExecution } from "@openfront/engine/execution/SpawnExecution";
 import { Game } from "@openfront/engine/game/Game";
 import { GameRunner } from "@openfront/engine/GameRunner";
@@ -69,11 +68,9 @@ function worldNations(): Nation[] {
     );
 }
 
-// Every default-on feature is on when absent; gold mines are turned on by
-// the lobbies and GameManager, so here too. Hard nations upgrade posts.
+// Every default-on feature is on when absent. Hard nations upgrade posts.
 const DEFAULTS: Partial<GameConfig> = {
   difficulty: Difficulty.Hard,
-  resourceSites: true,
   bots: 40,
 };
 
@@ -193,7 +190,6 @@ async function run(mode: Mode): Promise<void> {
   expect(
     game.ruins().size + game.allPlayers().filter((p) => p.isCityState()).length,
   ).toBeGreaterThan(0);
-  expect(resourceSitesOf(game).length).toBeGreaterThan(0);
   expect(game.config().seasonsEnabled() && game.config().weatherEnabled()).toBe(
     true,
   );

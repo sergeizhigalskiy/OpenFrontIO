@@ -379,10 +379,6 @@ export const GameConfigSchema = z.object({
   // Weather systems: mud fronts, sea storms and fog drifting over the map
   // (see engine-lib/game/Weather.ts). On when absent.
   weather: z.boolean().optional(),
-  // Resource sites: gold mines placed at game start that pay whoever holds
-  // their tile (see engine-lib/game/ResourceSites.ts). Off when absent, so
-  // older records replay unchanged; the lobbies and GameManager turn it on.
-  resourceSites: z.boolean().optional(),
   // Teams whose nations play one difficulty harder because the humans are
   // stacked on other teams (engine-lib/game/TeamAssignment.ts). Not a lobby
   // setting: the engine fills it in when it creates the game.

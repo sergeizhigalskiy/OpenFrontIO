@@ -15,7 +15,6 @@ import { z } from "zod";
 import { Execution, Game } from "../game/Game";
 import {
   cityStateZones,
-  mineZones,
   overlapsZone,
   spawnsSettled,
   volcanoZones,
@@ -26,7 +25,6 @@ import type {
   SnapshotReader,
   SnapshotWriter,
 } from "../snapshot/SnapshotContext";
-import { resourceSitesOf } from "./ResourceSiteExecution";
 import { volcanoSitesOf } from "./VolcanoExecution";
 
 /** Seed offset from the game id, apart from the other game-seeded PRNGs. */
@@ -105,11 +103,10 @@ export function placeRuins(
     spawns.push(game.ref(cell.x, cell.y));
   }
 
-  // City-states, volcanoes and mines came first (StartPlacements).
+  // City-states and volcanoes came first (StartPlacements).
   const taken = [
     ...cityStateZones(game),
     ...volcanoZones(volcanoSitesOf(game)),
-    ...mineZones(resourceSitesOf(game)),
   ];
   const spawnDist2 = RUIN_MIN_SPAWN_DISTANCE * RUIN_MIN_SPAWN_DISTANCE;
   const spacing2 = RUIN_MIN_SPACING * RUIN_MIN_SPACING;

@@ -282,11 +282,6 @@ export class Config implements AttackRules {
     return this.seasonsEnabled() && isWinterAt(ticksSinceStart);
   }
 
-  /** Gold mines on the map (see game/ResourceSites.ts). Off when absent. */
-  resourceSites(): boolean {
-    return this._gameConfig.resourceSites ?? false;
-  }
-
   isUnitDisabled(unitType: UnitType): boolean {
     return this._gameConfig.disabledUnits?.includes(unitType) ?? false;
   }

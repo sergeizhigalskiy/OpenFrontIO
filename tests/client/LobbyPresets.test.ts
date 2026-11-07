@@ -209,6 +209,20 @@ describe("LobbyPresets logic and schema", () => {
     }
   });
 
+  it("loads a preset saved with the resource sites toggle, without it", () => {
+    const raw = JSON.stringify([
+      {
+        name: "Old sites preset",
+        createdAt: 400,
+        config: { ...sampleConfig, resourceSites: false },
+      },
+    ]);
+    const parsed = parseLobbyPresetsJson(raw);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].config).toEqual(sampleConfig);
+    expect(parsed[0].config).not.toHaveProperty("resourceSites");
+  });
+
   it("rejects invalid teamCount options in LobbyPresetConfigSchema", () => {
     const invalidTeam = {
       ...sampleConfig,
@@ -974,6 +988,46 @@ describe("HostLobbyModal preset integration", () => {
     );
   });
 
+  it("imports a preset saved with resourceSites and sends no resourceSites", async () => {
+    // Saved while lobbies had the resource sites toggle: it is ignored, the
+    // world options next to it still load.
+    const [preset] = parseLobbyPresetsJson(
+      JSON.stringify([
+        {
+          name: "Old sites preset",
+          config: {
+            gameMap: GameMapType.World,
+            difficulty: Difficulty.Medium,
+            gameMode: GameMode.FFA,
+            teamCount: 2,
+            bots: 10,
+            weather: false,
+            ruins: false,
+            resourceSites: true,
+          },
+        },
+      ]),
+    );
+    expect(preset).toBeDefined();
+    await modal.importPresetConfig(preset.config);
+
+    modal.putGameConfig = HostLobbyModal.prototype["putGameConfig"];
+    modal.constructUrl = vi.fn(async () => "http://localhost/");
+    modal.updateLobbyHistory = vi.fn();
+    let sent: any;
+    modal.addEventListener("update-game-config", (e: CustomEvent) => {
+      sent = e.detail.config;
+    });
+    await modal.putGameConfig();
+
+    expect(sent).toBeDefined();
+    expect(sent).not.toHaveProperty("resourceSites");
+    expect(sent.weather).toBe(false);
+    expect(sent.ruins).toBe(false);
+    expect(modal).not.toHaveProperty("resourceSites");
+    expect(modal.exportPresetConfig()).not.toHaveProperty("resourceSites");
+  });
+
   it("maps nations config between slider and preset accurately on export and import", async () => {
     modal.defaultNationCount = 10;
     modal.nations = 10;
@@ -1174,6 +1228,21 @@ describe("SinglePlayerModal preset integration", () => {
     expect(targetModal.waterNukes).toBe(true);
     expect(targetModal.doomsdayClock).toBe(true);
     expect(targetModal.doomsdayClockSpeed).toBe("veryfast");
+  });
+
+  it("imports a preset saved with resourceSites and exports none", async () => {
+    await modal.importPresetConfig({
+      gameMap: GameMapType.World,
+      difficulty: Difficulty.Medium,
+      gameMode: GameMode.FFA,
+      teamCount: 2,
+      bots: 10,
+      weather: false,
+      resourceSites: false,
+    });
+    expect(modal.weather).toBe(false);
+    expect(modal).not.toHaveProperty("resourceSites");
+    expect(modal.exportPresetConfig()).not.toHaveProperty("resourceSites");
   });
 
   it("maps nations config between slider and preset accurately on export and import", async () => {

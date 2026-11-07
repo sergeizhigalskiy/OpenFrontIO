@@ -33,7 +33,6 @@ import type {
 } from "../types";
 import type { MapViewSource } from "./camera/MapViewSource";
 import type { BlockadeMarker } from "./passes/BlockadePass";
-import type { ResourceSiteMarker } from "./passes/ResourceSitePass";
 import type { RuinMarker } from "./passes/RuinsPass";
 import type { SpawnCenter } from "./passes/SpawnOverlayPass";
 import type { VolcanoMarker } from "./passes/VolcanoPass";
@@ -363,11 +362,6 @@ export class MapRenderer {
   /** The blockaded ports to ring (see BlockadePass). */
   updateBlockades(ports: BlockadeMarker[]): void {
     this.renderer?.updateBlockades(ports);
-  }
-
-  /** The resource sites to draw. */
-  updateResourceSites(sites: ResourceSiteMarker[]): void {
-    this.renderer?.updateResourceSites(sites);
   }
 
   /** Set the small-player glow set (1 byte per owner smallID), or null = off. */

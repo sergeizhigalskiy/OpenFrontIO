@@ -70,8 +70,6 @@ export abstract class AiAttackBehavior {
       triggerRatio: this.triggerRatio,
       reserveRatio: this.reserveRatio,
       expandRatio: this.expandRatio,
-      sitesHeld: w.tiles(nation.sitesHeld),
-      sitesLost: w.tiles(nation.sitesLost),
       stallWatch: nation.stallWatch.map((s) => ({
         attack: w.attack(s.attack),
         tick: s.tick,
@@ -518,17 +516,11 @@ export interface StallWatch {
 
 /** What a nation remembers between attack ticks (tribes: nothing). */
 export interface NationAttackMemory {
-  /** Resource sites (by tile) it held at its last look. */
-  sitesHeld: TileRef[];
-  /** Sites it held and a hostile player has taken since. */
-  sitesLost: TileRef[];
   /** Impossible: its land attacks on players, as last seen. */
   stallWatch: StallWatch[];
 }
 
 const EMPTY_NATION_MEMORY: NationAttackMemory = {
-  sitesHeld: [],
-  sitesLost: [],
   stallWatch: [],
 };
 
@@ -538,8 +530,6 @@ const AiAttackStateSchema = z.object({
   triggerRatio: zNum(),
   reserveRatio: zNum(),
   expandRatio: zNum(),
-  sitesHeld: zTiles(),
-  sitesLost: zTiles(),
   stallWatch: z.array(
     z.object({ attack: zRef(), tick: zNum(), tiles: zTiles() }),
   ),
@@ -548,7 +538,7 @@ type AiAttackState = z.infer<typeof AiAttackStateSchema>;
 
 export const AiAttackBehaviorSnapshot = snapshotType({
   name: "AiAttackBehavior",
-  version: 3,
+  version: 4,
   schema: AiAttackStateSchema,
   migrations: {
     // v1 nations never followed up landings
@@ -560,5 +550,8 @@ export const AiAttackBehaviorSnapshot = snapshotType({
       sitesLost: new Uint32Array(0),
       stallWatch: [],
     }),
+    // v4 dropped the resource sites a nation held and lost, with the removed
+    // sites (zod strips them from older records).
+    3: (d) => d,
   },
 });

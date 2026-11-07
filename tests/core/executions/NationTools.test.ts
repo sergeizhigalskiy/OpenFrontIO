@@ -1,8 +1,8 @@
 /**
  * Nations use every tool the human has (spec, Nation AI, the difficulty
  * ladder): the attack forecast to pick fronts, weighing defense posts,
- * spearheads, ruins and resource sites, city-state ratios, blockade defence
- * and rail cuts, each by difficulty, read through Config.difficultyFor.
+ * spearheads, ruins, city-state ratios, blockade defence and rail cuts,
+ * each by difficulty, read through Config.difficultyFor.
  */
 import { TileRef } from "@openfront/engine-api/game/GameMap";
 import {
@@ -18,10 +18,6 @@ import {
 import { TerrainFeature } from "@openfront/engine-api/game/TerrainFeature";
 import { GameConfig } from "@openfront/engine-api/Schemas";
 import { GameMapImpl } from "@openfront/engine-lib/game/GameMapImpl";
-import {
-  ResourceSite,
-  ResourceSiteKind,
-} from "@openfront/engine-lib/game/ResourceSites";
 import { SEASON_CYCLE_TICKS } from "@openfront/engine-lib/game/Seasons";
 import { packTerrainFeatures } from "@openfront/engine-lib/game/TerrainFeatures";
 import { RuinReward } from "@openfront/engine-lib/game/WorldFeatures";
@@ -61,12 +57,7 @@ import {
   prizeToSeek,
   ruinSeekRange,
   ruinToSeek,
-  siteSeekRange,
 } from "@openfront/engine/execution/nation/NationWorldFeatures";
-import {
-  ResourceSiteExecution,
-  resourceSitesOf,
-} from "@openfront/engine/execution/ResourceSiteExecution";
 import { Game, Player, Unit } from "@openfront/engine/game/Game";
 import { createGame as createGameImpl } from "@openfront/engine/game/GameImpl";
 import { Railroad } from "@openfront/engine/game/Railroad";
@@ -113,11 +104,8 @@ interface Inside {
   worthwhileStack(target: Player, troops: number): number;
   reaimStalledAttacks(): void;
   retakeRailCut(): boolean;
-  trackSites(): void;
-  retakeLostSite(): boolean;
   botAttackTroopsNeeded(bot: Player): number;
   botTileLoss(bot: Player, stack: number): number;
-  sitesLost: TileRef[];
 }
 const inside = (b: NationAttackBehavior) => b as unknown as Inside;
 
@@ -530,10 +518,9 @@ function rail(
   return r;
 }
 
-describe("ruins and resource sites", () => {
-  it("nations go for ruins within 15, 40, 80 and 120 tiles; sites from Medium", () => {
+describe("ruins", () => {
+  it("nations go for ruins within 15, 40, 80 and 120 tiles", () => {
     expect(DIFFICULTIES.map(ruinSeekRange)).toEqual([15, 40, 80, 120]);
-    expect(DIFFICULTIES.map(siteSeekRange)).toEqual([0, 40, 80, 120]);
     expect(ISLAND_RUIN_BOAT_RANGE).toBe(60);
   });
 
@@ -550,14 +537,6 @@ describe("ruins and resource sites", () => {
     };
     nation.setTroops(100_000);
     return { game, nation };
-  }
-
-  /** Registers `tiles` as the game's gold mines (no execution runs). */
-  function mines(game: Game, tiles: TileRef[]): void {
-    new ResourceSiteExecution("TOOLS").init(game, 0);
-    const sites = resourceSitesOf(game) as ResourceSite[];
-    for (const tile of tiles)
-      sites.push({ tile, kind: ResourceSiteKind.GoldMine });
   }
 
   it("each difficulty goes for a ruin only within its range", async () => {
@@ -581,26 +560,6 @@ describe("ruins and resource sites", () => {
       }
       expect(ruinToSeek(game, nation)).toBeNull();
     }
-  });
-
-  it("Medium and up go for an unpaid site on free land; Easy doesn't", async () => {
-    for (const difficulty of DIFFICULTIES) {
-      const { game, nation } = await nationAt(difficulty);
-      const near = game.ref(69, 30); // 30 tiles out
-      mines(game, [near]);
-      expect(ruinToSeek(game, nation), difficulty).toBe(
-        difficulty === Difficulty.Easy ? null : near,
-      );
-    }
-    // A site some player is paid for is no prize.
-    const { game, nation } = await nationAt(Difficulty.Hard);
-    const held = game.ref(60, 30);
-    mines(game, [held]);
-    const human = game.addPlayer(
-      new PlayerInfo("human", PlayerType.Human, "c_h", "human"),
-    );
-    human.conquer(held);
-    expect(ruinToSeek(game, nation)).toBeNull();
   });
 
   it("nations go after a ruin a tribe sits on, and that tribe first", async () => {
@@ -633,34 +592,6 @@ describe("ruins and resource sites", () => {
     behaviorFor(game, nation).maybeAttack();
     // Easy attacks one tribe at a time: the one on the ruin, at the ruin.
     expect(sent()).toEqual([{ target: sitting.id(), focus: ruin }]);
-  });
-
-  it("Medium and up retake a site a hostile player took from them", async () => {
-    for (const difficulty of DIFFICULTIES) {
-      const { game, nation } = await nationAt(difficulty);
-      const site = game.ref(30, 39);
-      mines(game, [site]);
-      const enemy = game.addPlayer(nationInfo("enemy"));
-      conquerRect(game, enemy, 20, 40, 40, 60);
-      enemy.setTroops(10_000);
-      const b = inside(behaviorFor(game, nation));
-      b.trackSites();
-      enemy.conquer(site);
-      b.trackSites();
-      const sent = attacksSent(game);
-      if (difficulty === Difficulty.Easy) {
-        expect(b.sitesLost).toEqual([]);
-        expect(b.retakeLostSite()).toBe(false);
-        continue;
-      }
-      expect(b.sitesLost).toEqual([site]);
-      expect(b.retakeLostSite(), difficulty).toBe(true);
-      expect(sent()).toEqual([{ target: enemy.id(), focus: site }]);
-      // Retaken, it is no longer lost.
-      nation.conquer(site);
-      b.trackSites();
-      expect(b.sitesLost).toEqual([]);
-    }
   });
 
   it("Impossible boats to a ruin on an island within 60 tiles", () => {

@@ -462,13 +462,6 @@ export class EngineConfig extends Config {
     return BigInt(Math.floor(Number(baseRate) * multiplier));
   }
 
-  /** What a resource site paying `goldPerTick` gives `player` per tick. */
-  resourceSiteGold(player: PlayerLike, goldPerTick: Gold): Gold {
-    return BigInt(
-      Math.floor(Number(goldPerTick) * this.goldMultiplierFor(player)),
-    );
-  }
-
   /**
    * The bounty `conqueror` gets for eliminating a city-state:
    * CITY_STATE_CONQUEST_GOLD times their gold multiplier.

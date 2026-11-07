@@ -38,7 +38,6 @@ const COPIED_KEYS = [
   "plague",
   "seasons",
   "weather",
-  "resourceSites",
   "anonymizeNames",
   "nameReveals",
   "nameRevealPublicIds",

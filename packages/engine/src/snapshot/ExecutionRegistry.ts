@@ -33,7 +33,6 @@ import { PlayerExecutionSnapshot } from "../execution/PlayerExecution";
 import { PortExecutionSnapshot } from "../execution/PortExecution";
 import { QuickChatExecutionSnapshot } from "../execution/QuickChatExecution";
 import { RecomputeRailClusterExecutionSnapshot } from "../execution/RecomputeRailClusterExecution";
-import { ResourceSiteExecutionSnapshot } from "../execution/ResourceSiteExecution";
 import { RetreatExecutionSnapshot } from "../execution/RetreatExecution";
 import { RisingTideExecutionSnapshot } from "../execution/RisingTideExecution";
 import { RuinsExecutionSnapshot } from "../execution/RuinsExecution";
@@ -64,8 +63,9 @@ import type { ExecutionSnapshotType } from "./ExecutionSnapshot";
  *
  * Retired without a replacement, so never reuse these record names:
  * "Airbase", "AirMission", "Canal", "CoastalBattery", "Drone", "DroneSwarm",
- * "FlakGun" and "Minefield" (the units removed from the fork; their old
- * records no longer restore, see snapshot/README.md).
+ * "FlakGun" and "Minefield" (the units removed from the fork), and
+ * "ResourceSite" (the removed gold mines, oil fields and fishing grounds).
+ * Their old records no longer restore, see snapshot/README.md.
  */
 export const EXECUTION_SNAPSHOT_TYPES = [
   AllianceExtensionExecutionSnapshot,
@@ -121,5 +121,4 @@ export const EXECUTION_SNAPSHOT_TYPES = [
   WarshipExecutionSnapshot,
   WeatherExecutionSnapshot,
   WinCheckExecutionSnapshot,
-  ResourceSiteExecutionSnapshot,
 ] as unknown as readonly ExecutionSnapshotType<unknown>[];

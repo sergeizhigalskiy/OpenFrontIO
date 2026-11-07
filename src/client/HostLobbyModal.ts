@@ -156,7 +156,6 @@ export class HostLobbyModal extends BaseModal {
   // On by default (the sim's default too).
   @state() private seasons: boolean = true;
   @state() private weather: boolean = true;
-  @state() private resourceSites: boolean = true;
   @state() private lobbyId = "";
   @state() private lobbyUrlSuffix = "";
   @state() private clients: ClientInfo[] = [];
@@ -811,10 +810,6 @@ export class HostLobbyModal extends BaseModal {
                     checked: this.weather,
                   },
                   {
-                    labelKey: "game_settings.resource_sites",
-                    checked: this.resourceSites,
-                  },
-                  {
                     labelKey: "game_settings.doomsday_clock",
                     checked: this.doomsdayClock,
                     doomsdayClockSpeed: this.doomsdayClockSpeed,
@@ -1167,7 +1162,6 @@ export class HostLobbyModal extends BaseModal {
     this.plague = false;
     this.seasons = true;
     this.weather = true;
-    this.resourceSites = true;
     this.publiclyListed = false;
     this.showSubscriptionRequired = false;
     this.showListLobbyDialog = false;
@@ -1391,10 +1385,6 @@ export class HostLobbyModal extends BaseModal {
         break;
       case "game_settings.weather":
         this.weather = checked;
-        void this.putGameConfig();
-        break;
-      case "game_settings.resource_sites":
-        this.resourceSites = checked;
         void this.putGameConfig();
         break;
       case "game_settings.doomsday_clock":
@@ -1862,7 +1852,6 @@ export class HostLobbyModal extends BaseModal {
       risingTide: this.risingTide,
       seasons: this.seasons,
       weather: this.weather,
-      resourceSites: this.resourceSites,
       doomsdayClock: this.doomsdayClock,
       doomsdayClockSpeed: this.doomsdayClockSpeed,
       overtime: this.overtime,
@@ -1912,7 +1901,6 @@ export class HostLobbyModal extends BaseModal {
     this.risingTide = config.risingTide ?? false;
     this.seasons = config.seasons ?? true;
     this.weather = config.weather ?? true;
-    this.resourceSites = config.resourceSites ?? true;
     this.doomsdayClock = config.doomsdayClock ?? false;
     this.doomsdayClockSpeed = config.doomsdayClockSpeed ?? "normal";
     this.overtime = config.overtime ?? false;
@@ -2100,7 +2088,6 @@ export class HostLobbyModal extends BaseModal {
             plague: this.plague,
             seasons: this.seasons,
             weather: this.weather,
-            resourceSites: this.resourceSites,
           } satisfies GameConfigPatch,
         },
         bubbles: true,

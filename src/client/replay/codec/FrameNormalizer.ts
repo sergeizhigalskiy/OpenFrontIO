@@ -91,8 +91,6 @@ const UPDATE_TYPE_ROUTING: Record<
   Weather: "misc",
   // Not rebuilt on seek: replays draw cut rails like intact ones.
   RailroadCutEvent: "misc",
-  // The replay viewer draws no resource sites (yet).
-  ResourceSites: "dropped",
 };
 
 /**

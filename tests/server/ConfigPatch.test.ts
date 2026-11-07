@@ -95,6 +95,14 @@ describe("applyGameConfigPatch", () => {
     expect("hostCheats" in target).toBe(false);
   });
 
+  it("ignores resourceSites from an old client", () => {
+    // Resource sites are gone; the old lobby toggle copies nothing.
+    const target = testGameConfig();
+    applyGameConfigPatch(target, { bots: 2, ...{ resourceSites: true } });
+    expect(target.bots).toBe(2);
+    expect("resourceSites" in target).toBe(false);
+  });
+
   it("ignores gameType, which has its own guarded path", () => {
     const target = testGameConfig({ gameType: GameType.Private });
     applyGameConfigPatch(target, { gameType: GameType.Public });
