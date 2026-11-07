@@ -232,7 +232,12 @@ export class SmallPlayerGlowPass {
       gl.uniform1f(this.uIntensity, s.alpha * pulse * strength);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, a.tex);
-      drawMapSurface(gl, this.mapVao);
+      // On relief the aura shows through a ridge in front of it, a little
+      // fainter, so a small player behind a mountain is still found.
+      const intensity = s.alpha * pulse * strength;
+      drawMapSurface(gl, this.mapVao, (hidden) =>
+        gl.uniform1f(this.uIntensity, hidden ? intensity * 0.6 : intensity),
+      );
     });
     gl.bindVertexArray(null);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); // restore overlay default

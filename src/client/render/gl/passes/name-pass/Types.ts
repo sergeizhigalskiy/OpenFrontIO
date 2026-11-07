@@ -76,6 +76,8 @@ export interface PlayerSlot {
   alliance: boolean;
   allianceReq: boolean;
   target: boolean;
+  /** A small player (SmallPlayerGlowPass's set): label kept findable. */
+  small: boolean;
   embargo: boolean;
   nukeActive: boolean;
   nukeTargetsMe: boolean;

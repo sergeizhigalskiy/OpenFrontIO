@@ -19,12 +19,16 @@ import { BorderStampPass } from "../../../../src/client/render/gl/passes/BorderS
 import { DefenseCoveragePass } from "../../../../src/client/render/gl/passes/DefenseCoveragePass";
 import { DefenseOverlayPass } from "../../../../src/client/render/gl/passes/DefenseOverlayPass";
 import { FxPass } from "../../../../src/client/render/gl/passes/fx-pass";
+import type { FlagAtlasArray } from "../../../../src/client/render/gl/passes/name-pass/FlagAtlasArray";
+import { IconProgram } from "../../../../src/client/render/gl/passes/name-pass/IconProgram";
+import { StatusIconProgram } from "../../../../src/client/render/gl/passes/name-pass/StatusIconProgram";
 import { TextProgram } from "../../../../src/client/render/gl/passes/name-pass/TextProgram";
 import { RailroadPass } from "../../../../src/client/render/gl/passes/RailroadPass";
 import { RangeCirclePass } from "../../../../src/client/render/gl/passes/RangeCirclePass";
 import { ReloadBarPass } from "../../../../src/client/render/gl/passes/ReloadBarPass";
 import { RuinsPass } from "../../../../src/client/render/gl/passes/RuinsPass";
 import { SAMRadiusPass } from "../../../../src/client/render/gl/passes/SamRadiusPass";
+import { SmallPlayerRingPass } from "../../../../src/client/render/gl/passes/SmallPlayerRingPass";
 import { StructurePass } from "../../../../src/client/render/gl/passes/StructurePass";
 import { TerrainPass } from "../../../../src/client/render/gl/passes/TerrainPass";
 import { TerritoryPass } from "../../../../src/client/render/gl/passes/TerritoryPass";
@@ -196,6 +200,32 @@ const PASSES: PassCase[] = [
   {
     name: "SAMRadiusPass",
     build: (gl) => new SAMRadiusPass(gl, MAP_W, settings),
+    camera: true,
+  },
+  // graphics-civ-2: small players' rings, and their labels kept findable
+  // (the flag and status-icon programs read the small flag too)
+  {
+    name: "SmallPlayerRingPass",
+    build: (gl) => new SmallPlayerRingPass(gl, settings.smallPlayerGlow),
+    camera: true,
+  },
+  {
+    name: "IconProgram",
+    build: (gl) =>
+      new IconProgram(gl, MSDF_ATLAS, tex, {} as unknown as FlagAtlasArray, 16),
+    camera: true,
+  },
+  {
+    name: "StatusIconProgram",
+    build: (gl) =>
+      new StatusIconProgram(
+        gl,
+        MSDF_ATLAS,
+        tex,
+        {} as unknown as FlagAtlasArray,
+        16,
+        10,
+      ),
     camera: true,
   },
   // unit-art: structure shapes and unit sprites

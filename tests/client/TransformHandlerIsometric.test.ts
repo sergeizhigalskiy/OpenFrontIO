@@ -1,6 +1,6 @@
 import { Cell } from "@openfront/engine-api/game/GameTypes";
 import { EventBus } from "@openfront/shared/EventBus";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { DragEvent, ZoomEvent } from "../../src/client/InputHandler";
 import {
   computeCameraFrame,
@@ -17,8 +17,11 @@ import {
   MIN_ELEVATION_DEG,
   ViewOrbit,
 } from "../../src/client/render/gl/camera/ViewOrbit";
-import { TransformHandler } from "../../src/client/TransformHandler";
-import type { GameView } from "../../src/client/view";
+import {
+  GoToPlayerEvent,
+  TransformHandler,
+} from "../../src/client/TransformHandler";
+import type { GameView, PlayerView } from "../../src/client/view";
 
 /**
  * Screen-to-tile mapping in the isometric view as the camera orbits: every
@@ -321,5 +324,46 @@ describe("ViewOrbit", () => {
     expect(o.animating()).toBe(false);
     o.update(100);
     expect(o.yawDeg()).toBeCloseTo(105, 9);
+  });
+});
+
+describe("going to a player (leaderboard, events) with the orbit camera", () => {
+  /** A plateau 6 tiles high around (450, 250). */
+  const plateau = (x: number, y: number) =>
+    Math.hypot(x - 450, y - 250) < 60 ? 6 : 0;
+
+  it.each(ORBITS)(
+    "centres the player's raised ground on screen at yaw %f, elevation %f",
+    (yaw, elevation) => {
+      vi.useFakeTimers();
+      try {
+        const { handler, source } = makeHandler(yaw, elevation, plateau, 6);
+        const player = { nameLocation: () => ({ x: 450, y: 250, size: 10 }) };
+        handler.onGoToPlayer(
+          new GoToPlayerEvent(player as unknown as PlayerView),
+        );
+        vi.advanceTimersByTime(20_000);
+        // The camera arrived: the target's ground is drawn in the middle of
+        // the screen, and clicking there picks it.
+        const frame = rendererFrame(handler, source);
+        const p = worldToPixel(frame, 450, 250, 6)!;
+        expect(Math.abs(p.x - W / 2)).toBeLessThan(2 * handler.scale + 1);
+        expect(Math.abs(p.y - H / 2)).toBeLessThan(2 * handler.scale + 1);
+        const cell = handler.screenToWorldCoordinates(W / 2, H / 2);
+        expect(Math.abs(cell.x - 450)).toBeLessThanOrEqual(2);
+        expect(Math.abs(cell.y - 250)).toBeLessThanOrEqual(2);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it("needs no correction on flat ground or in the flat view", () => {
+    const { handler, view } = makeHandler(100, 40);
+    expect(handler.groundFocus(300, 200)).toEqual({ x: 300, y: 200 });
+    view.mode = "flat";
+    const raised = makeHandler(100, 40, () => 5, 5);
+    raised.view.mode = "flat";
+    expect(raised.handler.groundFocus(300, 200)).toEqual({ x: 300, y: 200 });
   });
 });

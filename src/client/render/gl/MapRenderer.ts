@@ -39,6 +39,7 @@ import {
 } from "./camera/ViewOrbit";
 import type { BlockadeMarker } from "./passes/BlockadePass";
 import type { RuinMarker } from "./passes/RuinsPass";
+import type { SmallPlayerMarker } from "./passes/SmallPlayerRingPass";
 import type { SpawnCenter } from "./passes/SpawnOverlayPass";
 import type { VolcanoMarker } from "./passes/VolcanoPass";
 import type { AttackTroopLabel } from "./passes/WorldTextPass";
@@ -411,8 +412,11 @@ export class MapRenderer {
   }
 
   /** Set the small-player glow set (1 byte per owner smallID), or null = off. */
-  updateSmallPlayerGlow(set: Uint8Array | null): void {
-    this.renderer?.updateSmallPlayerGlow(set);
+  updateSmallPlayerGlow(
+    set: Uint8Array | null,
+    markers: readonly SmallPlayerMarker[] = [],
+  ): void {
+    this.renderer?.updateSmallPlayerGlow(set, markers);
   }
 
   // ---- Terrain features ----

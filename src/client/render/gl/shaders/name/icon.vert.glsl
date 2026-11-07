@@ -89,11 +89,15 @@ void main() {
   float screenSize  = nameWorldScale * uFontBase * cameraScale;
   // Targeted players' flag/emoji stay visible at any zoom, boosted in
   // lockstep with name.vert.glsl so the row stays aligned and centered.
-  if (texelFetch(uPlayerData, ivec2(6, playerIdx), 0).y > 0.5 &&
-      screenSize < uCullThreshold) {
-    float boost = uCullThreshold / screenSize;
+  // Small players (pd8.w) larger still (NameCulling.ts).
+  float findable = texelFetch(uPlayerData, ivec2(8, playerIdx), 0).w > 0.5
+                 ? uCullThreshold * float(SMALL_LABEL_SIZE)
+                 : texelFetch(uPlayerData, ivec2(6, playerIdx), 0).y > 0.5
+                 ? uCullThreshold : 0.0;
+  if (screenSize < findable) {
+    float boost = findable / screenSize;
     nameWorldScale *= boost;
-    screenSize = uCullThreshold;
+    screenSize = findable;
   }
   if (screenSize < uCullThreshold) {
     gl_Position = vec4(0.0);

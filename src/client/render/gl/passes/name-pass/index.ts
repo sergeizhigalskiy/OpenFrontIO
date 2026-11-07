@@ -46,6 +46,7 @@ import {
 import { DebugProgram } from "./DebugProgram";
 import { FlagAtlasArray } from "./FlagAtlasArray";
 import { IconProgram } from "./IconProgram";
+import { nameplateCull } from "./NameCulling";
 import { StatusIconProgram } from "./StatusIconProgram";
 import { layoutString } from "./TextLayout";
 import { TextProgram } from "./TextProgram";
@@ -411,6 +412,7 @@ export class NamePass {
             alliance: false,
             allianceReq: false,
             target: false,
+            small: false,
             embargo: false,
             nukeActive: false,
             nukeTargetsMe: false,
@@ -745,7 +747,8 @@ export class NamePass {
       slot.nukeActive,
       slot.inDoomsdayClock || slot.doomsdayClockDraining,
     ].filter(Boolean).length;
-    d[off + 35] = 0.0;
+    // Small player: the shaders keep the plate findable (NameCulling.ts).
+    d[off + 35] = slot.small ? 1.0 : 0.0;
 
     this.playerDataDirty = true;
   }
@@ -753,6 +756,20 @@ export class NamePass {
   // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
+
+  /**
+   * The small players (1 byte per smallID, SmallPlayerGlowPass's set), or
+   * null for none: their names and troop counts stay readable at any zoom.
+   */
+  setSmallPlayers(set: Uint8Array | null): void {
+    for (const slot of this.slots.values()) {
+      const id = slot.static.smallID;
+      const small = set !== null && id < set.length && set[id] === 1;
+      if (small === slot.small) continue;
+      slot.small = small;
+      this.writePlayerDataRow(slot);
+    }
+  }
 
   setHighlightOwner(ownerID: number): void {
     this.highlightOwnerID = ownerID;
@@ -809,11 +826,15 @@ export class NamePass {
       let nameWorldScale = (nameSize * nameScale) / this.fontSize;
       let lineH = this.fontBase * nameWorldScale;
       const screenSize = lineH * cameraScale;
-      // The shaders enlarge targeted nameplates to the cull threshold so they
-      // stay visible at any zoom. Apply the same boost to the hit-test bounds.
-      if (slot.target && screenSize < ns.cullThreshold) {
-        const boost = ns.cullThreshold / screenSize;
-        nameWorldScale *= boost;
+      // The shaders enlarge targeted and small players' plates so they stay
+      // findable at any zoom. Apply the same boost to the hit-test bounds.
+      const cull = nameplateCull(screenSize, ns.cullThreshold, {
+        target: slot.target,
+        small: slot.small,
+        highlighted: false,
+      });
+      if (cull.boost !== 1) {
+        nameWorldScale *= cull.boost;
         lineH = this.fontBase * nameWorldScale;
       }
 

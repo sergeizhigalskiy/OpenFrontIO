@@ -11,9 +11,10 @@ import emojiAtlasMeta from "resources/atlases/emoji-atlas-meta.json";
 import type { RenderSettings } from "../../RenderSettings";
 import iconFragSrc from "../../shaders/name/icon.frag.glsl?raw";
 import iconVertSrc from "../../shaders/name/icon.vert.glsl?raw";
-import { createProgram } from "../../utils/GlUtils";
+import { createProgram, shaderSrc } from "../../utils/GlUtils";
 import type { FlagAtlasArray } from "./FlagAtlasArray";
 import { FLAG_CELL_H, FLAG_CELL_W } from "./FlagAtlasArray";
+import { SMALL_LABEL_SIZE } from "./NameCulling";
 import type { ParsedAtlas } from "./Types";
 
 const emojiAtlasUrl = assetUrl("atlases/emoji-atlas.png");
@@ -54,7 +55,12 @@ export class IconProgram {
     this.flagAtlas = flagAtlas;
     this.maxPlayers = maxPlayers;
 
-    this.program = createProgram(gl, iconVertSrc, iconFragSrc, "IconProgram");
+    this.program = createProgram(
+      gl,
+      shaderSrc(iconVertSrc, { SMALL_LABEL_SIZE }),
+      iconFragSrc,
+      "IconProgram",
+    );
     gl.useProgram(this.program);
 
     // Texture unit bindings

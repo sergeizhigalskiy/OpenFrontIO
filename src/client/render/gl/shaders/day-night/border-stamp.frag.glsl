@@ -49,13 +49,14 @@ bool isWater(ivec2 c) {
 }
 
 // Borders are anti-aliased lines along the tile edges an owned tile shares
-// with another owner (or with unowned land and water), at a near-constant
-// on-screen width: a thin dark seam right at the edge, so neighbouring
-// empires separate even when their colours are close, then the border
-// colour, then a soft darker band fading into the fill. Each side of a shared
-// edge draws its own half, so two empires meet as line | seam | seam | line.
-// Zoomed far out a tile is under a pixel and the line simply covers the edge
-// tiles, as the old tile stamp did.
+// with another owner (or with unowned land and water), at a constant
+// on-screen width (render-settings borderLine*Px): a dark seam right at the
+// edge, so neighbouring empires separate even when their colours are close,
+// then the border colour, then a soft darker band fading into the fill.
+// Each side of a shared edge draws its own half, so two empires meet as
+// line | seam | seam | line: each side's colour with a dark separator
+// between them, on any ground. Zoomed far out a tile is under a pixel and
+// the line simply covers the edge tiles, as the old tile stamp did.
 //
 // Along the sea the line follows the smooth coastline the terrain draws
 // (shaders/shared/terrain-light.glsl), not the tile edge: an edge toward a
@@ -87,9 +88,9 @@ void main() {
   // Pixels per tile, on the shorter axis so a line never outgrows its tile.
   float tilePx = 1.0 / max(tpx, tpy);
   float lineW = min(uLineMinPx + tilePx * uLineTileFrac, uLineMaxPx);
-  // The seam fades in once tiles are a few pixels wide; below that it would
-  // turn whole edge tiles dark.
-  float seamW = min(uSeamPx, lineW * 0.5) * smoothstep(1.5, 4.0, tilePx);
+  // The seam holds its width down to tiles of about two pixels; below that
+  // it would turn whole edge tiles dark.
+  float seamW = min(uSeamPx, lineW * 0.5) * smoothstep(0.9, 1.8, tilePx);
   // The band stays inside the edge tile so it never steps at a tile seam.
   float bandW = min(lineW + uBandPx, tilePx * 0.9);
   // Widest the line can get (a hovered player's is thicker), plus AA.

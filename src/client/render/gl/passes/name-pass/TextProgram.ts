@@ -11,6 +11,7 @@ import type { RenderSettings } from "../../RenderSettings";
 import nameFragSrc from "../../shaders/name/name.frag.glsl?raw";
 import nameVertSrc from "../../shaders/name/name.vert.glsl?raw";
 import { createProgram, shaderSrc } from "../../utils/GlUtils";
+import { SMALL_LABEL_SIZE } from "./NameCulling";
 import type { ParsedAtlas } from "./Types";
 import { LINES_PER_PLAYER, MAX_CHARS } from "./Types";
 
@@ -67,7 +68,7 @@ export class TextProgram {
 
     this.program = createProgram(
       gl,
-      shaderSrc(nameVertSrc, { MAX_CHARS, LINES_PER_PLAYER }),
+      shaderSrc(nameVertSrc, { MAX_CHARS, LINES_PER_PLAYER, SMALL_LABEL_SIZE }),
       nameFragSrc,
       "TextProgram",
     );

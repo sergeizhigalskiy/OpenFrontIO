@@ -38,6 +38,7 @@ import {
 // consumers don't pull in GPURenderer and its shaders — see note above.
 import type { BlockadeMarker } from "./render/gl/passes/BlockadePass";
 import type { RuinMarker } from "./render/gl/passes/RuinsPass";
+import type { SmallPlayerMarker } from "./render/gl/passes/SmallPlayerRingPass";
 import type { VolcanoMarker } from "./render/gl/passes/VolcanoPass";
 import {
   EFFECT_PALETTE_BLOCKS,
@@ -57,6 +58,10 @@ import {
   UT_HYDROGEN_BOMB,
   UT_MIRV_WARHEAD,
 } from "./render/types/UnitType";
+import {
+  DisplayColorSeparator,
+  neighbourRadius,
+} from "./theme/NeighbourColors";
 import type { GameView, PlayerView } from "./view";
 
 /** The blockades' war rule's facts as the view knows them. */
@@ -82,9 +87,13 @@ export function atWarInView(
   return atWarBy(VIEW_WAR_FACTS, a, b, now);
 }
 
-// A human player counts as "small" (and glows) at or below this fraction of the
-// map; the glow is suppressed for a grace window after the game starts.
+// A human or nation counts as "small" (and glows, gets a ring and a label
+// that reads at any zoom) at or below this fraction of the map; the glow is
+// suppressed for a grace window after the game starts. Tribes are left out:
+// there are many and they are all small.
 const SMALL_PLAYER_MAX_MAP_FRACTION = 0.002; // 0.2%
+// At most this many are marked, the smallest first.
+const SMALL_PLAYER_MAX_MARKED = 40;
 const SMALL_PLAYER_GLOW_GRACE_SECONDS = 60;
 // The set is a visual aid, not tick-critical, so rescan ~once a second
 // (10 ticks) instead of every tick.
@@ -248,6 +257,9 @@ export class WebGLFrameBuilder {
    * without re-syncing players, skins, or spawns.
    */
   refreshPalette(gameView: GameView): void {
+    // Neighbour colours are settled again from the new theme's colours.
+    this.colorSeparator.reset();
+    for (const p of gameView.players()) p.setDisplayColor(null);
     for (const p of gameView.players()) {
       writePaletteEntry(
         this.palette,
@@ -290,10 +302,12 @@ export class WebGLFrameBuilder {
   }
 
   private readonly highlightSetBuf = new Uint8Array(PALETTE_SIZE);
+  private readonly colorSeparator = new DisplayColorSeparator();
   private glowRescanTick = 0;
 
   update(gameView: GameView): void {
     this.syncPlayers(gameView);
+    this.syncDisplayColors(gameView);
     this.syncInfectedPulse(gameView);
     this.syncPlayerEffects(gameView);
     this.syncPlayerSpawns(gameView);
@@ -624,11 +638,63 @@ export class WebGLFrameBuilder {
   }
 
   /**
-   * Small-player glow: when the client "Highlight small players" setting is on,
-   * collect the alive human players holding <=0.2% of the map and push their
-   * smallIDs so the glow pass radiates around their territory. Skips the first
-   * minute of play so everyone's tiny starting territory doesn't glow.
-   * Client-only view — toggle it live in the settings.
+   * Neighbour colours (theme/NeighbourColors.ts): once the spawn phase is
+   * over, settle each player's display colour the first time they hold
+   * ground, apart from the players already settled near them. The viewer
+   * settles first and keeps their colour, as do teams and cosmetic
+   * colours. A settled colour never changes again this game.
+   */
+  private syncDisplayColors(gameView: GameView): void {
+    if (gameView.inSpawnPhase()) return;
+    const pending: PlayerView[] = [];
+    let placed = 0;
+    for (const p of gameView.players()) {
+      if (!p.isAlive() || p.nameLocation() === undefined) continue;
+      placed++;
+      if (!this.colorSeparator.isSettled(p.id())) pending.push(p);
+    }
+    if (pending.length === 0) return;
+    const me = gameView.myPlayer();
+    pending.sort((a, b) =>
+      a === me ? -1 : b === me ? 1 : a.smallID() - b.smallID(),
+    );
+    const radius = neighbourRadius(gameView.numLandTiles(), placed);
+    let changed = false;
+    for (const p of pending) {
+      const loc = p.nameLocation()!;
+      const base = p.territoryColor();
+      const adjustable = p.displayColorAdjustable();
+      const color = this.colorSeparator.settle(
+        p.id(),
+        loc.x,
+        loc.y,
+        base,
+        adjustable,
+        p.type() === PlayerType.Bot,
+        radius,
+      );
+      if (!adjustable || color === base) continue;
+      p.setDisplayColor(color);
+      if (!this.knownSmallIDs.has(p.smallID())) continue;
+      writePaletteEntry(
+        this.palette,
+        p.smallID(),
+        p.territoryColor(),
+        p.borderColor(),
+      );
+      changed = true;
+    }
+    if (changed) this.view.updatePalette(this.palette);
+  }
+
+  /**
+   * Small-player glow: when the client "Highlight small players" setting is
+   * on, collect the alive humans and nations (not the viewer) holding <=0.2%
+   * of the map, the smallest SMALL_PLAYER_MAX_MARKED of them, and push
+   * their smallIDs and name positions: their territory glows, a ring marks
+   * each on a zoomed-out map and their labels stay readable at any zoom.
+   * Skips the first minute of play so everyone's tiny starting territory
+   * doesn't glow. Client-only view — toggle it live in the settings.
    */
   private syncSmallPlayerGlow(gameView: GameView): void {
     // Strength (incl. off at 0) is read live in the glow pass; here we only
@@ -653,17 +719,28 @@ export class WebGLFrameBuilder {
     }
     const set = this.highlightSetBuf;
     set.fill(0);
-    let any = false;
+    const me = gameView.myPlayer();
+    const small: PlayerView[] = [];
     for (const p of gameView.players()) {
-      if (!p.isPlayer() || p.type() !== PlayerType.Human || !p.isAlive()) {
+      if (!p.isPlayer() || p.type() === PlayerType.Bot || !p.isAlive()) {
         continue;
       }
+      if (p === me) continue;
       if (p.numTilesOwned() / denom <= SMALL_PLAYER_MAX_MAP_FRACTION) {
-        set[p.smallID()] = 1;
-        any = true;
+        small.push(p);
       }
     }
-    this.view.updateSmallPlayerGlow(any ? set : null);
+    small.sort(
+      (a, b) =>
+        a.numTilesOwned() - b.numTilesOwned() || a.smallID() - b.smallID(),
+    );
+    const markers: SmallPlayerMarker[] = [];
+    for (const p of small.slice(0, SMALL_PLAYER_MAX_MARKED)) {
+      set[p.smallID()] = 1;
+      const loc = p.nameLocation();
+      if (loc !== undefined) markers.push({ x: loc.x, y: loc.y });
+    }
+    this.view.updateSmallPlayerGlow(small.length > 0 ? set : null, markers);
   }
 
   /** Plague mode: re-tint The Infected's fill each tick so its land pulses. */

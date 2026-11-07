@@ -66,6 +66,10 @@ import { SAMRadiusPass } from "./passes/SamRadiusPass";
 import { SelectionBoxPass } from "./passes/SelectionBoxPass";
 import { SkinAtlasArray } from "./passes/SkinAtlasArray";
 import { SmallPlayerGlowPass } from "./passes/SmallPlayerGlowPass";
+import {
+  type SmallPlayerMarker,
+  SmallPlayerRingPass,
+} from "./passes/SmallPlayerRingPass";
 import type { SpawnCenter } from "./passes/SpawnOverlayPass";
 import { SpawnOverlayPass } from "./passes/SpawnOverlayPass";
 import { SpiralRibbonPass } from "./passes/SpiralRibbonPass";
@@ -166,6 +170,7 @@ export class GPURenderer {
   private spiralRibbonPass: SpiralRibbonPass;
   private borderStampPass: BorderStampPass;
   private defenseOverlayPass: DefenseOverlayPass;
+  private smallPlayerRingPass: SmallPlayerRingPass;
   private borderPass: BorderComputePass;
   private defenseCoveragePass: DefenseCoveragePass;
   private bloomPass: FalloutBloomPass;
@@ -537,6 +542,10 @@ export class GPURenderer {
 
     // --- Border stamp (needs tileTex, paletteTex, borderTex) ---
     this.defenseOverlayPass = new DefenseOverlayPass(gl, mapW, mapH);
+    this.smallPlayerRingPass = new SmallPlayerRingPass(
+      gl,
+      this.settings.smallPlayerGlow,
+    );
     this.borderStampPass = new BorderStampPass(
       gl,
       mapW,
@@ -1267,8 +1276,18 @@ export class GPURenderer {
     this.blockadePass.update(ports);
   }
 
-  updateSmallPlayerGlow(set: Uint8Array | null): void {
+  /**
+   * The small players (1 byte per smallID, or null for none) and where they
+   * are: their territory glows, a ring marks each at low zoom, and their
+   * labels stay readable at any zoom.
+   */
+  updateSmallPlayerGlow(
+    set: Uint8Array | null,
+    markers: readonly SmallPlayerMarker[] = [],
+  ): void {
     this.smallPlayerGlowPass.update(set);
+    this.smallPlayerRingPass.update(set === null ? [] : markers);
+    this.namePass.setSmallPlayers(set);
   }
 
   // ---------------------------------------------------------------------------
@@ -1632,6 +1651,7 @@ export class GPURenderer {
     this.blockadePass.draw(cam);
     // Small-player glow draws after structures so buildings can't hide it.
     this.smallPlayerGlowPass.draw(cam);
+    this.smallPlayerRingPass.draw(zoom);
     if (pe.bar) this.barPass.draw(cam);
     this.updateSelectionBox();
     this.selectionBoxPass.draw(cam, this.frameTick);
@@ -1770,6 +1790,7 @@ export class GPURenderer {
     this.spiralRibbonPass.dispose();
     this.borderStampPass.dispose();
     this.defenseOverlayPass.dispose();
+    this.smallPlayerRingPass.dispose();
     this.borderPass.dispose();
     this.defenseCoveragePass.dispose();
     this.bloomPass.dispose();
