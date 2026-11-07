@@ -3,15 +3,21 @@
  * range of a structure during build-mode ghost preview. White by default,
  * red when the ghost flags a warning (e.g. nuking would break an alliance).
  *
- * Single quad with circle SDF in the fragment shader.
+ * The circle is computed per fragment on the map surface (drawMapSurface),
+ * so on relief it lies on the ground over every hill, its edge line at a
+ * constant on-screen width; where a ridge stands in front of it, it shows
+ * through faintly. In the flat view it draws on the map quad.
  * Active only when a ghost preview with rangeRadius > 0 is set.
  */
 
 import type { GhostPreviewData } from "../../types";
-import { createProgram } from "../utils/GlUtils";
-
+import vertSrc from "../shaders/map-overlay/overlay.vert.glsl?raw";
 import fragSrc from "../shaders/range-circle/range-circle.frag.glsl?raw";
-import vertSrc from "../shaders/range-circle/range-circle.vert.glsl?raw";
+import { drawMapSurface } from "../terrain/MapSurface";
+import { createMapQuad, createProgram } from "../utils/GlUtils";
+
+/** Opacity of the circle hidden behind a ridge. */
+const HIDDEN_OPACITY = 0.4;
 
 export class RangeCirclePass {
   private gl: WebGL2RenderingContext;
@@ -21,33 +27,23 @@ export class RangeCirclePass {
   private uCenter: WebGLUniformLocation;
   private uRadius: WebGLUniformLocation;
   private uColor: WebGLUniformLocation;
+  private uOpacity: WebGLUniformLocation;
 
   private centerX = 0;
   private centerY = 0;
   private radius = 0;
   private warning = false;
 
-  constructor(gl: WebGL2RenderingContext) {
+  constructor(gl: WebGL2RenderingContext, mapW: number, mapH: number) {
     this.gl = gl;
     this.program = createProgram(gl, vertSrc, fragSrc, "RangeCirclePass");
 
     this.uCenter = gl.getUniformLocation(this.program, "uCenter")!;
     this.uRadius = gl.getUniformLocation(this.program, "uRadius")!;
     this.uColor = gl.getUniformLocation(this.program, "uColor")!;
+    this.uOpacity = gl.getUniformLocation(this.program, "uOpacity")!;
 
-    // Unit quad [0,1]
-    this.vao = gl.createVertexArray()!;
-    gl.bindVertexArray(this.vao);
-    const quadBuf = gl.createBuffer()!;
-    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array([0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1]),
-      gl.STATIC_DRAW,
-    );
-    gl.enableVertexAttribArray(0);
-    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-    gl.bindVertexArray(null);
+    this.vao = createMapQuad(gl, mapW, mapH);
   }
 
   updateGhostPreview(data: GhostPreviewData | null): void {
@@ -67,16 +63,18 @@ export class RangeCirclePass {
 
     const gl = this.gl;
     gl.useProgram(this.program);
-    gl.bindVertexArray(this.vao);
 
-    gl.uniform2f(this.uCenter, this.centerX, this.centerY);
+    gl.uniform2f(this.uCenter, this.centerX + 0.5, this.centerY + 0.5);
     gl.uniform1f(this.uRadius, this.radius);
     if (this.warning) {
       gl.uniform3f(this.uColor, 1.0, 0.2, 0.2);
     } else {
       gl.uniform3f(this.uColor, 1.0, 1.0, 1.0);
     }
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    gl.uniform1f(this.uOpacity, 1);
+    drawMapSurface(gl, this.vao, (hidden) =>
+      gl.uniform1f(this.uOpacity, hidden ? HIDDEN_OPACITY : 1),
+    );
   }
 
   dispose(): void {

@@ -10,9 +10,24 @@
  * groundToClip, so the same geometry drapes every overlay onto the terrain.
  *
  * The active surface is kept per GL context, so passes don't need a handle.
+ *
+ * Occlusion: passes drape their overlays on the same mesh, each in its own
+ * draw, so without a depth test a border or a lake on a slope behind a
+ * ridge would show through the ridge (the ridge's own fragments of that
+ * overlay are transparent and cover nothing). drawDepth() lays the mesh's
+ * depth down first; every drawMapSurface() then tests against it (LEQUAL,
+ * no depth writes), so only the front-most surface takes each pass's
+ * colour. Every camera vertex shader computes gl_Position invariantly
+ * (GlUtils.createProgram), so the visible surface always passes. A pass
+ * whose overlay must stay readable behind ridges (defense coverage, range
+ * rings) asks for a see-through draw: the hidden part again, faintly.
+ * Offscreen targets without a depth buffer pass every fragment, as before.
  */
 
 import type { CameraFrame } from "../camera/CameraMath";
+import depthFragSrc from "../shaders/terrain/surface-depth.frag.glsl?raw";
+import depthVertSrc from "../shaders/terrain/surface-depth.vert.glsl?raw";
+import { createProgram } from "../utils/GlUtils";
 import {
   buildSurfaceMesh,
   selectSurfaceChunks,
@@ -25,15 +40,60 @@ import {
 
 const activeSurfaces = new WeakMap<WebGL2RenderingContext, MapSurface>();
 
-/** Draw the map surface: the 3D mesh when active, else the pass's map quad. */
+/**
+ * For a see-through draw: called with true before the hidden part draws
+ * (set the pass's faint opacity) and with false after (restore it).
+ */
+export type SeeThrough = (hidden: boolean) => void;
+
+/**
+ * Draw the map surface: the 3D mesh when active (depth-tested against
+ * drawDepth, see above), else the pass's map quad. With `seeThrough`, the
+ * parts hidden behind ridges draw too, between its two calls.
+ */
 export function drawMapSurface(
   gl: WebGL2RenderingContext,
   quadVao: WebGLVertexArrayObject,
+  seeThrough?: SeeThrough,
 ): void {
   const surface = activeSurfaces.get(gl);
-  if (surface !== undefined && surface.draw()) return;
+  if (surface !== undefined && surface.draw(seeThrough)) return;
   gl.bindVertexArray(quadVao);
   gl.drawArrays(gl.TRIANGLES, 0, 6);
+}
+
+/** True while the 3D mesh is the surface passes draw (a relief view). */
+export function mapSurfaceActive(gl: WebGL2RenderingContext): boolean {
+  return activeSurfaces.has(gl);
+}
+
+/**
+ * Draw geometry that lies on the ground without being the surface mesh (a
+ * ring strip lifted a little toward the camera), depth-tested against the
+ * surface while it is active: `draw` once for the visible part, then again
+ * between `seeThrough`'s calls for the part behind ridges. Inactive (the
+ * flat view), it just draws.
+ */
+export function drawOverSurface(
+  gl: WebGL2RenderingContext,
+  draw: () => void,
+  seeThrough: SeeThrough,
+): void {
+  if (!activeSurfaces.has(gl)) {
+    draw();
+    return;
+  }
+  gl.enable(gl.DEPTH_TEST);
+  gl.depthMask(false);
+  gl.depthFunc(gl.LEQUAL);
+  draw();
+  seeThrough(true);
+  gl.depthFunc(gl.GREATER);
+  draw();
+  seeThrough(false);
+  gl.depthFunc(gl.LESS);
+  gl.depthMask(true);
+  gl.disable(gl.DEPTH_TEST);
 }
 
 export class MapSurface {
@@ -49,12 +109,19 @@ export class MapSurface {
   private lastViewProj = new Float32Array(16);
   private lastOpts = "";
   private order: SurfaceOrder = { flipX: false, flipY: false };
+  private depthProgram: WebGLProgram;
 
   constructor(
     private gl: WebGL2RenderingContext,
     private mapW: number,
     private mapH: number,
   ) {
+    this.depthProgram = createProgram(
+      gl,
+      depthVertSrc,
+      depthFragSrc,
+      "MapSurface.depth",
+    );
     this.vao = gl.createVertexArray()!;
     this.vbo = gl.createBuffer()!;
     this.ibo = gl.createBuffer()!;
@@ -162,13 +229,21 @@ export class MapSurface {
   }
 
   /**
-   * Draw the mesh. False if there is nothing built yet (caller falls back).
-   * Back faces (slopes turned away from the camera, hidden behind the ones
-   * facing it) are culled; the mesh's triangles wind clockwise on screen.
+   * Lay down the mesh's depth into the bound framebuffer (cleared by the
+   * caller), colour writes off. Pushed back a hair (polygon offset), so the
+   * passes drawing the same triangles pass LEQUAL even if a driver rounds
+   * one program differently. No-op while inactive or before a mesh exists.
    */
-  draw(): boolean {
-    if (this.indexCount === 0) return false;
+  drawDepth(): void {
+    if (this.indexCount === 0 || activeSurfaces.get(this.gl) !== this) return;
     const gl = this.gl;
+    gl.useProgram(this.depthProgram);
+    gl.colorMask(false, false, false, false);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LESS);
+    gl.depthMask(true);
+    gl.enable(gl.POLYGON_OFFSET_FILL);
+    gl.polygonOffset(1, 2);
     gl.enable(gl.CULL_FACE);
     gl.frontFace(gl.CW);
     gl.cullFace(gl.BACK);
@@ -176,12 +251,49 @@ export class MapSurface {
     gl.drawElements(gl.TRIANGLES, this.indexCount, gl.UNSIGNED_INT, 0);
     gl.disable(gl.CULL_FACE);
     gl.frontFace(gl.CCW);
+    gl.disable(gl.POLYGON_OFFSET_FILL);
+    gl.polygonOffset(0, 0);
+    gl.disable(gl.DEPTH_TEST);
+    gl.colorMask(true, true, true, true);
+  }
+
+  /**
+   * Draw the mesh, depth-tested against drawDepth. False if there is
+   * nothing built yet (caller falls back). Back faces (slopes turned away
+   * from the camera) are culled; the mesh's triangles wind clockwise on
+   * screen. With `seeThrough`, the hidden surface draws again (depth
+   * GREATER), back faces included, so an outline crossing a ridge stays
+   * whole.
+   */
+  draw(seeThrough?: SeeThrough): boolean {
+    if (this.indexCount === 0) return false;
+    const gl = this.gl;
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthMask(false);
+    gl.depthFunc(gl.LEQUAL);
+    gl.enable(gl.CULL_FACE);
+    gl.frontFace(gl.CW);
+    gl.cullFace(gl.BACK);
+    gl.bindVertexArray(this.vao);
+    gl.drawElements(gl.TRIANGLES, this.indexCount, gl.UNSIGNED_INT, 0);
+    gl.disable(gl.CULL_FACE);
+    gl.frontFace(gl.CCW);
+    if (seeThrough !== undefined) {
+      seeThrough(true);
+      gl.depthFunc(gl.GREATER);
+      gl.drawElements(gl.TRIANGLES, this.indexCount, gl.UNSIGNED_INT, 0);
+      seeThrough(false);
+    }
+    gl.depthFunc(gl.LESS);
+    gl.depthMask(true);
+    gl.disable(gl.DEPTH_TEST);
     return true;
   }
 
   dispose(): void {
     this.setActive(false);
     const gl = this.gl;
+    gl.deleteProgram(this.depthProgram);
     gl.deleteVertexArray(this.vao);
     gl.deleteBuffer(this.vbo);
     gl.deleteBuffer(this.ibo);

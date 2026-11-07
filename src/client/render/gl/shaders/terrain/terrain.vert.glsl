@@ -17,8 +17,10 @@ out vec3 vWorld;
 out vec2 vDepth;
 
 void main() {
+  // groundToClip, as every pass draped on the surface places it, so the
+  // depth test (MapSurface.ts) sees the same depth for all of them.
   float h = groundHeight(aPos);
-  gl_Position = worldToClip(vec3(aPos, h));
+  gl_Position = groundToClip(aPos);
   vTile = aPos;
   vWorld = vec3(aPos, h);
   vDepth = vec2(gl_Position.w, uCamUp.w);

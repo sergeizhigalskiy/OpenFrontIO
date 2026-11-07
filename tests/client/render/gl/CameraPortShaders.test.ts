@@ -17,11 +17,14 @@ import { CAMERA_INCLUDE } from "../../../../src/client/render/gl/camera/CameraBl
 import { BlockadePass } from "../../../../src/client/render/gl/passes/BlockadePass";
 import { BorderStampPass } from "../../../../src/client/render/gl/passes/BorderStampPass";
 import { DefenseCoveragePass } from "../../../../src/client/render/gl/passes/DefenseCoveragePass";
+import { DefenseOverlayPass } from "../../../../src/client/render/gl/passes/DefenseOverlayPass";
 import { FxPass } from "../../../../src/client/render/gl/passes/fx-pass";
 import { TextProgram } from "../../../../src/client/render/gl/passes/name-pass/TextProgram";
 import { RailroadPass } from "../../../../src/client/render/gl/passes/RailroadPass";
+import { RangeCirclePass } from "../../../../src/client/render/gl/passes/RangeCirclePass";
 import { ReloadBarPass } from "../../../../src/client/render/gl/passes/ReloadBarPass";
 import { RuinsPass } from "../../../../src/client/render/gl/passes/RuinsPass";
+import { SAMRadiusPass } from "../../../../src/client/render/gl/passes/SamRadiusPass";
 import { StructurePass } from "../../../../src/client/render/gl/passes/StructurePass";
 import { TerrainPass } from "../../../../src/client/render/gl/passes/TerrainPass";
 import { TerritoryPass } from "../../../../src/client/render/gl/passes/TerritoryPass";
@@ -30,6 +33,7 @@ import { UnitPass } from "../../../../src/client/render/gl/passes/UnitPass";
 import { VolcanoPass } from "../../../../src/client/render/gl/passes/VolcanoPass";
 import { WeatherPass } from "../../../../src/client/render/gl/passes/WeatherPass";
 import { createRenderSettings } from "../../../../src/client/render/gl/RenderSettings";
+import { MapSurface } from "../../../../src/client/render/gl/terrain/MapSurface";
 import { ReliefBake } from "../../../../src/client/render/gl/terrain/ReliefBake";
 import { ALL_UNIT_TYPES } from "../../../../src/client/render/types";
 import {
@@ -171,6 +175,28 @@ const PASSES: PassCase[] = [
     name: "DefenseCoveragePass",
     build: (gl) => new DefenseCoveragePass(gl, MAP_W, MAP_H, tex),
     camera: false,
+  },
+  // graphics-civ: the surface's depth prepass, and the ground overlays
+  // draped on relief (coverage outline and hatch, range circle, SAM rings)
+  {
+    name: "MapSurface",
+    build: (gl) => new MapSurface(gl, MAP_W, MAP_H),
+    camera: true,
+  },
+  {
+    name: "DefenseOverlayPass",
+    build: (gl) => new DefenseOverlayPass(gl, MAP_W, MAP_H),
+    camera: true,
+  },
+  {
+    name: "RangeCirclePass",
+    build: (gl) => new RangeCirclePass(gl, MAP_W, MAP_H),
+    camera: true,
+  },
+  {
+    name: "SAMRadiusPass",
+    build: (gl) => new SAMRadiusPass(gl, MAP_W, settings),
+    camera: true,
   },
   // unit-art: structure shapes and unit sprites
   {

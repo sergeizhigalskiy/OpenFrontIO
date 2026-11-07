@@ -7,9 +7,11 @@ import {
   decodeCoastSdf,
   updateClimateForFlood,
 } from "../../../../src/client/render/gl/terrain/ClimateData";
+import { HeightField } from "../../../../src/client/render/gl/terrain/HeightField";
 import { HEIGHT_UNITS_PER_LEVEL } from "../../../../src/client/render/gl/terrain/Relief";
 import {
   buildReliefHeights,
+  elevationProfile,
   RELIEF_APRON,
   ridgedNoise,
 } from "../../../../src/client/render/gl/terrain/ReliefHeights";
@@ -115,6 +117,182 @@ describe("relief heights", () => {
     const full = new Float32Array(w * h);
     buildReliefHeights(t, w, h, full);
     expect(Array.from(patched)).toEqual(Array.from(full));
+  });
+
+  /** Levels at (x, y) of a built field. */
+  const levels = (out: Float32Array, w: number) => (x: number, y: number) =>
+    out[y * w + x] / HEIGHT_UNITS_PER_LEVEL;
+  /** Max - min of `f` over a rect. */
+  function spread(
+    f: (x: number, y: number) => number,
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+  ): number {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let y = y0; y < y1; y++) {
+      for (let x = x0; x < x1; x++) {
+        lo = Math.min(lo, f(x, y));
+        hi = Math.max(hi, f(x, y));
+      }
+    }
+    return hi - lo;
+  }
+
+  it("keeps plains flat and highlands gentle, and ridges only mountains", () => {
+    // Three wide bands of one elevation each: plain, highland, mountain.
+    const w = 150;
+    const h = 60;
+    const t = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const mag = x < 50 ? 3 : x < 100 ? 14 : 27;
+        t[y * w + x] = LAND | mag;
+      }
+    }
+    const out = new Float32Array(w * h);
+    buildReliefHeights(t, w, h, out);
+    const at = levels(out, w);
+    const plain = spread(at, 8, 8, 42, 52);
+    const highland = spread(at, 58, 8, 92, 52);
+    const mountain = spread(at, 108, 8, 142, 52);
+    expect(plain).toBeLessThan(0.5);
+    expect(highland).toBeGreaterThan(plain);
+    expect(highland).toBeLessThan(2.5);
+    expect(mountain).toBeGreaterThan(3);
+    // Each band sits well above the one before it.
+    expect(at(75, 30)).toBeGreaterThan(at(25, 30) + 2);
+    expect(at(125, 30)).toBeGreaterThan(at(75, 30) + 6);
+  });
+
+  it("climbs a quarter level per step on plains, steeply in mountains", () => {
+    let prev = elevationProfile(0);
+    for (let l = 0.5; l <= 30; l += 0.5) {
+      const v = elevationProfile(l);
+      expect(v).toBeGreaterThan(prev);
+      prev = v;
+    }
+    const slope = (l: number) =>
+      (elevationProfile(l + 0.01) - elevationProfile(l - 0.01)) / 0.02;
+    expect(slope(4)).toBeCloseTo(0.25, 6);
+    expect(slope(16)).toBeCloseTo(0.6, 6);
+    expect(slope(27)).toBeCloseTo(1.35, 6);
+  });
+
+  it("slopes the land down to a lake inside the mountains", () => {
+    const w = 60;
+    const h = 60;
+    const t = new Uint8Array(w * h).fill(LAND | 28);
+    for (let y = 28; y < 31; y++)
+      for (let x = 28; x < 31; x++) t[y * w + x] = WATER;
+    const out = new Float32Array(w * h);
+    buildReliefHeights(t, w, h, out);
+    const at = levels(out, w);
+    let far = 0;
+    for (let x = 10; x < 20; x++) far += at(x, 10) / 10;
+    // The shore sits low: the lake is no pit in the range.
+    for (const [x, y] of [
+      [27, 29],
+      [31, 29],
+      [29, 27],
+      [29, 31],
+    ]) {
+      expect(at(x, y)).toBeLessThan(far * 0.35);
+    }
+    // And the ground rises away from it.
+    expect(at(25, 29)).toBeGreaterThan(at(27, 29));
+  });
+
+  /** Highlands with a river down column 30. */
+  function riverMap(w: number, h: number) {
+    const t = new Uint8Array(w * h).fill(LAND | 24);
+    const f = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) f[y * w + 30] = 2;
+    f[20 * w + 30] = 3;
+    return { t, f };
+  }
+
+  it("cuts a smooth bed along a river, its banks rising from it", () => {
+    const w = 60;
+    const h = 50;
+    const { t, f } = riverMap(w, h);
+    const out = new Float32Array(w * h);
+    buildReliefHeights(t, w, h, out, 0, 0, w, h, f);
+    const at = levels(out, w);
+    const bare = new Float32Array(w * h);
+    buildReliefHeights(t, w, h, bare);
+    const atBare = levels(bare, w);
+    let rough = 0;
+    let roughBare = 0;
+    for (let y = 6; y < h - 6; y++) {
+      rough = Math.max(rough, Math.abs(at(30, y + 1) - at(30, y)));
+      roughBare = Math.max(
+        roughBare,
+        Math.abs(atBare(30, y + 1) - atBare(30, y)),
+      );
+      // The bed is below the open ground either side.
+      expect(at(30, y)).toBeLessThan((at(24, y) + at(36, y)) / 2 + 0.5);
+      expect(at(30, y)).toBeLessThanOrEqual(atBare(30, y) + 1e-9);
+    }
+    // No ridges along the water: the bed is far smoother than the range.
+    expect(rough).toBeLessThan(0.05);
+    expect(roughBare).toBeGreaterThan(rough * 5);
+    // Away from the river nothing changes.
+    expect(at(10, 25)).toBe(atBare(10, 25));
+  });
+
+  it("rebuilds a rect next to a river exactly as a full build would", () => {
+    const w = 60;
+    const h = 50;
+    const { t, f } = riverMap(w, h);
+    const before = new Float32Array(w * h);
+    buildReliefHeights(t, w, h, before, 0, 0, w, h, f);
+    for (let y = 22; y < 25; y++)
+      for (let x = 26; x < 29; x++) t[y * w + x] = WATER;
+    const patched = before.slice();
+    buildReliefHeights(
+      t,
+      w,
+      h,
+      patched,
+      26 - RELIEF_APRON,
+      22 - RELIEF_APRON,
+      29 + RELIEF_APRON,
+      25 + RELIEF_APRON,
+      f,
+    );
+    const full = new Float32Array(w * h);
+    buildReliefHeights(t, w, h, full, 0, 0, w, h, f);
+    expect(Array.from(patched)).toEqual(Array.from(full));
+  });
+
+  it("cuts the river beds once the features arrive, as a full build would", () => {
+    // Rivers in two corners of a mountain map several blocks wide.
+    const w = 220;
+    const h = 150;
+    const t = terrainMap(w, h);
+    const f = new Uint8Array(w * h);
+    for (let y = 10; y < 60; y++) f[y * w + 108] = 2;
+    for (let x = 150; x < 200; x++) f[120 * w + x] = 3;
+    // A GL stand-in: the field only uploads to it.
+    const gl = new Proxy(
+      {},
+      {
+        get: (_t, p) =>
+          typeof p === "string" && /^[A-Z]/.test(p) ? 0 : () => ({}),
+      },
+    ) as unknown as WebGL2RenderingContext;
+    const field = new HeightField(gl, () => t, t, w, h);
+    field.setFeatures(f);
+    const full = new Float32Array(w * h);
+    buildReliefHeights(t, w, h, full, 0, 0, w, h, f);
+    expect(Array.from(field.heights)).toEqual(Array.from(full));
+    // And the beds are there.
+    const bare = new Float32Array(w * h);
+    buildReliefHeights(t, w, h, bare);
+    expect(full[30 * w + 108]).toBeLessThan(bare[30 * w + 108]);
   });
 
   it("uses a fixed noise, so every client builds the same ground", () => {

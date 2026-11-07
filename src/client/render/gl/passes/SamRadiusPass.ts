@@ -7,6 +7,10 @@
  * overlapping rings. Each circle's visible (uncovered) arcs are emitted
  * as separate instances.
  *
+ * Each arc is a strip draped on the ground (sam-radius.vert.glsl) at a
+ * constant on-screen width, drawn over the 3D surface so a ridge in front
+ * of it leaves it visible, faintly (MapSurface.drawOverSurface).
+ *
  * Colors by ownership relationship:
  *   self  → green  (0, 1, 0)
  *   ally  → yellow (1, 1, 0)
@@ -17,6 +21,7 @@ import type { UnitState } from "../../types";
 import { UT_SAM_LAUNCHER } from "../../types";
 import { DynamicInstanceBuffer } from "../DynamicBuffer";
 import type { RenderSettings } from "../RenderSettings";
+import { drawOverSurface } from "../terrain/MapSurface";
 import { createProgram } from "../utils/GlUtils";
 import { samRange } from "../utils/NukeTrajectory";
 
@@ -26,6 +31,14 @@ import vertSrc from "../shaders/sam-radius/sam-radius.vert.glsl?raw";
 const TWO_PI = Math.PI * 2;
 const EPS = 1e-9;
 const TICK_INTERVAL_MS = 100;
+/** Strip segments per arc (a full circle of range 100: under 2.5 tiles). */
+const RING_SEGMENTS = 256;
+/** On-screen ring half-width per unit of samRadius.strokeWidth, px. */
+const STROKE_PX_PER_UNIT = 2;
+/** On-screen outline width per unit of samRadius.outlineWidth, px. */
+const OUTLINE_PX_PER_UNIT = 3;
+/** Opacity of a ring hidden behind a ridge. */
+const HIDDEN_OPACITY = 0.4;
 
 // Per-instance: x, y, radius, r, g, b, alpha, arcStart, arcEnd, spin
 const FLOATS_PER_INSTANCE = 10;
@@ -152,13 +165,14 @@ export class SAMRadiusPass {
 
   private uTime: WebGLUniformLocation;
   private uOutline: WebGLUniformLocation;
-  private uStrokeWidth: WebGLUniformLocation;
+  private uHalfWidthPx: WebGLUniformLocation;
   private uDashLen: WebGLUniformLocation;
   private uGapLen: WebGLUniformLocation;
   private uRotationSpeed: WebGLUniformLocation;
   private uAlpha: WebGLUniformLocation;
-  private uOutlineWidth: WebGLUniformLocation;
-  private uOutlineSoftness: WebGLUniformLocation;
+  private uOutlinePx: WebGLUniformLocation;
+  private uViewport: WebGLUniformLocation;
+  private uOpacity: WebGLUniformLocation;
 
   private settings: RenderSettings;
   private instanceCount = 0;
@@ -195,7 +209,7 @@ export class SAMRadiusPass {
 
     this.uTime = gl.getUniformLocation(this.program, "uTime")!;
     this.uOutline = gl.getUniformLocation(this.program, "uOutline")!;
-    this.uStrokeWidth = gl.getUniformLocation(this.program, "uStrokeWidth")!;
+    this.uHalfWidthPx = gl.getUniformLocation(this.program, "uHalfWidthPx")!;
     this.uDashLen = gl.getUniformLocation(this.program, "uDashLen")!;
     this.uGapLen = gl.getUniformLocation(this.program, "uGapLen")!;
     this.uRotationSpeed = gl.getUniformLocation(
@@ -203,24 +217,22 @@ export class SAMRadiusPass {
       "uRotationSpeed",
     )!;
     this.uAlpha = gl.getUniformLocation(this.program, "uAlpha")!;
-    this.uOutlineWidth = gl.getUniformLocation(this.program, "uOutlineWidth")!;
-    this.uOutlineSoftness = gl.getUniformLocation(
-      this.program,
-      "uOutlineSoftness",
-    )!;
+    this.uOutlinePx = gl.getUniformLocation(this.program, "uOutlinePx")!;
+    this.uViewport = gl.getUniformLocation(this.program, "uViewport")!;
+    this.uOpacity = gl.getUniformLocation(this.program, "uOpacity")!;
 
     // VAO
     this.vao = gl.createVertexArray()!;
     gl.bindVertexArray(this.vao);
 
-    // Attribute 0: unit quad [0,1]
+    // Attribute 0: the ring strip, (position along the arc, side) pairs.
+    const strip = new Float32Array((RING_SEGMENTS + 1) * 4);
+    for (let i = 0; i <= RING_SEGMENTS; i++) {
+      strip.set([i / RING_SEGMENTS, -1, i / RING_SEGMENTS, 1], i * 4);
+    }
     const quadBuf = gl.createBuffer()!;
     gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array([0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1]),
-      gl.STATIC_DRAW,
-    );
+    gl.bufferData(gl.ARRAY_BUFFER, strip, gl.STATIC_DRAW);
     gl.enableVertexAttribArray(0);
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
 
@@ -561,16 +573,30 @@ export class SAMRadiusPass {
     gl.useProgram(this.program);
     gl.uniform1f(this.uTime, time);
     gl.uniform1f(this.uOutline, this.colorMode === "owner" ? 1.0 : 0.0);
-    gl.uniform1f(this.uStrokeWidth, s.strokeWidth);
+    gl.uniform1f(this.uHalfWidthPx, s.strokeWidth * STROKE_PX_PER_UNIT);
     gl.uniform1f(this.uDashLen, s.dashLen);
     gl.uniform1f(this.uGapLen, s.gapLen);
     gl.uniform1f(this.uRotationSpeed, s.rotationSpeed);
     gl.uniform1f(this.uAlpha, s.alpha);
-    gl.uniform1f(this.uOutlineWidth, s.outlineWidth);
-    gl.uniform1f(this.uOutlineSoftness, s.outlineSoftness);
+    gl.uniform1f(
+      this.uOutlinePx,
+      Math.max(1, s.outlineWidth * OUTLINE_PX_PER_UNIT),
+    );
+    gl.uniform2f(this.uViewport, gl.drawingBufferWidth, gl.drawingBufferHeight);
+    gl.uniform1f(this.uOpacity, 1);
 
     gl.bindVertexArray(this.vao);
-    gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, this.instanceCount);
+    drawOverSurface(
+      gl,
+      () =>
+        gl.drawArraysInstanced(
+          gl.TRIANGLE_STRIP,
+          0,
+          (RING_SEGMENTS + 1) * 2,
+          this.instanceCount,
+        ),
+      (hidden) => gl.uniform1f(this.uOpacity, hidden ? HIDDEN_OPACITY : 1),
+    );
   }
 
   dispose(): void {

@@ -41,19 +41,18 @@ uniform float uShadeStrength;      // 0 = flat fill
 in vec2 vWorldPos;
 out vec4 fragColor;
 
-// The terrain's light at this point (terrain.frag.glsl), at the fill's
-// strength. `px` is tiles per pixel.
-float reliefShade(vec2 p, float px) {
+// The terrain's light at this point, exactly as terrain.frag.glsl's
+// shadeLand lights the ground (same normal footprint, sun, baked shadow and
+// sky), and how steep the ground is (0 flat, toward 1 a cliff). `px` is
+// tiles per pixel.
+float reliefLight(vec2 p, float px, out float steep) {
+  steep = 0.0;
   if (uShadeStrength <= 0.0) return 1.0;
   vec2 inv = 1.0 / uMapSize;
   vec2 uv = p * inv;
   vec3 n = reliefNormal(p, clamp(1.2 * px, 0.75, 6.0), inv);
-  float shade = lightAt(n, sunVisibility(uv), skyOpenness(uv), uShadeStrength);
-  return clamp(shade, 0.45, 1.45);
-}
-
-vec3 applyShade(vec3 c, float shade) {
-  return shade <= 1.0 ? c * shade : c + (1.0 - c) * (shade - 1.0) * 0.6;
+  steep = 1.0 - n.z;
+  return lightAt(n, sunVisibility(uv), skyOpenness(uv), uShadeStrength);
 }
 
 void main() {
@@ -165,10 +164,22 @@ void main() {
     color.rgb = mix(vec3(luma), color.rgb, uSaturation);
   }
 
-  // Shade the fill like the terrain under it, so the relief survives.
-  color.rgb = applyShade(color.rgb, reliefShade(p, tpx));
+  // Light the fill exactly like the ground under it (terrain-light's
+  // applyLight, as the terrain does), so blending it over the terrain keeps
+  // every shadow and sunlit face instead of laying a flat veil over them.
+  // Very pale fills are held a little under white, and steep rock shows a
+  // little more of itself, so mountains keep their texture under the tint.
+  float steep;
+  float light = reliefLight(p, tpx, steep);
+  float fillAlpha = uTerritoryAlpha;
+  if (uShadeStrength > 0.0) {
+    float l = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+    if (l > 0.72) color.rgb *= (0.72 + (l - 0.72) * 0.45) / l;
+    color.rgb = applyLight(color.rgb, light);
+    fillAlpha *= 1.0 - 0.22 * smoothstep(0.15, 0.6, steep);
+  }
 
-  color.a = uTerritoryAlpha * landMask;
+  color.a = fillAlpha * landMask;
 
   fragColor = color;
 }

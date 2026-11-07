@@ -119,10 +119,19 @@ export function createProgram(
 ): WebGLProgram {
   const usesCamera =
     vertSrc.includes(CAMERA_INCLUDE) || fragSrc.includes(CAMERA_INCLUDE);
+  // Every vertex shader placing geometry through the camera computes its
+  // position invariantly, so passes drawing the same surface get the same
+  // depth bit for bit and the depth test between them is exact.
   const vs = compileShader(
     gl,
     gl.VERTEX_SHADER,
-    expandShaderIncludes(vertSrc),
+    expandShaderIncludes(
+      vertSrc.replace(
+        CAMERA_INCLUDE,
+        `${CAMERA_INCLUDE}
+invariant gl_Position;`,
+      ),
+    ),
     `${name} vertex`,
   );
   const fs = compileShader(

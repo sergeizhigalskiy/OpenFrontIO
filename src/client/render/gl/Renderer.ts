@@ -46,6 +46,7 @@ import {
   DefenseCoveragePass,
   defensePostCircles,
 } from "./passes/DefenseCoveragePass";
+import { DefenseOverlayPass } from "./passes/DefenseOverlayPass";
 import { FalloutBloomPass } from "./passes/FalloutBloomPass";
 import { FalloutLightPass } from "./passes/FalloutLightPass";
 import { FxPass } from "./passes/fx-pass";
@@ -164,6 +165,7 @@ export class GPURenderer {
   private trailPass: TrailPass;
   private spiralRibbonPass: SpiralRibbonPass;
   private borderStampPass: BorderStampPass;
+  private defenseOverlayPass: DefenseOverlayPass;
   private borderPass: BorderComputePass;
   private defenseCoveragePass: DefenseCoveragePass;
   private bloomPass: FalloutBloomPass;
@@ -228,6 +230,8 @@ export class GPURenderer {
   private canvas: HTMLCanvasElement;
   private settings: RenderSettings;
   private sceneTarget: RenderTarget;
+  /** Depth for the scene target, so the surface passes occlude in it too. */
+  private sceneDepth: WebGLRenderbuffer;
   private raf: typeof requestAnimationFrame;
   private caf: typeof cancelAnimationFrame;
 
@@ -532,6 +536,7 @@ export class GPURenderer {
     this.spiralRibbonPass = new SpiralRibbonPass(gl, this.settings);
 
     // --- Border stamp (needs tileTex, paletteTex, borderTex) ---
+    this.defenseOverlayPass = new DefenseOverlayPass(gl, mapW, mapH);
     this.borderStampPass = new BorderStampPass(
       gl,
       mapW,
@@ -604,7 +609,7 @@ export class GPURenderer {
     );
 
     // --- Range circle (ghost preview radius) ---
-    this.rangeCirclePass = new RangeCirclePass(gl);
+    this.rangeCirclePass = new RangeCirclePass(gl, mapW, mapH);
 
     // --- Ruins icons (world features) ---
     this.ruinsPass = new RuinsPass(gl);
@@ -685,6 +690,16 @@ export class GPURenderer {
       sceneTex,
       0,
     );
+    this.sceneDepth = gl.createRenderbuffer()!;
+    gl.bindRenderbuffer(gl.RENDERBUFFER, this.sceneDepth);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, 1, 1);
+    gl.framebufferRenderbuffer(
+      gl.FRAMEBUFFER,
+      gl.DEPTH_ATTACHMENT,
+      gl.RENDERBUFFER,
+      this.sceneDepth,
+    );
+    gl.bindRenderbuffer(gl.RENDERBUFFER, null);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     this.sceneTarget = { fbo: sceneFbo, tex: sceneTex, w: 1, h: 1 };
 
@@ -1458,6 +1473,10 @@ export class GPURenderer {
       toScreen(this.gl, cw, ch, () =>
         this.nightCompositePass.draw(sceneTex, lightTex),
       );
+      // The base layer's depth stayed with the scene target; the overlays
+      // drawn on the screen need it there too.
+      this.gl.clear(this.gl.DEPTH_BUFFER_BIT);
+      this.mapSurface.drawDepth();
     } else {
       toScreen(this.gl, cw, ch, () => this.drawBaseLayer(cam));
     }
@@ -1543,6 +1562,9 @@ export class GPURenderer {
       gl.UNSIGNED_BYTE,
       null,
     );
+    gl.bindRenderbuffer(gl.RENDERBUFFER, this.sceneDepth);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, cw, ch);
+    gl.bindRenderbuffer(gl.RENDERBUFFER, null);
   }
 
   private drawBaseLayer(cam: Float32Array): void {
@@ -1552,7 +1574,10 @@ export class GPURenderer {
       60, 60, 60,
     ];
     gl.clearColor(bgR / 255, bgG / 255, bgB / 255, 1.0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    // The 3D surface's depth first: everything draped on it after this is
+    // hidden where a ridge stands in front (MapSurface.ts).
+    this.mapSurface.drawDepth();
     gl.disable(gl.BLEND);
     // Terrain draws the map's features (forests, rivers, fords) too.
     if (pe.terrain) this.terrainPass.draw(cam, this.terrainLight);
@@ -1576,6 +1601,13 @@ export class GPURenderer {
 
     this.spawnOverlayPass.draw(cam);
     if (pe.borderStamp) this.borderStampPass.draw(cam);
+    // Defense coverage over the borders, readable behind ridges too.
+    if (!this.altView) {
+      this.defenseOverlayPass.draw(
+        this.defenseCoveragePass.getCoverageTex(),
+        this.defenseCoveragePass.postCount,
+      );
+    }
     if (pe.railroad) this.railroadPass.draw(cam, zoom);
     // Over the land the weather covers, under the ships sailing through it.
     // The strategic alt view stays effects-free.
@@ -1666,16 +1698,18 @@ export class GPURenderer {
 
   /**
    * The map's terrain features (one TerrainFeature byte per tile), drawn by
-   * the terrain pass. Called once per map, and again after a context
-   * restore.
+   * the terrain pass; rivers also cut their beds into the relief. Called
+   * once per map, and again after a context restore.
    */
   setTerrainFeatures(features: Uint8Array): void {
     if (features.length !== this.mapW * this.mapH) {
       console.warn("[Renderer] terrain feature layer does not match the map");
       this.terrainPass.setFeatures(null);
+      this.heightField.setFeatures(null);
       return;
     }
     this.terrainPass.setFeatures(features);
+    this.heightField.setFeatures(features);
   }
 
   /** Toggle visibility of a single layer (driven by graphics settings). */
@@ -1730,6 +1764,7 @@ export class GPURenderer {
     this.trailPass.dispose();
     this.spiralRibbonPass.dispose();
     this.borderStampPass.dispose();
+    this.defenseOverlayPass.dispose();
     this.borderPass.dispose();
     this.defenseCoveragePass.dispose();
     this.bloomPass.dispose();
@@ -1773,6 +1808,7 @@ export class GPURenderer {
     this.skinAtlas.dispose();
     this.gl.deleteFramebuffer(this.sceneTarget.fbo);
     this.gl.deleteTexture(this.sceneTarget.tex);
+    this.gl.deleteRenderbuffer(this.sceneDepth);
     this.lastUnits = new Map();
     this.lastStructures = new Map();
     // Deleting GL resources isn't enough — the context itself counts against

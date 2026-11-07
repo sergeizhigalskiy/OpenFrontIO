@@ -115,7 +115,9 @@ day/night-mode wiring).
   and orbit for picking, zoom and pan (`setMapView(view.mapView)`), and
   ray-casts the terrain in the relief modes, so clicks land on the tile that
   is drawn under the cursor at any angle.
-- Terrain light: `gl/terrain/ReliefHeights.ts` (displaced heights),
+- Terrain light: `gl/terrain/ReliefHeights.ts` (displaced heights: flat
+  plains, gentle highlands, ridged mountains only on mountain tiles, land
+  sloping down to all water, river beds),
   `ReliefBake.ts` (shadows toward eight sun azimuths, sky openness),
   `SceneLight.ts` (the sun stays at the screen's top-left),
   `ClimateData.ts` (smooth coast, moisture, cold), `DetailTextures.ts`
@@ -145,6 +147,18 @@ ground overlay drawn per item (a weather cell, an eruption glow) draws a
 `createDrapedQuad` grid (`gl/terrain/DrapedQuad.ts`) through
 `groundToClip` instead of one quad, so it follows the terrain too; icons
 and bars use `billboardToClip` like the structure icons.
+
+Occlusion on relief: the renderer lays the mesh's depth down first
+(`MapSurface.drawDepth`), and `drawMapSurface` depth-tests every draped
+pass against it (no depth writes), so a border or lake behind a ridge
+can't show through the ridge. Camera vertex shaders get `invariant
+gl_Position` from `createProgram`, so passes on the same mesh agree on
+depth exactly. An overlay that must stay readable behind ridges (defense
+coverage, range circle) passes a see-through callback to
+`drawMapSurface(gl, vao, seeThrough)` to draw its hidden part again,
+faintly; ground geometry that isn't the mesh (the SAM ring strips) uses
+`drawOverSurface`. Lines on the ground take their width in screen pixels
+from derivatives, so they hold at every zoom and tilt.
 `tests/client/render/gl/CameraPortShaders.test.ts` compiles a pass's
 programs in headless Chrome and draws them in all three view modes: add new
 passes there.

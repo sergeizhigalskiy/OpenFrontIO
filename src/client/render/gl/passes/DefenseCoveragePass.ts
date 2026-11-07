@@ -139,7 +139,9 @@ export class DefenseCoveragePass {
       format: gl.RED,
       type: gl.UNSIGNED_BYTE,
       data: null,
-      filter: gl.NEAREST,
+      // texelFetch readers ignore it; DefenseOverlayPass samples it
+      // bilinearly for a smooth outline around the covered area.
+      filter: gl.LINEAR,
     });
     this.fbo = gl.createFramebuffer()!;
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
@@ -233,6 +235,11 @@ export class DefenseCoveragePass {
   /** The R8 coverage texture (1.0 = tile is defended by a same-owner post). */
   getCoverageTex(): WebGLTexture {
     return this.coverageTex;
+  }
+
+  /** Built defense posts stamped (none: nothing is covered). */
+  get postCount(): number {
+    return this.count;
   }
 
   /**
