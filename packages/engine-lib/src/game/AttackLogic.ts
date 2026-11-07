@@ -122,9 +122,9 @@ export function attackBudgetFront(
  */
 export const SPEAR_FREE_DEPTH = 20;
 /** ...one more 1x of both per this many tiles past SPEAR_FREE_DEPTH... */
-export const SPEAR_OVEREXTEND_SCALE = 9;
+export const SPEAR_OVEREXTEND_SCALE = 15;
 /** ...up to this multiple. */
-export const SPEAR_OVEREXTEND_MAX = 3.25;
+export const SPEAR_OVEREXTEND_MAX = 3;
 /**
  * A spear's origin is the attacker's tile nearest the focus when its first
  * spearhead on a target starts. Until this many ticks (60 s) after the last

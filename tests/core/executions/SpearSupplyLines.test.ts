@@ -175,19 +175,18 @@ const median = (xs: number[]) => {
 };
 
 describe("the overextension rule", () => {
-  it("is free up to 20 deep, then 1x more per 9 tiles, up to 3.25x", () => {
+  it("is free up to 20 deep, then 1x more per 15 tiles, up to 3x", () => {
     expect([
       SPEAR_FREE_DEPTH,
       SPEAR_OVEREXTEND_SCALE,
       SPEAR_OVEREXTEND_MAX,
-    ]).toEqual([20, 9, 3.25]);
+    ]).toEqual([20, 15, 3]);
     expect(spearOverextension(0)).toBe(1);
     expect(spearOverextension(20)).toBe(1);
-    expect(spearOverextension(29)).toBe(2);
-    expect(spearOverextension(38)).toBe(3);
-    expect(spearOverextension(40)).toBeCloseTo(1 + 20 / 9);
-    expect(spearOverextension(41)).toBe(3.25);
-    expect(spearOverextension(200)).toBe(3.25);
+    expect(spearOverextension(35)).toBe(2);
+    expect(spearOverextension(41)).toBeCloseTo(2.4);
+    expect(spearOverextension(50)).toBe(3);
+    expect(spearOverextension(200)).toBe(3);
   });
 
   it("measures depth along the line from the origin to the focus", () => {
@@ -230,7 +229,7 @@ describe("the overextension rule", () => {
 
   it("multiplies a deep tile's loss and time on a human's or nation's land, never a tribe's or free land", () => {
     const broad = attackLogic(input(), rules);
-    const deep = attackLogic(input(29), rules);
+    const deep = attackLogic(input(35), rules);
     expect(deep.attackerTroopLoss).toBeCloseTo(broad.attackerTroopLoss * 2);
     expect(deep.tickFraction).toBeCloseTo(broad.tickFraction * 2);
     expect(deep.defenderTroopLoss).toBe(broad.defenderTroopLoss);
@@ -351,10 +350,10 @@ describe("spear lines", () => {
 });
 
 describe("the spec's spearhead table", () => {
-  it("an 80-tile corridor takes at least 20 s and 2x the troops (300k: 2.1 s and 27.6k before)", async () => {
+  it("an 80-tile corridor takes about 4x the time and the troops (300k: 2.1 s and 27.6k before)", async () => {
     const spear = await corridor(300_000, true);
-    expect(spear.cutTick).toBeGreaterThanOrEqual(200);
-    expect(spear.cutSpent).toBeGreaterThanOrEqual(2 * 27_624);
+    expect(spear.cutTick).toBeGreaterThanOrEqual(70);
+    expect(spear.cutSpent).toBeGreaterThanOrEqual(3 * 27_624);
     // Past 40 deep a spearhead tile costs at least a broad push into a
     // post (152 to 168 a tile).
     const { game } = spear;
