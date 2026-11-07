@@ -129,13 +129,6 @@ export const NATION_PIECE_ATTACK_MARGIN = 1.25;
 export const NATION_NECK_REAIM_TILES = 3;
 /** A salient cut is forgotten this many ticks (2 min) after it started. */
 export const NATION_SALIENT_MEMORY_TICKS = 1200;
-/**
- * Hard and Impossible rank a human among the players they could attack as
- * this many times its troops (rankWeight). Spearheads no longer run a
- * needle through a human's land, so a human sitting on its troops was left
- * alone by nations picking their weakest neighbor.
- */
-export const NATION_HUMAN_RANK_WEIGHT = 0.25;
 
 // A landing weighed while planning a boat route (see boatRoute)
 interface LandingCandidate {
@@ -373,8 +366,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
       if (n.isPlayer()) borderingPlayerSet.add(n);
     }
     // Weakest first (rankWeight), Hard & Impossible ranking a front mostly
-    // under posts as NATION_POST_FRONT_WEIGHT times as strong and a human
-    // as NATION_HUMAN_RANK_WEIGHT times,
+    // under posts as NATION_POST_FRONT_WEIGHT times as strong,
     // and for Hard & Impossible one behind a snow front in winter or a mud
     // front as stronger (NationWeatherBehavior.frontHardness).
     // Weighed once per player up front.
@@ -1375,8 +1367,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
    * What we rank `p` by among the players we could attack, lowest first:
    * its troops, as upstream;
    * Hard and Impossible double it when posts cover more than half the front
-   * (NationSpearheads.postsCoverFront) and take a quarter of it for a human
-   * (NATION_HUMAN_RANK_WEIGHT).
+   * (NationSpearheads.postsCoverFront).
    */
   private rankWeight(p: Player): number {
     const troops = p.troops();
@@ -1391,7 +1382,6 @@ export class NationAttackBehavior extends AiAttackBehavior {
     if (postsCoverFront(this.game, p, this.frontWith(p))) {
       weight *= NATION_POST_FRONT_WEIGHT;
     }
-    if (p.type() === PlayerType.Human) weight *= NATION_HUMAN_RANK_WEIGHT;
     return weight;
   }
 

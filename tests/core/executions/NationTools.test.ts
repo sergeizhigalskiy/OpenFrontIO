@@ -25,7 +25,6 @@ import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import { AttackExecution } from "@openfront/engine/execution/AttackExecution";
 import { ConstructionExecution } from "@openfront/engine/execution/ConstructionExecution";
 import {
-  NATION_HUMAN_RANK_WEIGHT,
   NATION_STALL_TICKS,
   NationAttackBehavior,
 } from "@openfront/engine/execution/nation/NationAttackBehavior";
@@ -240,8 +239,7 @@ describe("picking fronts with the forecast", () => {
 });
 
 describe("ranking humans", () => {
-  it("Hard and Impossible rank a human at a quarter of its troops", async () => {
-    expect(NATION_HUMAN_RANK_WEIGHT).toBe(0.25);
+  it("every difficulty ranks a human by its troops, as upstream", async () => {
     for (const difficulty of DIFFICULTIES) {
       const game = await setup(
         "plains",
@@ -259,11 +257,7 @@ describe("ranking humans", () => {
       conquerRect(game, human, 50, 0, 100, 100);
       human.setTroops(100_000);
       const b = inside(behaviorFor(game, nation));
-      expect(b.rankWeight(human), difficulty).toBe(
-        difficulty === Difficulty.Hard || difficulty === Difficulty.Impossible
-          ? 25_000
-          : 100_000,
-      );
+      expect(b.rankWeight(human), difficulty).toBe(100_000);
     }
   });
 });
