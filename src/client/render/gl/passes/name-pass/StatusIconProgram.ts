@@ -15,8 +15,9 @@ import statusAtlasMeta from "resources/atlases/status-atlas-meta.json";
 import type { RenderSettings } from "../../RenderSettings";
 import statusFragSrc from "../../shaders/name/status-icon.frag.glsl?raw";
 import statusVertSrc from "../../shaders/name/status-icon.vert.glsl?raw";
-import { createProgram } from "../../utils/GlUtils";
+import { createProgram, shaderSrc } from "../../utils/GlUtils";
 import type { FlagAtlasArray } from "./FlagAtlasArray";
+import { SMALL_LABEL_SIZE } from "./NameCulling";
 import type { ParsedAtlas } from "./Types";
 
 const statusAtlasUrl = assetUrl("atlases/status-atlas.png");
@@ -58,7 +59,7 @@ export class StatusIconProgram {
 
     this.program = createProgram(
       gl,
-      statusVertSrc,
+      shaderSrc(statusVertSrc, { SMALL_LABEL_SIZE }),
       statusFragSrc,
       "StatusIconProgram",
     );

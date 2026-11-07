@@ -1,6 +1,12 @@
+import fs from "fs";
+import path from "path";
 import { describe, expect, it, vi } from "vitest";
 import { NamePass } from "../../../../src/client/render/gl/passes/name-pass";
 import { FlagAtlasArray } from "../../../../src/client/render/gl/passes/name-pass/FlagAtlasArray";
+import {
+  nameplateCull,
+  SMALL_LABEL_SIZE,
+} from "../../../../src/client/render/gl/passes/name-pass/NameCulling";
 import { SkinAtlasArray } from "../../../../src/client/render/gl/passes/SkinAtlasArray";
 
 describe("NamePass verified badge hover", () => {
@@ -213,5 +219,124 @@ describe("SkinAtlasArray", () => {
     expect(canvasCount).toBe(1);
     expect(sub).toHaveBeenCalledTimes(2);
     atlas.dispose();
+  });
+});
+
+describe("name plate culling: small players stay findable", () => {
+  const flags = { target: false, small: false, highlighted: false };
+
+  it("hides plates under the cull size, keeps those over it", () => {
+    expect(nameplateCull(0.004, 0.008, flags)).toEqual({
+      visible: false,
+      boost: 1,
+    });
+    expect(nameplateCull(0.02, 0.008, flags)).toEqual({
+      visible: true,
+      boost: 1,
+    });
+    // Hovered plates always show, at their own size.
+    expect(
+      nameplateCull(0.004, 0.008, { ...flags, highlighted: true }),
+    ).toEqual({ visible: true, boost: 1 });
+  });
+
+  it("boosts a targeted plate to the cull size", () => {
+    const c = nameplateCull(0.002, 0.008, { ...flags, target: true });
+    expect(c.visible).toBe(true);
+    expect(0.002 * c.boost).toBeCloseTo(0.008, 12);
+  });
+
+  it("boosts a small player's plate to a readable size at any zoom", () => {
+    for (const size of [0.0001, 0.003, 0.009]) {
+      const c = nameplateCull(size, 0.008, { ...flags, small: true });
+      expect(c.visible).toBe(true);
+      expect(size * c.boost).toBeCloseTo(0.008 * SMALL_LABEL_SIZE, 12);
+    }
+    // Already large: left alone.
+    expect(nameplateCull(0.05, 0.008, { ...flags, small: true }).boost).toBe(1);
+    // Small wins over targeted: the larger floor.
+    const both = nameplateCull(0.001, 0.008, {
+      ...flags,
+      small: true,
+      target: true,
+    });
+    expect(0.001 * both.boost).toBeCloseTo(0.008 * SMALL_LABEL_SIZE, 12);
+  });
+
+  it("is what the name, flag and status shaders do", () => {
+    const dir = path.resolve(
+      __dirname,
+      "../../../../src/client/render/gl/shaders/name",
+    );
+    for (const f of [
+      "name.vert.glsl",
+      "icon.vert.glsl",
+      "status-icon.vert.glsl",
+    ]) {
+      const src = fs.readFileSync(path.join(dir, f), "utf8");
+      // Small flag in player data column 8, w; floor at SMALL_LABEL_SIZE ×.
+      expect(src, f).toContain("ivec2(8, playerIdx), 0).w > 0.5");
+      expect(src, f).toContain("uCullThreshold * float(SMALL_LABEL_SIZE)");
+    }
+  });
+
+  it("marks and unmarks small players' plates for the shaders", () => {
+    const pass = Object.create(NamePass.prototype) as any;
+    const rows: number[] = [];
+    const slot: any = { static: { smallID: 7 }, small: false };
+    Object.assign(pass, {
+      slots: new Map([["p", slot]]),
+      writePlayerDataRow: (s: { static: { smallID: number } }) =>
+        rows.push(s.static.smallID),
+    });
+    const set = new Uint8Array(16);
+    set[7] = 1;
+    pass.setSmallPlayers(set);
+    expect(slot.small).toBe(true);
+    pass.setSmallPlayers(set);
+    expect(rows).toEqual([7]);
+    pass.setSmallPlayers(null);
+    expect(slot.small).toBe(false);
+    expect(rows).toEqual([7, 7]);
+  });
+
+  it("enlarges a small player's hover bounds like the shaders", () => {
+    const slot: any = {
+      alive: true,
+      startTime: 0,
+      nameHalfWidth: 50,
+      target: false,
+      small: false,
+      flagLayerIdx: -1,
+      emojiAtlasIdx: -1,
+    };
+    for (const k of ["srcX", "tgtX"]) slot[k] = 100;
+    for (const k of ["srcY", "tgtY"]) slot[k] = 200;
+    for (const k of ["srcScale", "tgtScale"]) slot[k] = 10;
+    slot.static = { smallID: 42, verified: false };
+    const pass = Object.create(NamePass.prototype) as any;
+    Object.assign(pass, {
+      settings: {
+        name: {
+          lerpSpeed: 10,
+          nameScaleCap: 10,
+          nameScaleFactor: 1,
+          cullThreshold: 0.1,
+          troopSizeMultiplier: 0.8,
+          statusRowOffset: 0.6,
+          emojiRowOffset: 0.6,
+        },
+      },
+      slots: new Map([["p1", slot]]),
+      fontBase: 32,
+      fontSize: 32,
+    });
+    const cameraMatrix = new Float32Array([0.001, 0, 0, 0, 0.001, 0, 0, 0, 1]);
+    // Outside the targeted plate's bounds, inside the larger small one's.
+    pass.setMouseWorldPos(300, 200);
+    slot.target = true;
+    expect(pass.hitTestNamePlate(1, cameraMatrix)).toBe(0);
+    slot.small = true;
+    expect(pass.hitTestNamePlate(1, cameraMatrix)).toBe(42);
   });
 });

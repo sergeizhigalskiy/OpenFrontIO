@@ -123,6 +123,13 @@ day/night-mode wiring).
   `ClimateData.ts` (smooth coast, moisture, cold), `DetailTextures.ts`
   (procedural ground layers). Shaders that sit on the ground and must match
   its light or coast `#include "terrain-light"` after the camera include.
+- Finding players: a player's display colour is kept apart from the
+  players near it once, when it first holds ground after the spawn phase
+  (`theme/NeighbourColors.ts`, settled in `WebGLFrameBuilder`; the viewer,
+  teams and cosmetic colours are never changed). Small humans and nations
+  glow (`SmallPlayerGlowPass`), get a pulsing ring at low zoom
+  (`SmallPlayerRingPass`) and keep a readable name plate at any zoom
+  (`name-pass/NameCulling.ts`, mirrored in the name shaders).
 
 ## The shared camera (placing geometry on the map)
 

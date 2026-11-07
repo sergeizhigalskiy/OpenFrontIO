@@ -350,30 +350,52 @@ export class TransformHandler {
     };
   }
 
+  /**
+   * The camera focus (on the z = 0 plane, what focusPoint reports) that puts
+   * the ground at (x, y) in the middle of the screen. In the flat view it is
+   * (x, y); over relief the ground stands `h` tiles up, so the focus sits
+   * where the view ray through that raised point meets z = 0, at any orbit.
+   */
+  groundFocus(x: number, y: number): { x: number; y: number } {
+    const mode = this.mapView?.view().mode;
+    const frame = this.tiltedFrame();
+    if (frame === null || mode === undefined || !hasRelief(mode)) {
+      return { x, y };
+    }
+    const h = this.mapView?.heightAt(x, y) ?? 0;
+    const F = frame.forward;
+    if (h === 0 || F[2] >= -1e-6) return { x, y };
+    const s = h / F[2];
+    return { x: x - s * F[0], y: y - s * F[1] };
+  }
+
+  private goToGround(x: number, y: number): void {
+    const f = this.groundFocus(x, y);
+    this.target = new Cell(f.x, f.y);
+    this.intervalID = setInterval(() => this.goTo(), GOTO_INTERVAL_MS);
+  }
+
   onGoToPlayer(event: GoToPlayerEvent) {
     this.clearTarget();
     const nameLocation = event.player.nameLocation();
     if (!nameLocation) {
       return;
     }
-    this.target = new Cell(nameLocation.x, nameLocation.y);
     this.targetScale = event.zoom ?? null;
-    this.intervalID = setInterval(() => this.goTo(), GOTO_INTERVAL_MS);
+    this.goToGround(nameLocation.x, nameLocation.y);
   }
 
   onGoToPosition(event: GoToPositionEvent) {
     this.clearTarget();
-    this.target = new Cell(event.x, event.y);
-    this.intervalID = setInterval(() => this.goTo(), GOTO_INTERVAL_MS);
+    this.goToGround(event.x, event.y);
   }
 
   onGoToUnit(event: GoToUnitEvent) {
     this.clearTarget();
-    this.target = new Cell(
+    this.goToGround(
       this.game.x(event.unit.lastTile()),
       this.game.y(event.unit.lastTile()),
     );
-    this.intervalID = setInterval(() => this.goTo(), GOTO_INTERVAL_MS);
   }
 
   centerCamera() {
@@ -381,8 +403,7 @@ export class TransformHandler {
     const player = this.game.myPlayer();
     const nameLocation = player?.nameLocation();
     if (!nameLocation) return;
-    this.target = new Cell(nameLocation.x, nameLocation.y);
-    this.intervalID = setInterval(() => this.goTo(), GOTO_INTERVAL_MS);
+    this.goToGround(nameLocation.x, nameLocation.y);
   }
 
   private goTo() {

@@ -60,6 +60,13 @@ export class PlayerView implements PlayerLike {
    */
   private hostileActs: number[];
 
+  /**
+   * This client's display colour in place of the theme's, set once the
+   * renderer has kept it apart from the player's neighbours
+   * (theme/NeighbourColors.ts); null for the theme's own.
+   */
+  private displayColor: Colord | null = null;
+
   // Assigned via computeColors() in the constructor; re-assignable on theme change.
   private _territoryColor!: Colord;
   private _borderColor!: Colord;
@@ -144,7 +151,7 @@ export class PlayerView implements PlayerLike {
     const pattern = this.cosmetics.pattern;
     const colors = resolvePlayerColors(
       theme,
-      theme.territoryColor(this),
+      this.displayColor ?? theme.territoryColor(this),
       this.cosmetics,
       this.team(),
       this.game.myClientID() === this.static.clientID,
@@ -214,6 +221,33 @@ export class PlayerView implements PlayerLike {
   /** Recompute colors after the active theme changes (e.g. colorblind toggle). */
   refreshColors(): void {
     this.computeColors();
+  }
+
+  /**
+   * Draw this player in `color` instead of the theme's colour on this
+   * client (null: the theme's again), with every colour derived from it.
+   * Only for a player whose territory shows the theme colour: no team, no
+   * cosmetic colour or pattern (displayColorAdjustable).
+   */
+  setDisplayColor(color: Colord | null): void {
+    if (color === this.displayColor) return;
+    this.displayColor = color;
+    this.computeColors();
+  }
+
+  /**
+   * Whether this client may adjust this player's display colour: not the
+   * viewer, not on a team (team colours stay), and not wearing a colour,
+   * pattern or skin of their own.
+   */
+  displayColorAdjustable(): boolean {
+    return (
+      !this.isMe() &&
+      this.team() === null &&
+      this.cosmetics.color === undefined &&
+      this.cosmetics.pattern === undefined &&
+      this.cosmetics.skin === undefined
+    );
   }
 
   /**

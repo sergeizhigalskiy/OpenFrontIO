@@ -104,6 +104,8 @@ void main() {
   // Targeted players' names must stay findable at any zoom (pd6.y = target
   // status flag; the crosshair in status-icon.vert.glsl matches this).
   bool isTargeted = texelFetch(uPlayerData, ivec2(6, playerIdx), 0).y > 0.5;
+  // Small players (pd8.w) stay findable too, larger (NameCulling.ts).
+  bool isSmall = texelFetch(uPlayerData, ivec2(8, playerIdx), 0).w > 0.5;
 
   // Troop count is smaller
   if (lineIdx == 1) {
@@ -116,12 +118,15 @@ void main() {
   float cameraScale = camClipScale();
   float screenSize = nameWorldScale * uBase * cameraScale;
   // Targeted names bypass the cull, boosted to the smallest size that
-  // survives it, so a mark set from across the map is still visible.
-  if (isTargeted && screenSize < uCullThreshold) {
-    float boost = uCullThreshold / screenSize;
+  // survives it, so a mark set from across the map is still visible; small
+  // players' names and troops to a size that reads (NameCulling.ts).
+  float findable = isSmall ? uCullThreshold * float(SMALL_LABEL_SIZE)
+                 : isTargeted ? uCullThreshold : 0.0;
+  if (screenSize < findable) {
+    float boost = findable / screenSize;
     nameWorldScale *= boost;
     worldScale *= boost;
-    screenSize = uCullThreshold;
+    screenSize = findable;
   }
   if (screenSize < uCullThreshold && !isHighlighted) {
     gl_Position = vec4(0.0);
