@@ -2102,7 +2102,7 @@ export async function fetchLobbyListed(gameID: string): Promise<boolean> {
 
 // POST /api/game/:id/listing on the game server (worker) — toggles whether a
 // private lobby appears in the public lobby browser. Creator-only and
-// server-authoritative (subscription, whitelist/cheat and quota checks).
+// server-authoritative (subscription, whitelist and quota checks).
 // On failure, `error` is the server's rejection code when available (e.g.
 // "subscription_required", "listing_limit_reached", "listing_full").
 export async function setLobbyListed(

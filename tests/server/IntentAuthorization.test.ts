@@ -120,13 +120,6 @@ describe("authorizeIntent", () => {
       400,
     ],
     [
-      "config enabling host cheats in a listed lobby",
-      config({ hostCheats: { infiniteGold: true } }),
-      host,
-      lobby({ isListed: true }),
-      409,
-    ],
-    [
       "config by the host in a listed lobby",
       config({ bots: 1 }),
       host,
@@ -141,11 +134,12 @@ describe("authorizeIntent", () => {
       null,
     ],
     [
-      "config enabling host cheats in a bot's listed lobby",
-      config({ hostCheats: { infiniteGold: true } }),
+      // Host cheats are gone: an old client's block has no guard to trip.
+      "config with an old hostCheats block in a bot's listed lobby",
+      config({ bots: 1, ...{ hostCheats: { infiniteGold: true } } }),
       bot,
       lobby({ isListed: true }),
-      409,
+      null,
     ],
 
     ["start timer by a player", timer, player, lobby(), 403],

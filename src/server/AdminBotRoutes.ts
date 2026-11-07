@@ -195,19 +195,13 @@ function parseCreateGameRequest(reqBody: unknown): ParsedCreateGame {
   }
 
   // Guard BEFORE minting a lobby, so an ineligible request doesn't leave an
-  // orphan behind. Both mirror the human endpoint's refusals: a whitelisted
+  // orphan behind. This mirrors the human endpoint's refusal: a whitelisted
   // lobby would be advertised to everyone yet reject every joiner (and the
-  // whitelist is stripped from the broadcast, so browsers couldn't tell why),
-  // and host cheats give the host an edge over players recruited from the
-  // browser. The cluster-wide MAX_HOSTED_LOBBIES cap is left to the master,
-  // which already delists overflow as the authoritative backstop.
-  if (listed) {
-    if ((config.allowedPublicIds?.length ?? 0) > 0) {
-      return fail(409, { error: "listing_whitelist_enabled" });
-    }
-    if (config.hostCheats !== undefined) {
-      return fail(409, { error: "listing_host_cheats_enabled" });
-    }
+  // whitelist is stripped from the broadcast, so browsers couldn't tell why).
+  // The cluster-wide MAX_HOSTED_LOBBIES cap is left to the master, which
+  // already delists overflow as the authoritative backstop.
+  if (listed && (config.allowedPublicIds?.length ?? 0) > 0) {
+    return fail(409, { error: "listing_whitelist_enabled" });
   }
   // Featuring only means anything for a listed lobby: it governs the listing
   // deadline and the browser row. Refuse rather than silently ignore, so a

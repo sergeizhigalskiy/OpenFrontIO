@@ -10,10 +10,7 @@ import {
 } from "@openfront/engine-api/game/GameTypes";
 import { GameConfig } from "@openfront/engine-api/Schemas";
 import { describe, expect, it } from "vitest";
-import {
-  applyGameConfigPatch,
-  hostCheatsEnabled,
-} from "../../src/server/ConfigPatch";
+import { applyGameConfigPatch } from "../../src/server/ConfigPatch";
 import { testGameConfig } from "../util/Wire";
 
 // One value per key the host may edit, each different from testGameConfig's
@@ -71,7 +68,7 @@ describe("applyGameConfigPatch", () => {
     const target = testGameConfig({ ...EDITABLE, ...NULLABLE });
     const before = structuredClone(target);
     applyGameConfigPatch(target, {});
-    expect(target).toEqual({ ...before, hostCheats: undefined });
+    expect(target).toStrictEqual(before);
   });
 
   it.each(Object.entries(NULLABLE))(
@@ -87,15 +84,15 @@ describe("applyGameConfigPatch", () => {
     },
   );
 
-  it("replaces hostCheats unconditionally, so omitting it clears it", () => {
-    // The host's full config carries hostCheats: undefined when the toggle
-    // is off; that has to clear, not preserve.
-    const target = testGameConfig({ hostCheats: { infiniteGold: true } });
-    applyGameConfigPatch(target, { bots: 1 });
-    expect(target.hostCheats).toBeUndefined();
-
-    applyGameConfigPatch(target, { hostCheats: { startingGold: 5 } });
-    expect(target.hostCheats).toEqual({ startingGold: 5 });
+  it("ignores a hostCheats block from an old client", () => {
+    // Host cheats are gone; nothing may switch them back on.
+    const target = testGameConfig();
+    applyGameConfigPatch(target, {
+      bots: 1,
+      ...{ hostCheats: { infiniteGold: true, infiniteTroops: true } },
+    });
+    expect(target.bots).toBe(1);
+    expect("hostCheats" in target).toBe(false);
   });
 
   it("ignores gameType, which has its own guarded path", () => {
@@ -168,29 +165,5 @@ describe("applyGameConfigPatch", () => {
     const target = testGameConfig();
     applyGameConfigPatch(target, { listed: true } as Partial<GameConfig>);
     expect("listed" in target).toBe(false);
-  });
-});
-
-describe("hostCheatsEnabled", () => {
-  it("is off without a block, or with a block that grants nothing", () => {
-    expect(hostCheatsEnabled(undefined)).toBe(false);
-    expect(hostCheatsEnabled({})).toBe(false);
-    expect(
-      hostCheatsEnabled({
-        infiniteGold: false,
-        infiniteTroops: false,
-        goldMultiplier: null,
-        startingGold: null,
-      }),
-    ).toBe(false);
-  });
-
-  it.each([
-    { infiniteGold: true },
-    { infiniteTroops: true },
-    { goldMultiplier: 1 },
-    { startingGold: 0 },
-  ])("is on when %o grants something", (block) => {
-    expect(hostCheatsEnabled(block)).toBe(true);
   });
 });

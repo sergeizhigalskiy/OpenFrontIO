@@ -377,13 +377,6 @@ export class Config implements AttackRules {
     return info;
   }
 
-  private hasInfiniteTroopsFor(player: PlayerLike): boolean {
-    if (this.infiniteTroops()) return true;
-    return (
-      (this._gameConfig.hostCheats?.infiniteTroops ?? false) &&
-      player.isLobbyCreator()
-    );
-  }
   deletionMarkDuration(): Tick {
     return 30 * 10;
   }
@@ -463,7 +456,7 @@ export class Config implements AttackRules {
       : 0;
     const landTroops = 2 * (pow(player.numTilesOwned(), 0.6) * 1000 + 50000);
     const maxTroops =
-      player.type() === PlayerType.Human && this.hasInfiniteTroopsFor(player)
+      player.type() === PlayerType.Human && this.infiniteTroops()
         ? 1_000_000_000
         : landTroops + cityTroops;
 

@@ -18,7 +18,6 @@ import { lastUserMeResponse } from "../../UserMeBroadcast";
 import type { UserSettingModal } from "../../UserSettingModal";
 import {
   disabledUnitsBox,
-  hostCheatsBox,
   LOBBY_SETTING_TAG,
   lobbySettingTagText,
   notableLobbySettings,
@@ -284,9 +283,7 @@ export class SettingsModal extends LitElement implements Controller {
     if (c === null) return null;
     const settings = notableLobbySettings(c, this.mapNationCount);
     const disabledUnits = disabledUnitsBox(c, "mx-3 mt-2");
-    const hostCheats = hostCheatsBox(c, "mx-3 mt-2");
-    if (settings.length === 0 && disabledUnits === null && hostCheats === null)
-      return null;
+    if (settings.length === 0 && disabledUnits === null) return null;
     return html`
       <div class="border-t border-slate-600 pt-3 mt-4" data-game-modifiers>
         <div
@@ -309,7 +306,7 @@ export class SettingsModal extends LitElement implements Controller {
               </div>`
             : null
         }
-        ${disabledUnits} ${hostCheats}
+        ${disabledUnits}
       </div>
     `;
   }

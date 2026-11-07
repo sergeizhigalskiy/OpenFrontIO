@@ -351,14 +351,6 @@ export const GameConfigSchema = z.object({
   playerTeams: TeamCountConfigSchema.optional(),
   goldMultiplier: zb.float({ min: 0.1, max: 1000 }).nullable().optional(),
   startingGold: zb.uint({ max: 1000000000 }).nullable().optional(),
-  hostCheats: z
-    .object({
-      infiniteGold: z.boolean().optional(),
-      infiniteTroops: z.boolean().optional(),
-      goldMultiplier: zb.float({ min: 0.1, max: 1000 }).nullable().optional(),
-      startingGold: zb.uint({ max: 1000000000 }).nullable().optional(),
-    })
-    .optional(),
   // Stripped from gameStartInfo and from the advertised lobby config: sibling
   // ids are private lobby ids, which are join secrets.
   pool: PoolConfigSchema.optional(),
