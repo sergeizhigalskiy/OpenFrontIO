@@ -23,6 +23,7 @@ import { ScheduledPublicGameType } from "@openfront/shared/WireSchemas";
 import { logger } from "./Logger";
 import { getMapLandTiles } from "./MapLandTiles";
 import { MapWeights } from "./MapWeights";
+import { ServerEnv } from "./ServerEnv";
 
 const log = logger.child({});
 
@@ -35,7 +36,9 @@ const CROWDED_PLAYER_COUNT = 125;
 // reports as trusted may join. A fixed rotation rather than a roll so the
 // lobbies on offer at any moment are never all locked. Must stay coprime with
 // the 3-type ffa/team/special scheduling cycle (MasterLobbyService), or the
-// trusted slot aliases onto a single game type.
+// trusted slot aliases onto a single game type. Never in standalone mode:
+// trust is an account property only the API reports, so no player there
+// could ever join such a lobby.
 const TRUSTED_PUBLIC_EVERY = 7;
 
 // Trusted-only lobbies draw from a much smaller pool of eligible accounts, so
@@ -164,7 +167,8 @@ export class MapPlaylist {
 
   public async gameConfig(type: ScheduledPublicGameType): Promise<GameConfig> {
     this.scheduled++;
-    const trusted = this.scheduled % TRUSTED_PUBLIC_EVERY === 0;
+    const trusted =
+      !ServerEnv.standalone() && this.scheduled % TRUSTED_PUBLIC_EVERY === 0;
     const config = await this.rollConfig(type, trusted);
     if (trusted) {
       config.trusted = true;

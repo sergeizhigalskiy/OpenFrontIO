@@ -3,6 +3,7 @@ import { html, LitElement, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { isDesktopShell } from "../DesktopShell";
 import { gamePortal } from "../GamePortal";
+import { isStandalone } from "../Standalone";
 import { getGamesPlayed, translateText } from "../Utils";
 
 const SHOWN_KEY = "purchaseNudgeShown";
@@ -17,7 +18,8 @@ const MIN_GAMES_PLAYED = 50;
  * load, `false` when logged out). Ad-free players have already purchased —
  * seeing one marks the nudge as shown, so it stays off even if they later
  * log out in this browser. Portals allow no purchases and the desktop
- * shell never shows ads, so neither sees it. Closing takes an explicit click
+ * shell never shows ads, so neither sees it; nor does a standalone page,
+ * which has no store. Closing takes an explicit click
  * on the X (or on "Visit store"); there is no backdrop-click dismissal.
  */
 @customElement("purchase-nudge-modal")
@@ -36,6 +38,7 @@ export class PurchaseNudgeModal extends LitElement {
     if (
       gamePortal.isOnGamePortal() ||
       isDesktopShell() ||
+      isStandalone() ||
       getGamesPlayed() <= MIN_GAMES_PLAYED ||
       localStorage.getItem(SHOWN_KEY) !== null
     ) {

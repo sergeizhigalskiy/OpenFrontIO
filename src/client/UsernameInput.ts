@@ -22,6 +22,7 @@ import {
   type ClaimGrace,
   type ResolvedPlayerName,
 } from "./PlayerName";
+import { isStandalone } from "./Standalone";
 import {
   parseSteamGrantStore,
   STEAM_GRANT_NOTICE_KEY,
@@ -1015,13 +1016,18 @@ export class UsernameInput extends LitElement {
                 </button>`
               : null
           }
-          <button
-            type="button"
-            class="ml-auto rounded-lg px-2 py-1 text-sm text-malibu-blue hover:bg-malibu-blue/15 transition-colors cursor-pointer"
-            @click=${this.openClanBrowser}
-          >
-            ${translateText("username.clan_browse")}
-          </button>
+          ${
+            // Standalone has no clans to browse; a typed tag still works.
+            isStandalone()
+              ? null
+              : html`<button
+                  type="button"
+                  class="ml-auto rounded-lg px-2 py-1 text-sm text-malibu-blue hover:bg-malibu-blue/15 transition-colors cursor-pointer"
+                  @click=${this.openClanBrowser}
+                >
+                  ${translateText("username.clan_browse")}
+                </button>`
+          }
         </div>
       </div>
     `;

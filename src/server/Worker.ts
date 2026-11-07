@@ -7,7 +7,6 @@ import {
 import { exclusiveModeError } from "@openfront/engine-lib/game/ModeExclusions";
 import { adjustForTeams } from "@openfront/engine-lib/game/TeamAssignment";
 import { CloseCode, CloseReason } from "@openfront/shared/CloseCodes";
-import { GameEnv } from "@openfront/shared/configuration/Env";
 import { generateID, replacer } from "@openfront/shared/SharedUtil";
 import {
   ClientMessage,
@@ -52,7 +51,11 @@ import {
 } from "./JoinVerify";
 import { getUserMe, userMeFailureClose, verifyClientToken } from "./jwt";
 import { levelBadgeForPlayer } from "./LevelBadge";
-import { payForLobbyQueue, queueListedLobby } from "./LobbyQueuePayment";
+import {
+  type LobbyQueuePaymentResult,
+  payForLobbyQueue,
+  queueListedLobby,
+} from "./LobbyQueuePayment";
 import { logger } from "./Logger";
 import { registerPlayerProfileRoute } from "./PlayerProfileRoute";
 import { resolveVerifiedJoin } from "./Privilege";
@@ -76,6 +79,26 @@ const log = logger.child({ comp: `w_${workerId}` });
 // The WebSocket server's max payload.
 const MAX_WEBSOCKET_PAYLOAD_BYTES = 1024 * 1024;
 const playlist = new MapPlaylist();
+
+// Whether a join goes through join_verify, the API call that redeems the
+// Turnstile token and screens the name. Off where there is no account
+// backend to answer it (dev and standalone): no Turnstile token is asked
+// for, and the local censorPlayer screen is the only one.
+export function joinVerifyEnabled(): boolean {
+  return !ServerEnv.accountsOff();
+}
+
+// The charge for putting a listed lobby in the public queue. Dev and
+// standalone have no payment backend, so it is free there (same precedent as
+// the listing subscription check); everywhere else the API charges the host.
+export function lobbyQueuePayment(
+  token: string,
+  gameID: string,
+): () => Promise<LobbyQueuePaymentResult> {
+  return ServerEnv.accountsOff()
+    ? async () => ({ type: "success" })
+    : () => payForLobbyQueue(token, gameID);
+}
 
 export function clampApprovedUsername(username: string): string {
   return username.length > MAX_USERNAME_LENGTH
@@ -231,9 +254,9 @@ export function registerListingRoute(opts: {
           return res.status(409).json({ error: preError });
         }
 
-        // Dev has no subscription backend; skip the check so the feature is
-        // testable locally (same precedent as Turnstile).
-        if (ServerEnv.env() !== GameEnv.Dev) {
+        // Dev and standalone have no subscription backend; skip the check so
+        // the feature works without one (same precedent as Turnstile).
+        if (!ServerEnv.accountsOff()) {
           const userMe = await getUserMe(token);
           if (userMe.type === "error") {
             log.warn(
@@ -304,21 +327,24 @@ export async function startWorker() {
   const lobbyService = new WorkerLobbyService(server, wss, gm, log);
   const singleplayerPresence = new SingleplayerPresence();
 
-  setTimeout(
-    () => {
-      // The ranked loop follows the deployment-active flag the master pushes
-      // to this worker (OPE-469): a draining, standby or fenced server keeps
-      // the games it has but stops offering new matches.
-      startRankedCheckinLoops({
-        gm,
-        playlist,
-        workerId,
-        log,
-        isActive: () => lobbyService.isDeploymentActive(),
-      });
-    },
-    1000 + Math.random() * 2000,
-  );
+  // Ranked matchmaking is run by the API, which standalone has none of.
+  if (!ServerEnv.standalone()) {
+    setTimeout(
+      () => {
+        // The ranked loop follows the deployment-active flag the master
+        // pushes to this worker (OPE-469): a draining, standby or fenced
+        // server keeps the games it has but stops offering new matches.
+        startRankedCheckinLoops({
+          gm,
+          playlist,
+          workerId,
+          log,
+          isActive: () => lobbyService.isDeploymentActive(),
+        });
+      },
+      1000 + Math.random() * 2000,
+    );
+  }
 
   if (ServerEnv.otelEnabled()) {
     initWorkerMetrics(gm, lobbyService, singleplayerPresence);
@@ -330,7 +356,12 @@ export async function startWorker() {
     ServerEnv.jwtIssuer() + "/reserved_clan_tags",
     log,
   );
-  void privilegeRefresher.start();
+  // Standalone has no cosmetics catalog or reserved clan tags to load, so
+  // the refresher is never started and get() keeps answering with the
+  // fail-open checker, exactly as it does while the API is unreachable.
+  if (!ServerEnv.standalone()) {
+    void privilegeRefresher.start();
+  }
 
   // Ahead of everything that can reject a request — the worker-prefix check
   // below and the rate limiter further down — so that a 404 or a 429 still
@@ -524,11 +555,7 @@ export async function startWorker() {
         queueForPublic: () => game.queueForPublic(),
       },
       auth.persistentId,
-      // Dev has no payment backend; skip the charge so the feature is
-      // testable locally (same precedent as the listing subscription check).
-      ServerEnv.env() === GameEnv.Dev
-        ? async () => ({ type: "success" })
-        : () => payForLobbyQueue(token, game.id),
+      lobbyQueuePayment(token, game.id),
     );
     if (outcome.status === 502) {
       log.warn("lobby queue payment failed", { gameID: game.id });
@@ -708,7 +735,8 @@ export async function startWorker() {
         }
 
         // Basic local screen as the fallback identity for the paths
-        // join_verify doesn't cover: Dev and API failure (fail-open joins).
+        // join_verify doesn't cover: Dev, standalone and API failure
+        // (fail-open joins).
         // An approved join_verify overwrites it with the API's display-ready
         // pair below.
         let { username, clanTag } = censorPlayer(
@@ -737,7 +765,7 @@ export async function startWorker() {
           persistentId,
           isReadmit,
         );
-        if (ServerEnv.env() !== GameEnv.Dev) {
+        if (joinVerifyEnabled()) {
           const stored = game?.storedIdentity(persistentId) ?? null;
           const steamAuthed = isSteamAuthenticated(claims);
           // SECURITY: the reject/skip/verify split (first joins must

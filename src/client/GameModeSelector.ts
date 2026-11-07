@@ -40,6 +40,7 @@ import {
   type BackendReachabilityDetail,
 } from "./ServerList";
 import type { SinglePlayerModal } from "./SinglePlayerModal";
+import { isStandalone } from "./Standalone";
 import { lastUserMeResponse } from "./UserMeBroadcast";
 import { UsernameInput } from "./UsernameInput";
 import {
@@ -665,6 +666,9 @@ export class GameModeSelector extends LitElement {
     // On compact screens (styles.css) Solo/Tutorial sit under the hero card only,
     // and the lobby column runs down beside them, so its two cards get that height.
     // There the grid also pulls up over the gap after the banner's row when it's empty.
+    // Ranked is matchmade by the account API, so a standalone page leaves it
+    // out and Create and Join share the row.
+    const ranked = !isStandalone();
     return html`
       <div
         class="flex flex-col gap-4 sm:compact:gap-3 sm:compact:has-[>ios-add-to-home-screen-banner:empty]:-mt-3 w-full px-4 pb-4 mx-auto sm:px-0 sm:pb-0 sm:grid sm:grid-cols-[2fr_1fr] sm:grid-rows-[auto_min(24rem,40vh)_auto_auto] sm:compact:grid-rows-[auto_minmax(min(24rem,40vh),auto)_3.5rem_auto] desktop:sm:grid-rows-[auto_40vh_auto_auto] sm:[reading-flow:grid-rows]"
@@ -696,7 +700,9 @@ export class GameModeSelector extends LitElement {
           }
         </div>
         <div
-          class="grid grid-cols-3 gap-4 sm:compact:gap-3 h-14 sm:col-span-2 sm:row-start-4"
+          class="grid ${
+            ranked ? "grid-cols-3" : "grid-cols-2"
+          } gap-4 sm:compact:gap-3 h-14 sm:col-span-2 sm:row-start-4"
         >
           ${this.renderSmallActionCard(
             translateText("main.create"),
@@ -705,26 +711,30 @@ export class GameModeSelector extends LitElement {
             undefined,
             true,
           )}
-          ${this.renderSmallActionCard(
-            translateText("mode_selector.ranked_title"),
-            this.openRankedMenu,
-            SECONDARY_ACTION,
-            undefined,
-            true,
-            // Ranked admits trusted accounts only. A trusted viewer gets the
-            // green open lock; anyone else meets the red locks and the trust
-            // popup inside the ranked modal. Small, so it clears the label on
-            // narrow (mobile) buttons.
-            this.viewerTrusted
-              ? trustLockIcon(true, {
-                  tooltipTitle: translateText(
-                    "mode_selector.ranked_trust_tooltip_title",
-                  ),
-                  position: "top-1 right-1",
-                  small: true,
-                })
-              : nothing,
-          )}
+          ${
+            ranked
+              ? this.renderSmallActionCard(
+                  translateText("mode_selector.ranked_title"),
+                  this.openRankedMenu,
+                  SECONDARY_ACTION,
+                  undefined,
+                  true,
+                  // Ranked admits trusted accounts only. A trusted viewer gets
+                  // the green open lock; anyone else meets the red locks and
+                  // the trust popup inside the ranked modal. Small, so it
+                  // clears the label on narrow (mobile) buttons.
+                  this.viewerTrusted
+                    ? trustLockIcon(true, {
+                        tooltipTitle: translateText(
+                          "mode_selector.ranked_trust_tooltip_title",
+                        ),
+                        position: "top-1 right-1",
+                        small: true,
+                      })
+                    : nothing,
+                )
+              : nothing
+          }
           ${this.renderSmallActionCard(
             translateText("main.join"),
             this.openJoinLobby,

@@ -96,6 +96,16 @@ export async function renderHtmlContent(
       ServerEnv.stripePublishableKey() === undefined
         ? undefined
         : JSON.stringify(ServerEnv.stripePublishableKey()),
+    // Environment-scoped and optional the same way, but a flag: only `true`
+    // is ever written, so every page that is not standalone stays
+    // byte-for-byte what it was (ClientEnv reads an absent field as false).
+    standalone: ServerEnv.standalone() ? "true" : undefined,
+    // Optional the same way: the tunnel address friends join through, for
+    // invite links (see BOOTSTRAP_CONFIG.shareOrigin).
+    shareOrigin:
+      ServerEnv.shareOrigin() === undefined
+        ? undefined
+        : JSON.stringify(ServerEnv.shareOrigin()),
     // Same shape: environment-scoped, optional, line dropped when unset.
     faroCollectorUrl:
       ServerEnv.faroCollectorUrl() === undefined

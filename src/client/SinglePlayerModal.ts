@@ -32,7 +32,7 @@ import { UserMeResponse } from "@openfront/shared/ApiSchemas";
 import { assetUrl } from "@openfront/shared/AssetUrls";
 import { generateID } from "@openfront/shared/SharedUtil";
 import { PlayerCosmetics } from "@openfront/shared/WireSchemas";
-import { html, TemplateResult } from "lit";
+import { html, nothing, TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { showToast, translateText } from "../client/Utils";
 import { responseHasLinkedIdentity } from "./AccountIdentity";
@@ -61,6 +61,7 @@ import {
 import { JoinLobbyEvent } from "./Main";
 import { fallbackPlayerName, ResolvedPlayerName } from "./PlayerName";
 import { downloadSavedGame } from "./SavedGamesApi";
+import { isStandalone } from "./Standalone";
 import { lastUserMeResponse } from "./UserMeBroadcast";
 import { UsernameInput } from "./UsernameInput";
 import { UserSettings } from "./UserSettings";
@@ -369,7 +370,8 @@ export class SinglePlayerModal extends BaseModal {
   };
 
   private renderNotLoggedInBanner(): TemplateResult {
-    if (gamePortal.isOnGamePortal()) {
+    // Standalone has no accounts to sign in to.
+    if (gamePortal.isOnGamePortal() || isStandalone()) {
       return html``;
     }
     return html`<button
@@ -574,15 +576,20 @@ export class SinglePlayerModal extends BaseModal {
         <div
           class="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-6 pt-4 pb-6 mr-1 mx-auto w-full max-w-5xl"
         >
-          <saved-games-panel
-            class="block mb-6"
-            .signedIn=${responseHasLinkedIdentity(this.userMeResponse)}
-            .sharedId=${this.sharedSaveId}
-            .busy=${this.starting}
-            @load-saved-game=${this.handleLoadSavedGame}
-            @open-shared-save=${(e: CustomEvent<string>) =>
-              (this.sharedSaveId = e.detail)}
-          ></saved-games-panel>
+          ${
+            // Saves live in the account API, which standalone has none of.
+            isStandalone()
+              ? nothing
+              : html`<saved-games-panel
+                  class="block mb-6"
+                  .signedIn=${responseHasLinkedIdentity(this.userMeResponse)}
+                  .sharedId=${this.sharedSaveId}
+                  .busy=${this.starting}
+                  @load-saved-game=${this.handleLoadSavedGame}
+                  @open-shared-save=${(e: CustomEvent<string>) =>
+                    (this.sharedSaveId = e.detail)}
+                ></saved-games-panel>`
+          }
           <lobby-preset-controls
             .presets=${this.lobbyPresets}
             .selectedName=${this.selectedPresetName}

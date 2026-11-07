@@ -1,6 +1,7 @@
 import { html, LitElement, nothing } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { gamePortal } from "../GamePortal";
+import { isStandalone } from "../Standalone";
 import { steamSDK } from "../SteamSDK";
 import { translateText } from "../Utils";
 
@@ -108,8 +109,15 @@ export class SteamWishlist extends LitElement {
   // (index.html), and an iframe whose color scheme differs from its
   // document's gets an opaque white backdrop, a white strip under the card.
   render() {
-    // Poki doesn't allow promoting other platforms.
-    if (steamSDK.isOnSteam() || gamePortal.name() === "poki") return nothing;
+    // Poki doesn't allow promoting other platforms, and a standalone page
+    // (a private copy) sells nothing and contacts no outside host.
+    if (
+      steamSDK.isOnSteam() ||
+      gamePortal.name() === "poki" ||
+      isStandalone()
+    ) {
+      return nothing;
+    }
 
     const frameWidth = Math.min(
       WIDGET_WIDTH,

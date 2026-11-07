@@ -5,6 +5,7 @@ import {
   InstanceLetterSchema,
 } from "@openfront/shared/ClusterConfig";
 import { GameEnv, parseGameEnv } from "@openfront/shared/configuration/Env";
+import { normalizeShareOrigin } from "@openfront/shared/configuration/ShareOrigin";
 import { generateGameID } from "@openfront/shared/SharedUtil";
 import { JWK } from "jose";
 import { z } from "zod";
@@ -36,6 +37,31 @@ export class ServerEnv {
   static env(): GameEnv {
     return ServerEnv.gameEnv;
   }
+  // STANDALONE=true: a private copy of the game that has no account backend
+  // at all, so nothing here may contact one. Not the "standalone deployment"
+  // the comments below mean (an old-style beta or branch host that still
+  // talks to the API): this one never does. Independent of GAME_ENV, and not
+  // dev mode either: it turns off the account and API parts only, and every
+  // dev-only tweak (worker count, short timers, DEV_ID) follows GAME_ENV as
+  // before. Read on every call so tests can stub it.
+  static standalone(): boolean {
+    return process.env.STANDALONE === "true";
+  }
+  // No account backend to ask: dev runs without one, and standalone has
+  // none. Only the gates that exist because of that backend read this
+  // (accepting a bare persistent ID, join_verify and its Turnstile check, the
+  // listing subscription, the lobby queue charge). Goes through env() so a
+  // test's spy on it applies here too.
+  static accountsOff(): boolean {
+    return ServerEnv.env() === GameEnv.Dev || ServerEnv.standalone();
+  }
+  // SHARE_ORIGIN: the address other players reach this copy at, when the
+  // host plays on localhost and friends come in through a tunnel. Invite
+  // links use it instead of the host's own page address. Only an http(s)
+  // origin is accepted; anything else reads as unset.
+  static shareOrigin(): string | undefined {
+    return normalizeShareOrigin(process.env.SHARE_ORIGIN);
+  }
   static gameEnvName(): string {
     switch (ServerEnv.gameEnv) {
       case GameEnv.Dev:
@@ -66,23 +92,29 @@ export class ServerEnv {
   static turnstileSiteKey(): string {
     const v = process.env.TURNSTILE_SITE_KEY;
     if (!v) {
+      // Turnstile is only ever checked by the account API (join_verify), so
+      // standalone, which never calls it, needs no key. The page still
+      // carries the field, which ClientEnv requires to be present.
+      if (ServerEnv.standalone()) return "";
       throw new Error("TURNSTILE_SITE_KEY not set");
     }
     return v;
   }
   // Optional, unlike turnstileSiteKey: a deployment without a key just keeps
   // the inline Stripe flow off (the store falls back to redirect checkout).
+  // Never in standalone, which has no store to check out from.
   static stripePublishableKey(): string | undefined {
     const v = process.env.STRIPE_PUBLISHABLE_KEY;
-    if (!v) return undefined;
+    if (!v || ServerEnv.standalone()) return undefined;
     return v;
   }
   // Optional: the Grafana Faro collector the browser client reports to.
   // Absent keeps client telemetry off. A public ingest URL, not a secret,
-  // so it travels through BOOTSTRAP_CONFIG like the Stripe key.
+  // so it travels through BOOTSTRAP_CONFIG like the Stripe key. Never in
+  // standalone, whose pages report to no outside host.
   static faroCollectorUrl(): string | undefined {
     const v = process.env.FARO_COLLECTOR_URL;
-    if (!v) return undefined;
+    if (!v || ServerEnv.standalone()) return undefined;
     return v;
   }
   static jwtAudience(): string {
@@ -117,6 +149,10 @@ export class ServerEnv {
   }
   static async jwkPublicKey(): Promise<JWK> {
     if (ServerEnv.publicKey) return ServerEnv.publicKey;
+    // No issuer exists in standalone, so there is no key to fetch.
+    if (ServerEnv.standalone()) {
+      throw new Error("no JWKS in standalone mode");
+    }
     const jwksUrl = ServerEnv.jwtIssuer() + "/.well-known/jwks.json";
     console.log(`Fetching JWKS from ${jwksUrl}`);
     // A redirect would forward x-api-key to the new origin; the JWKS

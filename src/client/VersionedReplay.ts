@@ -8,6 +8,7 @@
 // simulates the game with the rules it was played under.
 
 import { GameID } from "@openfront/engine-api/Schemas";
+import { isStandalone } from "./Standalone";
 
 // Canonical replay URL for a game. The replay host derives from the JWT
 // audience exactly like getApiBase() derives api.<audience>. Null in dev
@@ -29,7 +30,8 @@ export function isReplayShellHost(hostname: string): boolean {
 
 // The versioned shell URL for a game from another build, if that shell is
 // actually served. Null on a shell host (redirecting again would loop), in
-// dev, or when the probe fails. The probe requires text/html so a misrouted
+// dev, on a standalone page (no replay host exists for it, so nothing is
+// probed), or when the probe fails. The probe requires text/html so a misrouted
 // host that answers 200 with something else can't strand the player on a
 // broken page.
 export async function findVersionedShell(
@@ -39,6 +41,7 @@ export async function findVersionedShell(
   fetchFn: typeof fetch = fetch,
 ): Promise<string | null> {
   if (isReplayShellHost(hostname)) return null;
+  if (isStandalone()) return null;
   const url = versionedReplayUrl(audience, gameID);
   if (url === null) return null;
   try {

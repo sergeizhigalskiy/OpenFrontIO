@@ -12,10 +12,11 @@ import {
   versionMatches,
 } from "@openfront/shared/ServerList";
 import { z } from "zod";
-import { getApiBase } from "./ApiBase";
+import { getApiBase, getAudience } from "./ApiBase";
 import { ClientEnv } from "./ClientEnv";
 import { isDesktopShell } from "./DesktopShell";
 import { pagePin } from "./PagePin";
+import { isStandalone } from "./Standalone";
 import { isReplayShellHost } from "./VersionedReplay";
 
 // Multi-server v2 (docs/MultiServer.md, "Server list v2"): the API says which
@@ -258,6 +259,9 @@ export function backendReachable(): boolean | null {
  * bug, and the reason getDesktopUpdateState() exists in the same shape.
  */
 export function backendUnreachableConfirmed(): boolean {
+  // Standalone never asks the API, so there is no outage to confirm: Create
+  // and Join Lobby go to the page's own server, which served this page.
+  if (isStandalone()) return false;
   return (
     reachable === false && consecutiveFailures >= CONFIRM_OUTAGE_AFTER_FAILURES
   );
@@ -369,7 +373,12 @@ async function fetchServerList(site: string): Promise<ServerList | null> {
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
   } catch (e) {
-    // Timed out, offline, DNS, TLS: nothing answered.
+    // Timed out, offline, DNS, TLS: nothing answered. A dev box (audience
+    // "localhost") has no account API unless one is run by hand, and its own
+    // page origin is the game server, so a missing API is not an outage there.
+    // Recording it would grey out Create and Join Lobby about ten seconds
+    // after load, which stops anyone hosting friends from a dev server.
+    if (getAudience() === "localhost") return null;
     recordAttempt(false, e);
     return null;
   }
@@ -410,6 +419,9 @@ function warnMalformedOnce(detail: unknown): void {
  * attempt leaves `cached` alone — the last good list keeps serving.
  */
 function fetchOnce(): Promise<ServerList | null> {
+  // Standalone has no API to list servers: no list, so every caller falls
+  // back to the page's own server, and nothing is fetched or recorded.
+  if (isStandalone()) return Promise.resolve(null);
   if (inflight !== null) return inflight;
   const site = safeSite();
   if (site === undefined) return Promise.resolve(null);
@@ -439,6 +451,8 @@ function fetchOnce(): Promise<ServerList | null> {
  */
 export function startServerListPolling(): void {
   if (polling) return;
+  // Nothing to poll in standalone (see fetchOnce).
+  if (isStandalone()) return;
   try {
     if (safeSite() === undefined) return;
     if (isReplayShellHost(window.location.hostname)) return;

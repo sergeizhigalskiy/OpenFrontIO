@@ -1,4 +1,20 @@
 import { loadModal } from "./LazyModals";
+import { isStandalone } from "./Standalone";
+
+// Pages that only mean something with an account behind them. A standalone
+// page has no accounts and shows no way into these, but other pages still
+// link to some of them (a clan tag's "browse clans", a sign-in banner), so
+// showPage refuses them there. Main gives them no URL route either.
+export const ACCOUNT_ONLY_PAGES: ReadonlySet<string> = new Set([
+  "page-item-store",
+  "page-inventory",
+  "page-leaderboard",
+  "page-clan",
+  "page-account",
+  "page-stats",
+  "page-profile",
+  "page-ranked",
+]);
 
 export function closeMobileSidebar() {
   const sidebar = document.getElementById("sidebar-menu");
@@ -16,6 +32,7 @@ export function closeMobileSidebar() {
 
 export function initNavigation() {
   const showPage = (pageId: string) => {
+    if (isStandalone() && ACCOUNT_ONLY_PAGES.has(pageId)) return;
     window.currentPageId = pageId;
 
     // Close mobile sidebar if a nav item was clicked

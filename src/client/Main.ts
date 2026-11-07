@@ -126,6 +126,7 @@ import {
   startServerListPolling,
 } from "./ServerList";
 import type { SinglePlayerModal } from "./SinglePlayerModal";
+import { isStandalone } from "./Standalone";
 import {
   parseSteamGrantStore,
   recordSteamGrant,
@@ -486,7 +487,15 @@ class Client {
     // Register modals with the URL router. Lobby modals (join/host) and
     // matchmaking are intentionally omitted — they own their own URL state
     // (path-based) or none at all.
-    modalRouter.register("store", {
+    //
+    // A standalone page has no accounts, so the account-only pages get no
+    // route there: a #modal= link to one is stripped like any unknown modal,
+    // and Navigation refuses to show them (see ACCOUNT_ONLY_PAGES).
+    const standalone = isStandalone();
+    const registerAccountPage: typeof modalRouter.register = (name, entry) => {
+      if (!standalone) modalRouter.register(name, entry);
+    };
+    registerAccountPage("store", {
       tag: "store-modal",
       pageId: "page-item-store",
     });
@@ -494,29 +503,31 @@ class Client {
       tag: "user-setting",
       pageId: "page-settings",
     });
-    modalRouter.register("leaderboard", {
+    registerAccountPage("leaderboard", {
       tag: "leaderboard-modal",
       pageId: "page-leaderboard",
     });
-    modalRouter.register("clan", { tag: "clan-modal", pageId: "page-clan" });
-    modalRouter.register("account", {
+    registerAccountPage("clan", { tag: "clan-modal", pageId: "page-clan" });
+    registerAccountPage("account", {
       tag: "account-modal",
       pageId: "page-account",
     });
     // Profile-menu modals: popup style, so no pageId.
-    modalRouter.register("account-settings", { tag: "account-settings-modal" });
-    modalRouter.register("change-username", { tag: "change-username-modal" });
-    modalRouter.register("subscription", { tag: "subscription-modal" });
-    modalRouter.register("stats", {
+    registerAccountPage("account-settings", { tag: "account-settings-modal" });
+    registerAccountPage("change-username", { tag: "change-username-modal" });
+    registerAccountPage("subscription", { tag: "subscription-modal" });
+    registerAccountPage("stats", {
       tag: "game-stats-modal",
       pageId: "page-stats",
     });
-    modalRouter.register("profile", {
+    registerAccountPage("profile", {
       tag: "player-profile-modal",
       pageId: "page-profile",
     });
     // The canonical profile link, `/player/<id>` (see playerProfileUrl).
-    modalRouter.registerPath("profile", playerProfileRouteArgs);
+    if (!standalone) {
+      modalRouter.registerPath("profile", playerProfileRouteArgs);
+    }
     modalRouter.register("help", { tag: "help-modal", pageId: "page-help" });
     modalRouter.register("news", { tag: "news-modal", pageId: "page-news" });
     modalRouter.register("language", {
@@ -527,7 +538,7 @@ class Client {
       tag: "single-player-modal",
       pageId: "page-single-player",
     });
-    modalRouter.register("ranked", {
+    registerAccountPage("ranked", {
       tag: "ranked-modal",
       pageId: "page-ranked",
     });
@@ -539,7 +550,7 @@ class Client {
       tag: "troubleshooting-modal",
       pageId: "page-troubleshooting",
     });
-    modalRouter.register("inventory", {
+    registerAccountPage("inventory", {
       tag: "inventory-modal",
       pageId: "page-inventory",
     });
@@ -558,8 +569,12 @@ class Client {
     // the replay host may not be on the Turnstile site key's domain allowlist,
     // so rendering the widget there just fails — and replays never
     // send a token anyway (see getTurnstileToken below).
+    // Nor on a standalone page, whose server checks no token and which never
+    // loads the script (index.html).
     const turnstilePrefetch =
-      isDesktopShell() || isReplayShellHost(window.location.hostname)
+      isDesktopShell() ||
+      isReplayShellHost(window.location.hostname) ||
+      isStandalone()
         ? null
         : getTurnstileToken();
     // A prefetch that fails is not an error anyone has asked about yet: the
@@ -820,8 +835,12 @@ class Client {
       }
       const isAdFree =
         userMeResponse !== false && userMeResponse.player?.adfree === true;
+      // Never on a standalone page, which loads no ad script (index.html).
       window.adsEnabled =
-        !isAdFree && !gamePortal.isOnGamePortal() && !isDesktopShell();
+        !isAdFree &&
+        !gamePortal.isOnGamePortal() &&
+        !isDesktopShell() &&
+        !isStandalone();
       syncHashedEmail(userMeResponse, window.adsEnabled).catch((e) =>
         console.warn("Hashed email sync failed", e),
       );
@@ -1457,6 +1476,20 @@ class Client {
     // consumeCreatorCodePath() at the very start of initialize(), before this
     // method is ever scheduled -- see the comment there for why that has to
     // run ahead of userAuth()/getUserMe() rather than here.
+
+    // A standalone page has no accounts, so the account links that land here
+    // (a purchase return, an emailed sign-in token, the Steam link handoff)
+    // have nothing to complete. Drop them rather than open a flow that would
+    // need the account API.
+    if (
+      isStandalone() &&
+      (decodedHash.startsWith("#purchase-completed") ||
+        decodedHash.startsWith("#token-login") ||
+        isSteamLinkHash(hash))
+    ) {
+      strip();
+      return;
+    }
 
     // Handle different hash sections
     if (decodedHash.startsWith("#purchase-completed")) {
@@ -2321,6 +2354,8 @@ class Client {
   ): Promise<string | null> {
     if (
       ClientEnv.env() === GameEnv.Dev ||
+      // A standalone server checks no token (no join_verify).
+      isStandalone() ||
       isDesktopShell() ||
       // Single-player and replays: no server to verify a token against (and
       // on the CDN replay shells Turnstile cannot load at all). Shared with

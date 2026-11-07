@@ -2,6 +2,7 @@ import type { UserMeResponse } from "@openfront/shared/ApiSchemas";
 import { responseHasLinkedIdentity } from "./AccountIdentity";
 import { getApiBase } from "./Api";
 import { getAuthHeader, logOut } from "./Auth";
+import { isStandalone } from "./Standalone";
 
 // The desktop Electron shell's account-linking gate opens the browser at
 // `<site>#steam-link?token=<opaque>`. The hash (never a query string, so it
@@ -222,6 +223,9 @@ export type SteamLinkTicketResult =
 export async function fetchSteamLinkTicket(
   token: string,
 ): Promise<SteamLinkTicketResult> {
+  // Standalone has no accounts to link. The other calls below stop on the
+  // empty auth header a standalone page always has.
+  if (isStandalone()) return { ok: false };
   try {
     const response = await fetch(
       `${getApiBase()}/auth/steam/link_ticket/${encodeURIComponent(token)}`,

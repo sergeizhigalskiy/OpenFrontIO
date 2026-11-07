@@ -65,6 +65,7 @@ import {
 } from "./Auth";
 import { ClientEnv } from "./ClientEnv";
 import { ensureServerList } from "./ServerList";
+import { isStandalone } from "./Standalone";
 import { UserSettings } from "./UserSettings";
 
 export async function fetchPlayerById(
@@ -223,6 +224,9 @@ async function requestUserMe(): Promise<{
   profile: UserMeResponse | false;
   aborted: boolean;
 }> {
+  // Standalone has no account to describe: "not signed in", the same
+  // conclusion userAuth() reaches, and nothing is fetched.
+  if (isStandalone()) return { profile: false, aborted: false };
   try {
     const userAuthResult = await userAuth();
     if (!userAuthResult) return { profile: false, aborted: false };
@@ -2271,6 +2275,8 @@ export { getApiBase, getAudience };
 export async function fetchGameById(
   gameId: string,
 ): Promise<AnalyticsRecord | false> {
+  // Standalone keeps no archive to look a game up in.
+  if (isStandalone()) return false;
   try {
     const url = `${getApiBase()}/game/${encodeURIComponent(gameId)}`;
     const res = await fetch(url, {
@@ -2416,6 +2422,8 @@ export async function fetchTribeLeaderboard(): Promise<
 }
 
 export async function getNews(): Promise<NewsItem[]> {
+  // Standalone shows the bundled news without asking the API for newer.
+  if (isStandalone()) return newsItemsFallback as NewsItem[];
   try {
     const res = await fetch(`${getApiBase()}/news.json`, {
       headers: { Accept: "application/json" },
@@ -2446,6 +2454,9 @@ async function getServedConfig<T>(
   schema: z.ZodType<T>,
   fallback: unknown,
 ): Promise<T> {
+  // Standalone answers from the bundled fallback without a request: for the
+  // streams feed that is the empty one, so nothing embeds Twitch either.
+  if (isStandalone()) return schema.parse(fallback);
   try {
     const res = await fetch(`${getApiBase()}/${name}`, {
       headers: { Accept: "application/json" },

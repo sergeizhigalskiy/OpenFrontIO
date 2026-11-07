@@ -1,5 +1,6 @@
 import { clientPlatform } from "./ClientPlatform";
 import { Platform } from "./Platform";
+import { isStandalone } from "./Standalone";
 import type { UserSettings } from "./UserSettings";
 
 const STEAM_APP_ID = 3560670;
@@ -30,7 +31,10 @@ export function launchSteamJoin(gameId: string): () => void {
   return () => window.removeEventListener("load", go);
 }
 
+// Never from a standalone page: the Steam build plays on the official
+// servers, so it could not join a lobby this private server hosts.
 export function canHandOffToSteam(): boolean {
+  if (isStandalone()) return false;
   return clientPlatform() === "web" && !Platform.isIOS && !Platform.isAndroid;
 }
 

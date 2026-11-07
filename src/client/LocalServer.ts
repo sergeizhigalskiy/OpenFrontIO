@@ -30,6 +30,7 @@ import {
   ReplaySpeedChangeEvent,
 } from "./InputHandler";
 import { startSingleplayerHeartbeat } from "./SingleplayerHeartbeat";
+import { isStandalone } from "./Standalone";
 import {
   defaultReplaySpeedMultiplier,
   ReplaySpeedMultiplier,
@@ -307,6 +308,10 @@ export class LocalServer {
 
   private archiveGameRecord(unloading: boolean) {
     if (this.archived || this.archiveInFlight) {
+      return;
+    }
+    // Standalone keeps no archive (and has no account to award XP to).
+    if (isStandalone()) {
       return;
     }
     // A game resumed from a save is never archived: its turns start mid-game,

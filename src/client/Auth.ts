@@ -9,6 +9,7 @@ import type { DesktopSessionState, SessionFailureKind } from "./DesktopShell";
 import { desktopLinkGate, isDesktopShell } from "./DesktopShell";
 import { gamePortal, type GamePortalName } from "./GamePortal";
 import { showInGameAlert } from "./InGameModal";
+import { isStandalone } from "./Standalone";
 import type { SteamTicketResult } from "./SteamSDK";
 import { steamSDK } from "./SteamSDK";
 import { generateCryptoRandomUUID, translateText } from "./Utils";
@@ -95,13 +96,17 @@ function startDesktopLinkFlow(): boolean {
   return false;
 }
 
+// The three provider logins do nothing on a standalone page, which has no
+// account to sign in to (and shows no sign-in button).
 export function discordLogin() {
+  if (isStandalone()) return;
   if (startDesktopLinkFlow()) return;
   const redirectUri = encodeURIComponent(window.location.href);
   window.location.href = `${getApiBase()}/auth/login/discord?redirect_uri=${redirectUri}`;
 }
 
 export function googleLogin() {
+  if (isStandalone()) return;
   if (startDesktopLinkFlow()) return;
   const redirectUri = encodeURIComponent(window.location.href);
   window.location.href = `${getApiBase()}/auth/login/google?redirect_uri=${redirectUri}`;
@@ -116,6 +121,7 @@ export function googleLogin() {
 // than broken -- the caller hides it on the desktop shell instead. Keeping the
 // guard out of here means the function does exactly one thing.
 export function steamLogin() {
+  if (isStandalone()) return;
   const redirectUri = encodeURIComponent(window.location.href);
   window.location.href = `${getApiBase()}/auth/login/steam?redirect_uri=${redirectUri}`;
 }
@@ -229,6 +235,8 @@ export type TokenLoginResult =
   | { status: "retry" };
 
 export async function tempTokenLogin(token: string): Promise<TokenLoginResult> {
+  // No account API to redeem it with: final, like any token it refuses.
+  if (isStandalone()) return { status: "failed", code: "invalid" };
   let response: Response;
   try {
     response = await fetch(
@@ -283,6 +291,10 @@ export async function getAuthHeader(): Promise<string> {
 }
 
 export async function logOut(allSessions: boolean = false): Promise<boolean> {
+  // Standalone has no session to end. Returning before the finally below
+  // matters: clearLocalSession() deletes the stored persistent ID, which on
+  // a standalone page is the player's only identity.
+  if (isStandalone()) return false;
   try {
     const response = await fetch(
       getApiBase() + (allSessions ? "/auth/revoke" : "/auth/logout"),
@@ -393,6 +405,10 @@ export function isSessionActive(sub: string): boolean {
 export async function userAuth(
   shouldRefresh: boolean = true,
 ): Promise<UserAuth> {
+  // Standalone has no account API, so nobody is ever signed in and there is
+  // no JWT to refresh: getPlayToken() falls back to the persistent ID,
+  // getAuthHeader() to "", and every authenticated call stops there.
+  if (isStandalone()) return false;
   try {
     const jwt = __jwt;
     if (!jwt) {
@@ -749,6 +765,7 @@ export async function retrySteamSignIn(): Promise<UserAuth> {
 }
 
 export async function sendMagicLink(email: string): Promise<boolean> {
+  if (isStandalone()) return false;
   try {
     const apiBase = getApiBase();
     const response = await fetch(`${apiBase}/auth/magic-link`, {

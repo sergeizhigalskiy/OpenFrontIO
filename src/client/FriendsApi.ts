@@ -8,6 +8,7 @@ import {
 } from "@openfront/shared/ApiSchemas";
 import { getApiBase } from "./Api";
 import { getAuthHeader } from "./Auth";
+import { isStandalone } from "./Standalone";
 
 export const FRIEND_REQUESTS_UPDATED_EVENT = "friend-requests-updated";
 
@@ -67,6 +68,8 @@ export type FriendActionError =
 export async function fetchFriendRequests(): Promise<
   FriendRequestsResponse | false
 > {
+  // Standalone has no accounts, so nobody can have sent one.
+  if (isStandalone()) return false;
   try {
     const res = await friendsFetch("/friends/requests");
     if (!res.ok) return false;

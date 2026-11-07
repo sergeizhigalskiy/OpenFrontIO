@@ -19,6 +19,7 @@ import {
   redirectToGameVersion,
 } from "./ServerList";
 import { describeSocketClose } from "./SocketClose";
+import { isStandalone } from "./Standalone";
 import type { UsernameInput } from "./UsernameInput";
 import { translateText } from "./Utils";
 
@@ -299,6 +300,9 @@ export class MatchmakingModal extends BaseModal {
   }
 
   private async connect() {
+    // Ranked matchmaking is the API's, which standalone has none of (and the
+    // Ranked button is not shown there). jwtIssuer() would refuse anyway.
+    if (isStandalone()) return;
     // Pending timers from a previous socket must not fire on this one.
     this.clearWatchdog();
     if (this.connectTimeout) {

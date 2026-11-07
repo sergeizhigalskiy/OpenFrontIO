@@ -12,9 +12,12 @@ import {
 // whose tests stub Api wholesale.
 import { getApiBase } from "./ApiBase";
 import { getAuthHeader } from "./Auth";
+import { isStandalone } from "./Standalone";
 
 // Player levels / XP. Every helper here fails closed: progression is purely
-// cosmetic, so any error hides the UI rather than surfacing a failure.
+// cosmetic, so any error hides the UI rather than surfacing a failure. On a
+// standalone page, which has no accounts and so no levels, they answer that
+// way without a request (the two authenticated ones already do, signed out).
 
 export type GameXpFetchResult =
   | { status: "ok"; data: GameXpResponse }
@@ -129,6 +132,7 @@ export async function pollGameXp(
 export async function fetchPublicPlayerProgress(
   publicId: string,
 ): Promise<PublicProgress | false> {
+  if (isStandalone()) return false;
   try {
     const res = await fetch(
       `${getApiBase()}/public/player/${encodeURIComponent(publicId)}/progress`,
@@ -220,6 +224,7 @@ let progressionConfig: {
 // on at all (404 when it is off). Memoised for as long as the server says it
 // stays fresh; a failure is not, so a later caller can try again.
 export function fetchProgressionConfig(): Promise<ProgressionConfig | false> {
+  if (isStandalone()) return Promise.resolve(false);
   if (
     progressionConfig !== null &&
     Date.now() - progressionConfig.at < PROGRESSION_CONFIG_TTL_MS

@@ -1,6 +1,7 @@
 import { assetUrl } from "@openfront/shared/AssetUrls";
-import { html, LitElement, TemplateResult } from "lit";
+import { html, LitElement, nothing, TemplateResult } from "lit";
 import { customElement } from "lit/decorators.js";
+import { isStandalone } from "../Standalone";
 import { NavNotificationsController } from "./NavNotificationsController";
 
 const MOBILE_ITEM =
@@ -102,35 +103,46 @@ export class MobileNavBar extends LitElement {
           data-page="page-play"
           data-i18n="main.play"
         ></button>
-        <div
-          class="no-game-portal nav-menu-item flex items-center w-full cursor-pointer"
-          data-page="page-item-store"
-          @click=${this._notifications.onStoreClick}
-        >
-          <button class="${MOBILE_ITEM}" data-i18n="main.store"></button>
-          ${
-            this._notifications.showStoreDot()
-              ? this._renderDot("bg-red-500")
-              : ""
-          }
-        </div>
-        <button
-          class="${MOBILE_ITEM} ${
-            currentPage === "page-inventory" ? "active" : ""
-          }"
-          data-page="page-inventory"
-          data-i18n="main.inventory"
-        ></button>
-        <button
-          class="${MOBILE_ITEM}"
-          data-page="page-leaderboard"
-          data-i18n="main.leaderboard"
-        ></button>
-        <button
-          class="no-game-portal ${MOBILE_ITEM}"
-          data-page="page-clan"
-          data-i18n="main.clans"
-        ></button>
+        ${
+          // Store, Inventory, Leaderboard and Clans all need an account,
+          // which a standalone page has none of.
+          isStandalone()
+            ? nothing
+            : html`
+                <div
+                  class="no-game-portal nav-menu-item flex items-center w-full cursor-pointer"
+                  data-page="page-item-store"
+                  @click=${this._notifications.onStoreClick}
+                >
+                  <button
+                    class="${MOBILE_ITEM}"
+                    data-i18n="main.store"
+                  ></button>
+                  ${
+                    this._notifications.showStoreDot()
+                      ? this._renderDot("bg-red-500")
+                      : ""
+                  }
+                </div>
+                <button
+                  class="${MOBILE_ITEM} ${
+                    currentPage === "page-inventory" ? "active" : ""
+                  }"
+                  data-page="page-inventory"
+                  data-i18n="main.inventory"
+                ></button>
+                <button
+                  class="${MOBILE_ITEM}"
+                  data-page="page-leaderboard"
+                  data-i18n="main.leaderboard"
+                ></button>
+                <button
+                  class="no-game-portal ${MOBILE_ITEM}"
+                  data-page="page-clan"
+                  data-i18n="main.clans"
+                ></button>
+              `
+        }
         <div
           class="flex flex-col w-full mt-auto [.in-game_&]:hidden items-end justify-end pt-4 border-t border-white/10"
         ></div>

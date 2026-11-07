@@ -56,6 +56,7 @@ import {
   reconcileXp,
 } from "../../ProvisionalXpAtDeath";
 import { PlaySoundEffectEvent } from "../../sound/Sounds";
+import { isStandalone } from "../../Standalone";
 import { steamSDK } from "../../SteamSDK";
 import { SendWinnerEvent } from "../../Transport";
 import { shareGame } from "../../utilities/ShareGame";
@@ -502,6 +503,14 @@ export class WinModal extends LitElement implements Controller {
   }
 
   innerHtml() {
+    // A standalone page has no store and sells nothing on Steam, so of the
+    // promos only the tutorial video and the Discord link are left.
+    if (isStandalone()) {
+      return !this.isWin && getGamesPlayed() < 3
+        ? this.renderYoutubeTutorial()
+        : this.discordDisplay();
+    }
+
     // The Steam desktop build has nothing to wishlist — fall through to the
     // other promos so the box is never empty.
     const canWishlist = !steamSDK.isOnSteam();

@@ -5,7 +5,6 @@ import {
   UserMeResponseSchema,
 } from "@openfront/shared/ApiSchemas";
 import { CloseCode, CloseReason } from "@openfront/shared/CloseCodes";
-import { GameEnv } from "@openfront/shared/configuration/Env";
 import { PersistentIdSchema } from "@openfront/shared/WireSchemas";
 import { jwtVerify } from "jose";
 import { z } from "zod";
@@ -23,7 +22,10 @@ export async function verifyClientToken(
   token: string,
 ): Promise<TokenVerificationResult> {
   if (PersistentIdSchema.safeParse(token).success) {
-    if (ServerEnv.env() === GameEnv.Dev) {
+    // Without an account backend there is no JWT to present, so the bare
+    // persistent ID is the identity: in dev, and in standalone whatever
+    // GAME_ENV says.
+    if (ServerEnv.accountsOff()) {
       return { type: "success", persistentId: token, claims: null };
     } else {
       return {
@@ -31,6 +33,14 @@ export async function verifyClientToken(
         message: "persistent ID not allowed in production",
       };
     }
+  }
+  // Standalone has no issuer whose key could verify a JWT, so refuse one
+  // here rather than fetch a JWKS that does not exist.
+  if (ServerEnv.standalone()) {
+    return {
+      type: "error",
+      message: "only persistent IDs are accepted in standalone mode",
+    };
   }
   try {
     const issuer = ServerEnv.jwtIssuer();

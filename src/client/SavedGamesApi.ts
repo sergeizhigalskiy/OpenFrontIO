@@ -5,6 +5,7 @@ import {
 } from "@openfront/shared/ApiSchemas";
 import { getApiBase } from "./Api";
 import { getAuthHeader } from "./Auth";
+import { isStandalone } from "./Standalone";
 
 // Saved singleplayer games. The API stores the gzipped bytes of a game
 // snapshot (WorkerClient.snapshot()) as they are; it never decodes them.
@@ -24,6 +25,10 @@ export type SavedGameError =
   | "not_found"
   | "request_failed";
 
+// Saves are kept by the account API, which a standalone page has none of
+// (and its save panels are not shown). The reads below answer without a
+// request there; the writes need a signed-in player, and the getApiBase()
+// inside this helper refuses before anything is sent if one is ever tried.
 async function authedFetch(path: string, init?: RequestInit) {
   return fetch(`${getApiBase()}${path}`, {
     ...init,
@@ -55,6 +60,7 @@ async function parseSavedGame(
 }
 
 export async function listSavedGames(): Promise<SavedGame[] | false> {
+  if (isStandalone()) return false;
   try {
     const res = await authedFetch("/users/@me/saved_games");
     if (!res.ok) return false;
@@ -134,6 +140,7 @@ export async function deleteSavedGame(
 export async function fetchSharedSavedGame(
   id: string,
 ): Promise<SavedGame | SavedGameError> {
+  if (isStandalone()) return "not_found";
   try {
     const res = await fetch(
       `${getApiBase()}/public/saved_games/${encodeURIComponent(id)}`,
@@ -153,6 +160,7 @@ export async function downloadSavedGame(
   id: string,
   shared: boolean,
 ): Promise<Uint8Array | SavedGameError> {
+  if (isStandalone()) return "not_found";
   try {
     const path = shared
       ? `/public/saved_games/${encodeURIComponent(id)}/data`

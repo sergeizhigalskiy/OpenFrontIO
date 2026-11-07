@@ -1,6 +1,7 @@
 import { assetUrl } from "@openfront/shared/AssetUrls";
-import { LitElement, html } from "lit";
+import { LitElement, html, nothing } from "lit";
 import { customElement } from "lit/decorators.js";
+import { isStandalone } from "../Standalone";
 import "./CosmeticBackground";
 import "./NavAccountMenu";
 import "./NavUtilityIcons";
@@ -15,6 +16,8 @@ export class PlayPage extends LitElement {
   }
 
   render() {
+    // No account menu and no Steam store widget on a standalone page.
+    const standalone = isStandalone();
     return html`
       <div
         id="page-play"
@@ -72,7 +75,11 @@ export class PlayPage extends LitElement {
               class="col-start-3 justify-self-end shrink-0 flex items-center gap-0.5"
             >
               <nav-utility-icons size="mobile"></nav-utility-icons>
-              <nav-account-menu variant="mobile"></nav-account-menu>
+              ${
+                standalone
+                  ? nothing
+                  : html`<nav-account-menu variant="mobile"></nav-account-menu>`
+              }
             </div>
           </div>
         </div>
@@ -121,10 +128,14 @@ export class PlayPage extends LitElement {
         <game-mode-selector></game-mode-selector>
 
         <!-- Desktop gets the compact footer button instead. -->
-        <steam-wishlist
-          campaign="home_mobile"
-          class="block px-2 pb-4 lg:hidden"
-        ></steam-wishlist>
+        ${
+          standalone
+            ? nothing
+            : html`<steam-wishlist
+                campaign="home_mobile"
+                class="block px-2 pb-4 lg:hidden"
+              ></steam-wishlist>`
+        }
       </div>
     `;
   }

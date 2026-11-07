@@ -3,6 +3,7 @@ import {
   buildAssetUrl,
 } from "@openfront/shared/AssetPaths";
 import { rewriteAssetsForCdn } from "@openfront/shared/AssetUrls";
+import { normalizeShareOrigin } from "@openfront/shared/configuration/ShareOrigin";
 import tailwindcss from "@tailwindcss/vite";
 import fs from "fs";
 import http from "http";
@@ -237,6 +238,10 @@ export default defineConfig(({ mode }) => {
     ? buildPublicAssetManifest(sourceDirs)
     : {};
   const cdnBase = env.CDN_BASE ?? "";
+  // STANDALONE=true (the dev scripts set it): the same flag
+  // ServerEnv.standalone() reads, so the dev-served page carries it exactly
+  // as RenderHtml writes it. Only `true` is written; the line drops otherwise.
+  const standalone = env.STANDALONE === "true";
   const htmlAssetData = {
     assetManifest: JSON.stringify(assetManifest),
     cdnBase: JSON.stringify(cdnBase),
@@ -249,10 +254,17 @@ export default defineConfig(({ mode }) => {
     jwtAudience: JSON.stringify(env.DOMAIN ?? "localhost"),
     // Dev only: set FARO_COLLECTOR_URL in .env to point a local client at a
     // collector; unset drops the guarded line, exactly as in production.
-    faroCollectorUrl: env.FARO_COLLECTOR_URL
-      ? JSON.stringify(env.FARO_COLLECTOR_URL)
-      : undefined,
+    faroCollectorUrl:
+      env.FARO_COLLECTOR_URL && !standalone
+        ? JSON.stringify(env.FARO_COLLECTOR_URL)
+        : undefined,
     instanceId: JSON.stringify(env.INSTANCE_ID ?? "DEV_ID"),
+    standalone: standalone ? "true" : undefined,
+    // SHARE_ORIGIN: the tunnel address friends join through while the host
+    // plays on localhost, so invite links carry it. Unset drops the line.
+    shareOrigin: normalizeShareOrigin(env.SHARE_ORIGIN)
+      ? JSON.stringify(normalizeShareOrigin(env.SHARE_ORIGIN))
+      : undefined,
     manifestHref: buildAssetUrl("manifest.json", assetManifest, cdnBase),
     faviconHref: buildAssetUrl("images/Favicon.svg", assetManifest, cdnBase),
     gameplayScreenshotUrl: buildAssetUrl(
@@ -509,6 +521,9 @@ export default defineConfig(({ mode }) => {
       port: 9000,
       strictPort: true,
       host: process.env.VITE_HOST === "lan",
+      // Friends can join through a Cloudflare quick tunnel, whose address is a
+      // random *.trycloudflare.com name each time it starts.
+      allowedHosts: [".trycloudflare.com"],
       // Automatically open the browser when the server starts
       open: process.env.SKIP_BROWSER_OPEN !== "true",
       proxy: {

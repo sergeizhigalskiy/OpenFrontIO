@@ -42,6 +42,7 @@ import {
   purchaseOutcomeMessage,
   startPurchase,
 } from "./Payments";
+import { isStandalone } from "./Standalone";
 import { STEAM_TIER_CHANGE_IN_APP } from "./SubscriptionPolicy";
 import { UserSettings } from "./UserSettings";
 import { translateText } from "./Utils";
@@ -974,6 +975,9 @@ function cosmeticsJsonUrl(): string {
 }
 
 export async function fetchCosmetics(): Promise<Cosmetics | null> {
+  // Standalone has no catalog: null is "none loaded", which every caller
+  // already answers with the defaults. Not cached, and nothing is fetched.
+  if (isStandalone()) return null;
   if (__cosmetics !== null) {
     return __cosmetics;
   }

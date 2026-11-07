@@ -72,6 +72,7 @@ import {
   saveLobbyPreset,
 } from "./LobbyPresets";
 import { JoinLobbyEvent } from "./Main";
+import { isStandalone } from "./Standalone";
 import { terrainMapFileLoader } from "./TerrainMapFileLoader";
 import { UserSettings } from "./UserSettings";
 import {
@@ -172,8 +173,8 @@ export class HostLobbyModal extends BaseModal {
   @state() private lobbyStartAt: number | null = null;
   @state() private serverTimeOffset: number = 0;
   // Whether this user may actually make the lobby public (the API's
-  // canCreatePublicLobbies entitlement, or anyone in dev). The toggle itself
-  // is always shown.
+  // canCreatePublicLobbies entitlement, or anyone in dev or standalone). The
+  // toggle itself is always shown.
   @state() private canListPublicly: boolean = false;
   @state() private publiclyListed: boolean = false;
   @state() private showSubscriptionRequired: boolean = false;
@@ -1031,9 +1032,11 @@ export class HostLobbyModal extends BaseModal {
     this.startLobbyUpdates();
     void getUserMe().then((userMe) => {
       // Dev skips the entitlement gate (matching the server) so the
-      // listing flow is testable locally.
+      // listing flow is testable locally, and standalone, whose server has
+      // no subscriptions to check, skips it the same way.
       this.canListPublicly =
         ClientEnv.env() === GameEnv.Dev ||
+        isStandalone() ||
         (userMe !== false && userMe.player.canCreatePublicLobbies);
       this.hardBalance =
         userMe === false ? 0 : (userMe.player.currency?.hard ?? 0);

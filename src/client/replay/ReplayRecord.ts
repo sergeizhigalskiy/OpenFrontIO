@@ -11,6 +11,7 @@
 import { GameRecord, GameRecordSchema } from "@openfront/shared/WireSchemas";
 import { getApiBase } from "../ApiBase";
 import { ClientEnv } from "../ClientEnv";
+import { isStandalone } from "../Standalone";
 
 export type RecordResult =
   | { kind: "record"; record: GameRecord }
@@ -41,6 +42,10 @@ export async function fetchReplayRecord(
     const { record } = handedOver;
     handedOver = null;
     return { kind: "record", record };
+  }
+  // Standalone keeps no archive, so no game has a record to fetch.
+  if (opts.apiBase === undefined && isStandalone()) {
+    return { kind: "not_found" };
   }
   const apiBase = opts.apiBase ?? getApiBase();
   const ownCommit = opts.ownCommit ?? ClientEnv.gitCommit();

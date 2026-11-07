@@ -32,6 +32,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const withJitter = (ms: number) => ms + Math.floor(Math.random() * ms * 0.25);
 
 export async function archive(gameRecord: GameRecord) {
+  // Standalone has no archive to upload to: finished games are not kept.
+  if (ServerEnv.standalone()) return;
   let gameID: GameID | undefined;
   let request: RequestInit;
   let url: string;

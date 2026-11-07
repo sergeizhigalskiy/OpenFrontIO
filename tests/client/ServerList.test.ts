@@ -608,6 +608,22 @@ describe("a confirmed outage, as opposed to one missed beat", () => {
     expect(backendReachable()).toBe(null);
     expect(backendUnreachableConfirmed()).toBe(false);
   });
+
+  it("is never confirmed on a dev box, which has no account API to miss", async () => {
+    // A dev server hosting friends from a LAN or tunnel address: the page's
+    // own origin is the game server, so Create and Join Lobby must stay open
+    // however many times the absent API fails to answer.
+    vi.useFakeTimers();
+    setBootstrap({ gameEnv: "dev", jwtAudience: "localhost" });
+    fetchMock.mockRejectedValue(new TypeError("connection refused"));
+    await ensureServerList();
+    await vi.advanceTimersByTimeAsync(1_500);
+    await retryServerList();
+    await vi.advanceTimersByTimeAsync(4 * RETRY_MS);
+    await ensureServerList();
+    expect(fetchMock).toHaveBeenCalled();
+    expect(backendUnreachableConfirmed()).toBe(false);
+  });
 });
 
 describe("backend reachability", () => {

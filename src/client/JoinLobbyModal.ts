@@ -40,6 +40,7 @@ import { JoinLobbyEvent } from "./Main";
 import { openReplayViewer } from "./replay/ReplayEntry";
 import "./components/CopyButton";
 import { ensureServerList, redirectToGameVersion } from "./ServerList";
+import { isStandalone } from "./Standalone";
 import "./components/LobbyPlayerView";
 import { terrainMapFileLoader } from "./TerrainMapFileLoader";
 import { nationsConfigToSlider } from "./utilities/GameConfigHelpers";
@@ -1124,6 +1125,8 @@ export class JoinLobbyModal extends BaseModal {
   ): Promise<
     "success" | "redirected" | "not_found" | "version_mismatch" | "error"
   > {
+    // Standalone keeps no archive: an id with no live lobby is just unknown.
+    if (isStandalone()) return "not_found";
     const archiveResponse = await fetch(`${getApiBase()}/game/${lobbyId}`, {
       method: "GET",
       headers: {

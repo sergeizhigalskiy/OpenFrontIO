@@ -23,10 +23,14 @@ export interface TribePoolPlayer {
  * Throws on timeout/non-200/malformed response — callers fail open and
  * start the game with organic bot names. The timeout must fit inside the
  * 2s prestart->start window (see GameManager.tick).
+ *
+ * Empty in standalone, which has no shop to have sold any: the game starts
+ * with organic bot names, as when the API is down, but without the request.
  */
 export async function fetchCustomTribes(
   players: TribePoolPlayer[],
 ): Promise<Tribe[]> {
+  if (ServerEnv.standalone()) return [];
   const response = await fetch(`${ServerEnv.jwtIssuer()}/custom_tribes`, {
     method: "POST",
     signal: AbortSignal.timeout(1500),

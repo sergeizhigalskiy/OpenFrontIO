@@ -181,6 +181,8 @@ export class ClientEnv {
       // Absent on the web build (falls back to same-origin window.location).
       serverHost: bc.serverHost,
       siteHost: bc.siteHost,
+      // Optional: only a standalone server writes it, and only as `true`.
+      standalone: bc.standalone === true,
     };
     return ClientEnv.values;
   }
@@ -192,11 +194,23 @@ export class ClientEnv {
   static env(): GameEnv {
     return ClientEnv.get().gameEnv;
   }
-  static stripePublishableKey(): string | undefined {
-    return ClientEnv.get().stripePublishableKey;
+  // Whether the page runs standalone (STANDALONE=true on its server): a
+  // private copy with no account backend. False when the page does not say.
+  // Components that may render without any BOOTSTRAP_CONFIG read it through
+  // isStandalone() (Standalone.ts), which cannot throw.
+  static standalone(): boolean {
+    return ClientEnv.get().standalone;
   }
+  // Undefined in standalone, which has no store, whatever the page carries.
+  static stripePublishableKey(): string | undefined {
+    const v = ClientEnv.get();
+    return v.standalone ? undefined : v.stripePublishableKey;
+  }
+  // Undefined in standalone, which reports to no collector: the page must
+  // contact no telemetry host.
   static faroCollectorUrl(): string | undefined {
-    return ClientEnv.get().faroCollectorUrl;
+    const v = ClientEnv.get();
+    return v.standalone ? undefined : v.faroCollectorUrl;
   }
   // Worker count of the server this page talks to: the server the API's list
   // picked, else the own cluster entry when the map was injected, else the
@@ -244,7 +258,12 @@ export class ClientEnv {
   static gitCommit(): string {
     return ClientEnv.get().gitCommit;
   }
+  // Throws in standalone, like getApiBase(): there is no issuer, and a
+  // caller that cannot learn the address cannot send it anything.
   static jwtIssuer(): string {
+    if (ClientEnv.standalone()) {
+      throw new Error("no account API in standalone mode");
+    }
     const audience = ClientEnv.jwtAudience();
     return audience === "localhost"
       ? "http://localhost:8787"
@@ -464,13 +483,18 @@ export class ClientEnv {
   // (`${shareOrigin()}${gamePath(id)}`); shareBase() is the variant that keeps
   // the current page's path, for a link that differs only in its #hash.
   static shareOrigin(): string {
-    return deriveShareOrigin(
-      shareBootstrap,
-      window.location.protocol,
-      window.location.origin,
+    return (
+      injectedShareOrigin() ??
+      deriveShareOrigin(
+        shareBootstrap,
+        window.location.protocol,
+        window.location.origin,
+      )
     );
   }
   static shareBase(): string {
+    const injected = injectedShareOrigin();
+    if (injected !== undefined) return `${injected}${window.location.pathname}`;
     return deriveShareBase(
       shareBootstrap,
       window.location.protocol,
@@ -488,6 +512,20 @@ export class ClientEnv {
  * plain web page (or a jsdom test rendering a copy button) must not start
  * depending on BOOTSTRAP_CONFIG merely to build a link to itself.
  */
+/**
+ * BOOTSTRAP_CONFIG.shareOrigin (SHARE_ORIGIN on the server): the address other
+ * players reach this copy at when the host plays on localhost behind a tunnel.
+ * Invite links carry it instead of the host's own address. Read straight off
+ * the page rather than through ClientEnv.get(), for the reason shareBootstrap
+ * gives: a page with no BOOTSTRAP_CONFIG must still build links to itself.
+ */
+function injectedShareOrigin(): string | undefined {
+  const v = (
+    window as unknown as { BOOTSTRAP_CONFIG?: { shareOrigin?: unknown } }
+  ).BOOTSTRAP_CONFIG?.shareOrigin;
+  return typeof v === "string" && v !== "" ? v : undefined;
+}
+
 function shareBootstrap(): { siteOrigin?: string; jwtAudience: string } {
   return {
     siteOrigin: ClientEnv.siteOrigin(),
@@ -678,4 +716,6 @@ export interface ClientEnvValues {
   gitCommit: string;
   serverHost?: string;
   siteHost?: string;
+  // True only when the page said so; see ClientEnv.standalone().
+  standalone: boolean;
 }

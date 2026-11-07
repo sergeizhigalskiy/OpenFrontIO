@@ -85,9 +85,13 @@ export function registeredSite(): string | undefined {
 /**
  * What this server reports, or null under local development (`npm run dev`:
  * no SUBDOMAIN, so no public host), where there is nothing to register.
- * Every deployed host has one and registers under its own site.
+ * Every deployed host has one and registers under its own site, except in
+ * standalone mode, which has no API to register with whatever host it has.
+ * Null here is what keeps the master's check-in loop, its map-weights poll
+ * and the lobby coordinator off, and lets it schedule its own lobbies.
  */
 export function checkinBody(liveGames: number): CheckinBody | null {
+  if (ServerEnv.standalone()) return null;
   const host = ServerEnv.publicHost();
   if (host === undefined) return null;
   const machine = ServerEnv.machine();

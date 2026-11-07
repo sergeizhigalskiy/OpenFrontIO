@@ -43,6 +43,16 @@ declare global {
       // standalone deployments (beta, branch previews, dev), desktop, and
       // static pages.
       siteHost?: string;
+      // STANDALONE=true on the server that rendered the page: a private copy
+      // with no account backend, so the client contacts no account API, ad,
+      // Turnstile or telemetry host. Environment-scoped and optional; only
+      // `true` is ever written, and absent means false.
+      standalone?: boolean;
+      // SHARE_ORIGIN on the server that rendered the page: the address other
+      // players reach this copy at when the host plays on localhost behind a
+      // tunnel, so invite links carry it instead of the host's own address.
+      // Optional; absent keeps links on the page's own origin.
+      shareOrigin?: string;
     };
   }
 }

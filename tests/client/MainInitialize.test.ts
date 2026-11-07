@@ -150,7 +150,7 @@ describe("Client.initialize() booted from Main.ts module scope", () => {
       gameEnv: "dev",
       numWorkers: 2,
       turnstileSiteKey: "test-site-key",
-      jwtAudience: "localhost",
+      jwtAudience: "openfront.io",
       gitCommit: "DEV",
     };
 
