@@ -10,6 +10,8 @@
 //   billboardToClip(a, offset)   a label or icon: stands upright facing the
 //                                camera in 3D mode (offset +y = down the
 //                                screen), otherwise the same as anchored
+//   uprightToClip(a, offset)     a unit or effect sprite: upright in the
+//                                isometric view, otherwise anchored
 //   camClipScale()               clip units per world tile at the focus point
 //                                (what the old 2D matrix's x scale gave)
 layout(std140) uniform CameraBlock {
@@ -17,7 +19,7 @@ layout(std140) uniform CameraBlock {
   vec4 uCamRight;    // xyz: screen-right in world space; w: clip scale
   vec4 uCamUp;       // xyz: screen-up in world space; w: focus distance (0 = ortho)
   vec4 uCamForward;  // xyz: view direction
-  vec4 uCamEye;      // xyz: eye position
+  vec4 uCamEye;      // xyz: eye position; w: upright sprites on (isometric)
   vec4 uCamSurface;  // x: 1/mapW, y: 1/mapH, z: height scale (0 = flat), w: billboards on
 };
 uniform sampler2D uHeightMap; // HeightField: R = smoothed height (0..1)
@@ -43,6 +45,11 @@ vec4 billboardToClip(vec2 anchor, vec2 offset) {
   if (uCamSurface.w < 0.5) return anchoredToClip(anchor, offset);
   vec3 base = vec3(anchor, groundHeight(anchor));
   return worldToClip(base + uCamRight.xyz * offset.x - uCamUp.xyz * offset.y);
+}
+
+vec4 uprightToClip(vec2 anchor, vec2 offset) {
+  if (uCamEye.w < 0.5) return anchoredToClip(anchor, offset);
+  return billboardToClip(anchor, offset);
 }
 
 float camClipScale() {

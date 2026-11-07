@@ -23,7 +23,9 @@ void main() {
   vec2 center = vec2(aInstPos.x + 0.5, aInstPos.y + 0.5);
   vec2 worldPos = center + (aPos - 0.5) * vec2(world.x, world.y);
 
-  gl_Position = anchoredToClip(center, worldPos - center);
+  // Upright in the isometric view, so the top-down art stays square on
+  // screen; flat on the ground otherwise.
+  gl_Position = uprightToClip(center, worldPos - center);
 
   float u = (frameIdx + aPos.x) * uv.z;
   float v = uv.x + aPos.y * uv.y;

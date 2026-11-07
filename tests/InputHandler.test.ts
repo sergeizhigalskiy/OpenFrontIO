@@ -24,6 +24,7 @@ import {
   MouseOverEvent,
   MouseUpEvent,
   RefreshGraphicsEvent,
+  RotateViewEvent,
   ShowChatMenuEvent,
   ShowEmojiMenuEvent,
   TouchGhostPlacementDragStartEvent,
@@ -1315,6 +1316,70 @@ describe("InputHandler AutoUpgrade", () => {
       );
 
       expect(inputHandler["uiState"].ghostStructure).toBe(UnitType.City);
+    });
+  });
+
+  describe("Isometric view rotation keys", () => {
+    let uiState: UIState;
+
+    beforeEach(() => {
+      inputHandler.destroy();
+      testSettings.setKeybinds({});
+      uiState = {
+        attackRatio: 20,
+        ghostStructure: null,
+        rocketDirectionUp: true,
+      } as UIState;
+      inputHandler = new InputHandler(
+        mockGameView,
+        uiState,
+        mockCanvas,
+        eventBus,
+      );
+      inputHandler.initialize();
+    });
+
+    const rotations = (spy: { mock: { calls: unknown[][] } }) =>
+      spy.mock.calls
+        .map((call: unknown[]) => call[0])
+        .filter(
+          (e: unknown): e is RotateViewEvent => e instanceof RotateViewEvent,
+        )
+        .map((e: RotateViewEvent) => e.direction);
+
+    test("Shift+Q turns the view left and Shift+E right", () => {
+      const spy = vi.spyOn(eventBus, "emit");
+      window.dispatchEvent(
+        new KeyboardEvent("keyup", { code: "KeyQ", shiftKey: true }),
+      );
+      window.dispatchEvent(
+        new KeyboardEvent("keyup", { code: "KeyE", shiftKey: true }),
+      );
+      expect(rotations(spy)).toEqual([1, -1]);
+    });
+
+    test("plain Q and E still zoom and never rotate", () => {
+      const spy = vi.spyOn(eventBus, "emit");
+      window.dispatchEvent(
+        new KeyboardEvent("keyup", { code: "KeyQ", shiftKey: false }),
+      );
+      window.dispatchEvent(
+        new KeyboardEvent("keyup", { code: "KeyE", shiftKey: false }),
+      );
+      expect(rotations(spy)).toEqual([]);
+    });
+
+    test("the rotate keys are free: no other default action uses them", () => {
+      const defaults = new UserSettings().keybinds(false);
+      for (const [action, key] of Object.entries(defaults)) {
+        if (action === "rotateViewLeft" || action === "rotateViewRight") {
+          continue;
+        }
+        expect(key, action).not.toBe(defaults.rotateViewLeft);
+        expect(key, action).not.toBe(defaults.rotateViewRight);
+      }
+      expect(defaults.rotateViewLeft).toBe("Shift+KeyQ");
+      expect(defaults.rotateViewRight).toBe("Shift+KeyE");
     });
   });
 

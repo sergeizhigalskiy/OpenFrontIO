@@ -12,6 +12,12 @@
  * projection that is exactly the old 2D camera matrix. A positive tilt swings
  * the camera south and looks north, through a perspective projection whose
  * scale at the focus point equals `zoom` across the screen.
+ *
+ * The isometric view is orthographic too, but tilted and turned: `yawDeg`
+ * turns the camera about the vertical (the compass direction that points up
+ * the screen, 0 = north), and `orthographic` keeps every ray parallel, so a
+ * tile is the same size anywhere on screen and `zoom` is the pixels per tile
+ * along the screen's horizontal.
  */
 
 export type Vec3 = [number, number, number];
@@ -29,6 +35,13 @@ export interface CameraPose {
   tiltDeg: number;
   /** Vertical field of view, degrees (perspective only). */
   fovDeg: number;
+  /**
+   * Compass azimuth of the ground direction that points up the screen,
+   * degrees clockwise from north (0 = north up, the classic view).
+   */
+  yawDeg?: number;
+  /** Parallel projection even when tilted (the isometric view). */
+  orthographic?: boolean;
 }
 
 export interface CameraFrame {
@@ -65,6 +78,13 @@ const NEAR_FACTOR = 0.01;
 const FAR_FACTOR = 100;
 /** Orthographic depth scale: maps heights into clip z (keeps it invertible). */
 const ORTHO_Z = 1 / 4096;
+/**
+ * Tilted orthographic depth scale: view depth in tiles to clip z. Small
+ * enough that the largest map's diagonal stays well inside the clip range.
+ */
+const ORTHO_DEPTH_Z = 1 / 32768;
+/** How far back along the view direction an orthographic ray starts, tiles. */
+const ORTHO_EYE_DIST = 1e5;
 
 const DEG = Math.PI / 180;
 
@@ -108,7 +128,8 @@ export function computeCameraFrame(
   const m = out.viewProj;
   m.fill(0);
 
-  if (!(pose.tiltDeg > 0)) {
+  const yaw = (pose.yawDeg ?? 0) * DEG;
+  if (!(pose.tiltDeg > 0) && yaw === 0) {
     // Orthographic top-down: the old mat3, lifted to 4×4.
     out.perspective = false;
     const sx = (2 * zoom) / w;
@@ -128,17 +149,53 @@ export function computeCameraFrame(
     return out;
   }
 
-  out.perspective = true;
-  const tilt = pose.tiltDeg * DEG;
+  const tilt = Math.max(0, pose.tiltDeg) * DEG;
   const st = Math.sin(tilt);
   const ct = Math.cos(tilt);
+  // Ground directions: `ahead` points up the screen, `side` to its right.
+  const ax = Math.sin(yaw);
+  const ay = -Math.cos(yaw);
+  const R: Vec3 = [-ay, ax, 0];
+  const U: Vec3 = [ax * ct, ay * ct, st];
+  const F: Vec3 = [ax * st, ay * st, -ct];
+
+  if (pose.orthographic === true || !(pose.tiltDeg > 0)) {
+    out.perspective = false;
+    out.right = R;
+    out.up = U;
+    out.forward = F;
+    out.focusDist = 0;
+    out.focal = 1;
+    out.eye = [
+      cx - F[0] * ORTHO_EYE_DIST,
+      cy - F[1] * ORTHO_EYE_DIST,
+      -F[2] * ORTHO_EYE_DIST,
+    ];
+    const sx = (2 * zoom) / w;
+    const sy = (2 * zoom) / h;
+    // x = sx·(R·(P−C)), y = sy·(U·(P−C)), z = ORTHO_DEPTH_Z·(F·(P−C)).
+    const rC = R[0] * cx + R[1] * cy;
+    const uC = U[0] * cx + U[1] * cy;
+    const fC = F[0] * cx + F[1] * cy;
+    setRow(m, 0, sx * R[0], sx * R[1], sx * R[2], -sx * rC);
+    setRow(m, 1, sy * U[0], sy * U[1], sy * U[2], -sy * uC);
+    setRow(
+      m,
+      2,
+      ORTHO_DEPTH_Z * F[0],
+      ORTHO_DEPTH_Z * F[1],
+      ORTHO_DEPTH_Z * F[2],
+      -ORTHO_DEPTH_Z * fC,
+    );
+    setRow(m, 3, 0, 0, 0, 1);
+    return out;
+  }
+
+  out.perspective = true;
   const f = 1 / Math.tan((Math.max(1, pose.fovDeg) * DEG) / 2);
   // Distance at which one tile at the focus spans `zoom` pixels.
   const d = (f * h) / (2 * zoom);
-  const R: Vec3 = [1, 0, 0];
-  const U: Vec3 = [0, -ct, st];
-  const F: Vec3 = [0, -st, -ct];
-  const E: Vec3 = [cx, cy + d * st, d * ct];
+  const E: Vec3 = [cx - F[0] * d, cy - F[1] * d, -F[2] * d];
   out.eye = E;
   out.right = R;
   out.up = U;
@@ -234,9 +291,20 @@ export function ndcToPixel(
 /** The ray through an NDC point (direction not normalized). */
 export function ndcToRay(frame: CameraFrame, nx: number, ny: number): Ray {
   if (!frame.perspective) {
-    const x = frame.centerX + (nx * frame.viewW) / (2 * frame.zoom);
-    const y = frame.centerY - (ny * frame.viewH) / (2 * frame.zoom);
-    return { origin: [x, y, 1e6], dir: [0, 0, -1] };
+    // Parallel rays along the view direction, starting behind the screen
+    // point (top-down: straight down from 1e6 above it).
+    const sx = (nx * frame.viewW) / (2 * frame.zoom);
+    const sy = (ny * frame.viewH) / (2 * frame.zoom);
+    const { right: R, up: U, forward: F, eye: E } = frame;
+    const back = F[2] === -1 ? E[2] : ORTHO_EYE_DIST;
+    return {
+      origin: [
+        frame.centerX + R[0] * sx + U[0] * sy - F[0] * back,
+        frame.centerY + R[1] * sx + U[1] * sy - F[1] * back,
+        R[2] * sx + U[2] * sy - F[2] * back,
+      ],
+      dir: [F[0], F[1], F[2]],
+    };
   }
   const sx = (nx * frame.aspect) / frame.focal;
   const sy = ny / frame.focal;

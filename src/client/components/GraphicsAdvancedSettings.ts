@@ -40,6 +40,7 @@ const MAP_VIEW_MODE_LABELS: Record<MapViewMode, string> = {
   flat: "graphics_setting.map_view_flat",
   tilt: "graphics_setting.map_view_tilt",
   terrain3d: "graphics_setting.map_view_terrain3d",
+  isometric: "graphics_setting.map_view_isometric",
 };
 
 type CosmeticCategory = Exclude<

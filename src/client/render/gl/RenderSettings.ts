@@ -89,14 +89,22 @@ export interface RenderSettings {
     /**
      * "flat" = the classic top-down map; "tilt" = a perspective camera tilted
      * toward the horizon over the flat map; "terrain3d" = the tilted camera
-     * over a height mesh, with upright labels.
+     * over a height mesh, with upright labels; "isometric" = an orthographic
+     * camera turned 45 degrees and tilted, over the height mesh, rotatable
+     * in quarter turns (camera/ViewRotation.ts).
      */
     mode: MapViewMode;
     /** Camera tilt away from straight down, degrees (tilt and terrain3d). */
     tiltDeg: number;
+    /**
+     * Isometric camera elevation above the ground, degrees. 30 is 2:1
+     * dimetric (a tile is a diamond twice as wide as tall); 35.26 would be
+     * true isometric.
+     */
+    isoElevationDeg: number;
     /** Vertical field of view, degrees. */
     fovDeg: number;
-    /** terrain3d: world tiles of height per elevation level. */
+    /** terrain3d and isometric: world tiles of height per elevation level. */
     heightScale: number;
     /** terrain3d: target on-screen spacing of mesh vertices, pixels. */
     lodTargetPx: number;

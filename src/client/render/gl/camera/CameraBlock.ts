@@ -37,6 +37,12 @@ export interface SurfaceParams {
   heightScale: number;
   /** Stand labels and icons upright, facing the camera. */
   billboard: boolean;
+  /**
+   * Stand unit and effect sprites upright too (the isometric view), so they
+   * keep their top-down art square on screen instead of lying flat on the
+   * turned, foreshortened ground. Needs `billboard`.
+   */
+  upright?: boolean;
 }
 
 /** Fill `out` with the block contents for a frame (std140 layout). */
@@ -61,7 +67,7 @@ export function writeCameraBlock(
   out[28] = frame.eye[0];
   out[29] = frame.eye[1];
   out[30] = frame.eye[2];
-  out[31] = 0;
+  out[31] = surface.billboard && surface.upright === true ? 1 : 0;
   out[32] = 1 / Math.max(1, surface.mapW);
   out[33] = 1 / Math.max(1, surface.mapH);
   out[34] = surface.heightScale;

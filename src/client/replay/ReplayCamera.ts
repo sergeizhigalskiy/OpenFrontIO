@@ -17,6 +17,22 @@ export class ReplayCamera {
   zoom = 1;
   /** Where goTo() is heading, until it gets there or the user moves. */
   private target: { x: number; y: number } | null = null;
+  /**
+   * The ground under a viewport position through the renderer's camera, or
+   * null (flat view, or not connected). When set, panning and zooming follow
+   * the tilted or turned view instead of the top-down 2D math.
+   */
+  groundAt:
+    | ((
+        sx: number,
+        sy: number,
+        viewW: number,
+        viewH: number,
+      ) => {
+        x: number;
+        y: number;
+      } | null)
+    | null = null;
 
   constructor(
     private readonly mapWidth: number,
@@ -36,9 +52,21 @@ export class ReplayCamera {
     );
   }
 
-  /** Move by a screen distance in CSS px, so the map follows the pointer. */
-  panBy(dx: number, dy: number): void {
+  /**
+   * Move by a screen distance in CSS px, so the map follows the pointer. With
+   * the view size, a tilted or turned view drags the ground at the centre.
+   */
+  panBy(dx: number, dy: number, viewW?: number, viewH?: number): void {
     this.target = null;
+    if (this.groundAt !== null && viewW !== undefined && viewH !== undefined) {
+      const from = this.groundAt(viewW / 2, viewH / 2, viewW, viewH);
+      const to = this.groundAt(viewW / 2 + dx, viewH / 2 + dy, viewW, viewH);
+      if (from !== null && to !== null) {
+        this.x -= to.x - from.x;
+        this.y -= to.y - from.y;
+        return;
+      }
+    }
     this.x -= dx / this.zoom;
     this.y -= dy / this.zoom;
   }
@@ -88,6 +116,16 @@ export class ReplayCamera {
     viewHeight: number,
   ): void {
     this.target = null;
+    const pivot = this.groundAt?.(sx, sy, viewWidth, viewHeight) ?? null;
+    if (pivot !== null) {
+      this.zoom = clamp(this.zoom * factor);
+      const moved = this.groundAt?.(sx, sy, viewWidth, viewHeight) ?? null;
+      if (moved !== null) {
+        this.x += pivot.x - moved.x;
+        this.y += pivot.y - moved.y;
+      }
+      return;
+    }
     const ox = sx - viewWidth / 2;
     const oy = sy - viewHeight / 2;
     const wx = this.x + ox / this.zoom;
@@ -122,7 +160,7 @@ export class CameraGestures {
     const p = this.pointers.get(id);
     if (p === undefined) return;
     if (this.pointers.size === 1) {
-      this.camera.panBy(x - p.x, y - p.y);
+      this.camera.panBy(x - p.x, y - p.y, viewW, viewH);
     } else {
       const other = [...this.pointers].find(([k]) => k !== id)![1];
       const oldMid = midpoint(p, other);
@@ -132,7 +170,7 @@ export class CameraGestures {
       if (oldDist > 0 && newDist > 0) {
         this.camera.zoomAt(oldMid.x, oldMid.y, newDist / oldDist, viewW, viewH);
       }
-      this.camera.panBy(newMid.x - oldMid.x, newMid.y - oldMid.y);
+      this.camera.panBy(newMid.x - oldMid.x, newMid.y - oldMid.y, viewW, viewH);
     }
     p.x = x;
     p.y = y;

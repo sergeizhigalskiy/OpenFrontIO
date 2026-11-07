@@ -16,8 +16,10 @@ import type { CameraFrame } from "../camera/CameraMath";
 import {
   buildSurfaceMesh,
   selectSurfaceChunks,
+  surfaceOrderFor,
   type SurfaceMeshData,
   type SurfaceOptions,
+  type SurfaceOrder,
   type SurfaceSelection,
 } from "./SurfaceMesh";
 
@@ -46,6 +48,7 @@ export class MapSurface {
   private mesh: SurfaceMeshData | undefined;
   private lastViewProj = new Float32Array(16);
   private lastOpts = "";
+  private order: SurfaceOrder = { flipX: false, flipY: false };
 
   constructor(
     private gl: WebGL2RenderingContext,
@@ -96,15 +99,24 @@ export class MapSurface {
       this.selection ?? undefined,
     );
     const levels = this.selection.levels;
-    if (this.lastLevels !== null && sameLevels(levels, this.lastLevels)) {
+    const order = surfaceOrderFor(frame);
+    const sameOrder =
+      order.flipX === this.order.flipX && order.flipY === this.order.flipY;
+    if (
+      sameOrder &&
+      this.lastLevels !== null &&
+      sameLevels(levels, this.lastLevels)
+    ) {
       return;
     }
+    this.order = order;
     this.lastLevels = levels.slice();
     this.mesh = buildSurfaceMesh(
       this.selection,
       this.mapW,
       this.mapH,
       this.mesh,
+      order,
     );
     this.upload(this.mesh);
   }
@@ -149,12 +161,21 @@ export class MapSurface {
     };
   }
 
-  /** Draw the mesh. False if there is nothing built yet (caller falls back). */
+  /**
+   * Draw the mesh. False if there is nothing built yet (caller falls back).
+   * Back faces (slopes turned away from the camera, hidden behind the ones
+   * facing it) are culled; the mesh's triangles wind clockwise on screen.
+   */
   draw(): boolean {
     if (this.indexCount === 0) return false;
     const gl = this.gl;
+    gl.enable(gl.CULL_FACE);
+    gl.frontFace(gl.CW);
+    gl.cullFace(gl.BACK);
     gl.bindVertexArray(this.vao);
     gl.drawElements(gl.TRIANGLES, this.indexCount, gl.UNSIGNED_INT, 0);
+    gl.disable(gl.CULL_FACE);
+    gl.frontFace(gl.CCW);
     return true;
   }
 

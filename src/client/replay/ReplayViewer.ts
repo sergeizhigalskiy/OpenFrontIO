@@ -493,6 +493,9 @@ export class ReplayViewer extends LitElement {
 
     const camera = new ReplayCamera(header.mapWidth, header.mapHeight);
     camera.fit(canvas.clientWidth, canvas.clientHeight);
+    // Pan and zoom follow the tilted and isometric views like in game.
+    camera.groundAt = (sx, sy, w, h) =>
+      pickTilted(view.mapView, camera, sx, sy, w, h);
     this.camera = camera;
     this.gestures = new CameraGestures(camera);
 

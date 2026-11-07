@@ -16,7 +16,7 @@
  *
  * getMatrix() stays the flat 2D matrix (passes use it for zoom-based sizing
  * on the CPU). What shaders draw with is getFrame(): the 3D view-projection
- * for the current tilt (camera/CameraMath.ts), orthographic when tilt is 0.
+ * for the current view mode (camera/MapViewSource.ts viewPose).
  */
 
 import {
@@ -24,6 +24,7 @@ import {
   createCameraFrame,
   type CameraFrame,
 } from "./camera/CameraMath";
+import { viewPose, type MapViewParams } from "./camera/MapViewSource";
 import { renderDpr } from "./utils/Dpr";
 
 const MIN_ZOOM = 0.2;
@@ -42,8 +43,13 @@ export class Camera {
   private canvasH = 1;
   private mat = new Float32Array(9);
   private dirty = true;
-  private tiltDeg = 0;
-  private fovDeg = 40;
+  private view: MapViewParams = {
+    mode: "flat",
+    tiltDeg: 0,
+    fovDeg: 40,
+    isoElevationDeg: 30,
+  };
+  private yawDeg = 0;
   private frame: CameraFrame = createCameraFrame();
   private frameDirty = true;
   /** True until fitMap() has been called with valid canvas dimensions. */
@@ -163,11 +169,27 @@ export class Camera {
     this.frameDirty = true;
   }
 
-  /** Set the tilt (degrees from straight down; 0 = flat) and vertical FOV. */
-  setProjection(tiltDeg: number, fovDeg: number): void {
-    if (tiltDeg === this.tiltDeg && fovDeg === this.fovDeg) return;
-    this.tiltDeg = tiltDeg;
-    this.fovDeg = fovDeg;
+  /**
+   * Set the view mode's projection (camera/MapViewSource.ts viewPose): the
+   * mode, its tilt, field of view and isometric elevation, and the
+   * isometric view's current yaw.
+   */
+  setProjection(view: MapViewParams, yawDeg: number): void {
+    const v = this.view;
+    if (
+      view.mode === v.mode &&
+      view.tiltDeg === v.tiltDeg &&
+      view.fovDeg === v.fovDeg &&
+      view.isoElevationDeg === v.isoElevationDeg &&
+      yawDeg === this.yawDeg
+    ) {
+      return;
+    }
+    v.mode = view.mode;
+    v.tiltDeg = view.tiltDeg;
+    v.fovDeg = view.fovDeg;
+    v.isoElevationDeg = view.isoElevationDeg;
+    this.yawDeg = yawDeg;
     this.frameDirty = true;
   }
 
@@ -175,15 +197,15 @@ export class Camera {
   getFrame(): CameraFrame {
     if (this.frameDirty) {
       computeCameraFrame(
-        {
-          centerX: this.offsetX,
-          centerY: this.offsetY,
-          zoom: this.zoom,
-          viewW: this.canvasW,
-          viewH: this.canvasH,
-          tiltDeg: this.tiltDeg,
-          fovDeg: this.fovDeg,
-        },
+        viewPose(
+          this.view,
+          this.yawDeg,
+          this.offsetX,
+          this.offsetY,
+          this.zoom,
+          this.canvasW,
+          this.canvasH,
+        ),
         this.frame,
       );
       this.frameDirty = false;

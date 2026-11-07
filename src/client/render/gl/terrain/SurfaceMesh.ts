@@ -11,9 +11,13 @@
  * Cracks between chunks of different levels are closed by snapping: on an
  * edge shared with a coarser neighbour, the finer chunk's edge vertices move
  * onto the neighbour's vertex positions, so both sides trace the same
- * polyline through the same height samples. Triangles are emitted north to
- * south; the camera looks north, so that is back-to-front and the surface
- * needs no depth buffer.
+ * polyline through the same height samples. Triangles are emitted
+ * back-to-front for the camera's view direction (surfaceOrderFor), cell row
+ * by cell row, so the surface needs no depth buffer: rows run from the far
+ * side of the map toward the camera, and cells within a row do too. The
+ * tilted camera looks north, so that is north to south; the isometric view
+ * looks diagonally, so both axes follow it. MapSurface draws with back faces
+ * culled, which takes care of slopes turned away from the camera.
  */
 
 import type { CameraFrame } from "../camera/CameraMath";
@@ -111,6 +115,27 @@ export function chunkLevel(
   return Math.max(0, Math.min(MAX_LEVEL, level));
 }
 
+/** Which way the mesh's cell rows and cells run (back-to-front). */
+export interface SurfaceOrder {
+  /** Cells within a row run east to west (the camera looks east). */
+  flipX: boolean;
+  /** Rows run south to north (the camera looks south). */
+  flipY: boolean;
+}
+
+/**
+ * Back-to-front order for a camera: rows start on the far side, the one the
+ * view direction points to. A painter's order for a height field drawn with
+ * back faces culled: in an orthographic or tilted view a cell can only hide
+ * cells farther along the view direction, and those are drawn first.
+ */
+export function surfaceOrderFor(frame: CameraFrame): SurfaceOrder {
+  return {
+    flipX: frame.forward[0] > 1e-9,
+    flipY: frame.forward[1] > 1e-9,
+  };
+}
+
 export interface SurfaceMeshData {
   /** World (x, y) per vertex. */
   positions: Float32Array;
@@ -140,6 +165,7 @@ export function buildSurfaceMesh(
   mapW: number,
   mapH: number,
   reuse?: SurfaceMeshData,
+  order: SurfaceOrder = { flipX: false, flipY: false },
 ): SurfaceMeshData {
   const { cols, rows, levels } = sel;
   // Size the buffers first.
@@ -214,12 +240,16 @@ export function buildSurfaceMesh(
     }
   }
 
-  // Emit quads north to south across each chunk row (back-to-front): for
-  // every local row offset, the cell row starting there in each chunk.
+  // Emit quads back-to-front across each chunk row: for every local row
+  // offset, the cell row starting there in each chunk.
   let n = 0;
-  for (let cy = 0; cy < rows; cy++) {
-    for (let y = 0; y < CHUNK_SIZE; y++) {
-      for (let cx = 0; cx < cols; cx++) {
+  const { flipX, flipY } = order;
+  for (let ry = 0; ry < rows; ry++) {
+    const cy = flipY ? rows - 1 - ry : ry;
+    for (let ly = 0; ly < CHUNK_SIZE; ly++) {
+      const y = flipY ? CHUNK_SIZE - 1 - ly : ly;
+      for (let rx = 0; rx < cols; rx++) {
+        const cx = flipX ? cols - 1 - rx : rx;
         const i = cy * cols + cx;
         const level = levels[i];
         if (level < 0 || (y & ((1 << level) - 1)) !== 0) continue;
@@ -236,7 +266,8 @@ export function buildSurfaceMesh(
     const w = stride[i];
     const row0 = base[i] + j * w;
     const row1 = row0 + w;
-    for (let k = 0; k + 1 < w; k++) {
+    for (let rk = 0; rk + 1 < w; rk++) {
+      const k = flipX ? w - 2 - rk : rk;
       const a = row0 + k;
       const b = a + 1;
       const d = row1 + k;

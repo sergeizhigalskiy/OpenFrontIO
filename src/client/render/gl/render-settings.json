@@ -25,8 +25,9 @@
     "mountainColor": "#e6e6e6"
   },
   "mapView": {
-    "mode": "terrain3d",
+    "mode": "isometric",
     "tiltDeg": 30,
+    "isoElevationDeg": 30,
     "fovDeg": 40,
     "heightScale": 0.3,
     "lodTargetPx": 10,

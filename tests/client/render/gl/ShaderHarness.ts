@@ -5,9 +5,9 @@
  * and collects the exact vertex/fragment sources createProgram hands the
  * driver (includes expanded, defines applied). compileInChrome() then
  * compiles and links every program in a real WebGL2 context (SwiftShader in
- * headless Chrome) and, for each of the three camera modes (flat, tilt,
- * terrain3d), binds the shared camera block filled the way the renderer
- * fills it and issues a draw, reporting any GL error.
+ * headless Chrome) and, for each of the camera modes (flat, tilt,
+ * terrain3d, isometric), binds the shared camera block filled the way the
+ * renderer fills it and issues a draw, reporting any GL error.
  *
  * No browser binary means no check: findChrome() returns null and the test
  * skips.
@@ -127,13 +127,19 @@ export function cameraBlocks(mapW: number, mapH: number) {
     fovDeg: 40,
   };
   const modes = {
-    flat: { tiltDeg: 0, terrain3d: false },
-    tilt: { tiltDeg: 30, terrain3d: false },
-    terrain3d: { tiltDeg: 30, terrain3d: true },
+    flat: { tiltDeg: 0, terrain3d: false, iso: false },
+    tilt: { tiltDeg: 30, terrain3d: false, iso: false },
+    terrain3d: { tiltDeg: 30, terrain3d: true, iso: false },
+    isometric: { tiltDeg: 60, terrain3d: true, iso: true },
   };
   const blocks: Record<string, number[]> = {};
   for (const [name, m] of Object.entries(modes)) {
-    const frame = computeCameraFrame({ ...pose, tiltDeg: m.tiltDeg });
+    const frame = computeCameraFrame({
+      ...pose,
+      tiltDeg: m.tiltDeg,
+      yawDeg: m.iso ? 45 : 0,
+      orthographic: m.iso,
+    });
     const data = writeCameraBlock(
       frame,
       {
@@ -141,6 +147,7 @@ export function cameraBlocks(mapW: number, mapH: number) {
         mapH,
         heightScale: m.terrain3d ? (255 / HEIGHT_UNITS_PER_LEVEL) * 0.3 : 0,
         billboard: m.terrain3d,
+        upright: m.iso,
       },
       new Float32Array(CAMERA_BLOCK_FLOATS),
     );

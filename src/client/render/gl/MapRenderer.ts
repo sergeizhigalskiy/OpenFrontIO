@@ -32,6 +32,7 @@ import type {
   UnitState,
 } from "../types";
 import type { MapViewSource } from "./camera/MapViewSource";
+import { ViewRotation } from "./camera/ViewRotation";
 import type { BlockadeMarker } from "./passes/BlockadePass";
 import type { RuinMarker } from "./passes/RuinsPass";
 import type { SpawnCenter } from "./passes/SpawnOverlayPass";
@@ -52,6 +53,8 @@ export class MapRenderer {
   private layerDestroyedMasks = new Map<string, Uint8Array>();
   // Terrain features (one byte per tile), kept for context restore.
   private terrainFeatures: Uint8Array | null = null;
+  /** The isometric view's quarter turns; outlives context restores. */
+  private readonly viewRotation = new ViewRotation();
 
   /**
    * Called after a lost WebGL context is restored and the renderer has been
@@ -105,6 +108,7 @@ export class MapRenderer {
       this.raf,
       this.caf,
     );
+    this.renderer.setViewRotation(this.viewRotation);
 
     const rect = this.canvas.getBoundingClientRect();
     if (rect.width > 0) this.renderer.resize(rect.width, rect.height);
@@ -180,9 +184,29 @@ export class MapRenderer {
    */
   readonly mapView: MapViewSource = {
     view: () => this.settings.mapView,
+    yawDeg: () => this.viewRotation.yawDeg(),
     heightAt: (x, y) => this.renderer?.terrainHeightAt(x, y) ?? 0,
     maxHeight: () => this.renderer?.terrainMaxHeight() ?? 0,
   };
+
+  /**
+   * Turn the isometric view a quarter turn: +1 turns the camera left (the
+   * map counter-clockwise on screen), -1 right. Animates; no effect on the
+   * other view modes until they switch to isometric.
+   */
+  rotateView(direction: 1 | -1): void {
+    this.viewRotation.rotate(direction, performance.now());
+  }
+
+  /** Jump the isometric view to a resting rotation (0-3), no animation. */
+  setViewRotation(quarterTurns: number): void {
+    this.viewRotation.set(quarterTurns);
+  }
+
+  /** The isometric view's resting rotation (0-3) being turned to. */
+  viewRotationQuarterTurns(): number {
+    return this.viewRotation.quarterTurns();
+  }
 
   // ---- Data upload ----
 

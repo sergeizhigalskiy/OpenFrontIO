@@ -16,6 +16,7 @@ import {
   chunkLevel,
   MAX_LEVEL,
   selectSurfaceChunks,
+  surfaceOrderFor,
   type SurfaceSelection,
 } from "../../../../src/client/render/gl/terrain/SurfaceMesh";
 
@@ -232,5 +233,82 @@ describe("ray-cast picking against the terrain", () => {
     expect(
       raycastHeightfield({ origin: [0, 0, 10], dir: [0, 1, 0.1] }, hill, 8),
     ).toBeNull();
+  });
+});
+
+describe("back-to-front order", () => {
+  const isoFrame = (yawDeg: number) =>
+    computeCameraFrame({
+      ...POSE,
+      tiltDeg: 60,
+      yawDeg,
+      orthographic: true,
+    });
+
+  it("follows the view direction in every isometric rotation", () => {
+    expect(surfaceOrderFor(isoFrame(45))).toEqual({
+      flipX: true,
+      flipY: false,
+    });
+    expect(surfaceOrderFor(isoFrame(135))).toEqual({
+      flipX: true,
+      flipY: true,
+    });
+    expect(surfaceOrderFor(isoFrame(225))).toEqual({
+      flipX: false,
+      flipY: true,
+    });
+    expect(surfaceOrderFor(isoFrame(315))).toEqual({
+      flipX: false,
+      flipY: false,
+    });
+    // The tilted camera looks north: north to south, as before.
+    expect(surfaceOrderFor(computeCameraFrame(POSE))).toEqual({
+      flipX: false,
+      flipY: false,
+    });
+  });
+
+  it("draws every cell after the cells farther along the view", () => {
+    for (const yaw of [45, 135, 225, 315, 100, 200]) {
+      const frame = isoFrame(yaw);
+      const mesh = buildSurfaceMesh(
+        selection(2, 1, [1, 1]),
+        80,
+        40,
+        undefined,
+        surfaceOrderFor(frame),
+      );
+      // Cell centres in draw order (two triangles per cell).
+      const cells: [number, number][] = [];
+      for (let t = 0; t < mesh.indexCount; t += 6) {
+        let cx = 0;
+        let cy = 0;
+        for (const k of [0, 1, 2, 5]) {
+          cx += mesh.positions[mesh.indices[t + k] * 2] / 4;
+          cy += mesh.positions[mesh.indices[t + k] * 2 + 1] / 4;
+        }
+        cells.push([cx, cy]);
+      }
+      const [fx, fy] = frame.forward;
+      const [rx, ry] = frame.right;
+      // A later cell overlapping an earlier one on screen (same screen
+      // column, within a cell's width) must not be farther from the camera.
+      const step = 2;
+      const width = step * (Math.abs(rx) + Math.abs(ry));
+      let wrong = 0;
+      for (let i = 0; i < cells.length; i++) {
+        for (let j = i + 1; j < cells.length; j++) {
+          const [ax, ay] = cells[i];
+          const [bx, by] = cells[j];
+          const across = (bx - ax) * rx + (by - ay) * ry;
+          if (Math.abs(across) >= width - 1e-6) continue;
+          const farther = (bx - ax) * fx + (by - ay) * fy;
+          if (farther > 1e-6) wrong++;
+        }
+      }
+      expect(cells.length).toBe(40 * 20);
+      expect(wrong).toBe(0);
+    }
   });
 });

@@ -20,6 +20,7 @@ vi.mock("../../src/client/render/gl/Renderer", () => ({
       stub.disposeArgs.push(opts);
     }
     resize() {}
+    setViewRotation() {}
     setMapLayers() {}
     setLayerVisible() {}
     setLayerAlpha() {}

@@ -15,7 +15,9 @@ import {
   type CameraFrame,
 } from "./render/gl/camera/CameraMath";
 import {
+  hasRelief,
   pickGround,
+  viewPose,
   type MapViewSource,
 } from "./render/gl/camera/MapViewSource";
 import { GameView, PlayerView, UnitView } from "./view";
@@ -54,9 +56,10 @@ export class TransformHandler {
   private intervalID: NodeJS.Timeout | null = null;
   private changed = false;
   /**
-   * The renderer's view mode and terrain heights. Null or a flat view keeps
-   * the classic 2D math; a tilted view picks through the same camera frame
-   * the renderer draws with (see render/gl/camera/CameraMath.ts).
+   * The renderer's view mode, isometric turn and terrain heights. Null or a
+   * flat view keeps the classic 2D math; a tilted or isometric view picks
+   * through the same camera frame the renderer draws with (viewPose in
+   * render/gl/camera/MapViewSource.ts).
    */
   private mapView: MapViewSource | null = null;
   private frameScratch: CameraFrame = createCameraFrame();
@@ -75,7 +78,10 @@ export class TransformHandler {
     this.eventBus.on(CenterCameraEvent, () => this.centerCamera());
   }
 
-  /** Connect the renderer's view mode (tilt / 3D) for picking, zoom and pan. */
+  /**
+   * Connect the renderer's view mode (tilt / 3D / isometric) for picking,
+   * zoom and pan.
+   */
   setMapView(source: MapViewSource | null): void {
     this.mapView = source;
     this.changed = true;
@@ -99,27 +105,36 @@ export class TransformHandler {
     };
   }
 
-  /** The tilted camera frame for the current state, or null when flat. */
+  /**
+   * The camera frame for the current state (tilted, 3D or isometric), or
+   * null in the flat view.
+   */
   private tiltedFrame(): CameraFrame | null {
-    const view = this.mapView?.view();
-    if (view === undefined || view.mode === "flat") return null;
+    const source = this.mapView;
+    const view = source?.view();
+    if (source === null || view === undefined || view.mode === "flat") {
+      return null;
+    }
     const { width, height } = this.boundingRect();
     const focus = this.focusPoint();
     return computeCameraFrame(
-      {
-        centerX: focus.x,
-        centerY: focus.y,
-        zoom: this.scale,
-        viewW: width,
-        viewH: height,
-        tiltDeg: view.tiltDeg,
-        fovDeg: view.fovDeg,
-      },
+      viewPose(
+        view,
+        source.yawDeg(),
+        focus.x,
+        focus.y,
+        this.scale,
+        width,
+        height,
+      ),
       this.frameScratch,
     );
   }
 
-  /** Ground point under a canvas pixel through a tilted frame. */
+  /**
+   * Ground point under a canvas pixel through a tilted frame: on the drawn
+   * terrain when `terrain` is set and the view has relief, else on z = 0.
+   */
   private canvasToGround(
     frame: CameraFrame,
     canvasX: number,
@@ -128,7 +143,9 @@ export class TransformHandler {
   ): { x: number; y: number } | null {
     const [nx, ny] = pixelToNdc(frame, canvasX, canvasY);
     const ray = ndcToRay(frame, nx, ny);
-    return pickGround(ray, terrain ? this.mapView : null);
+    const mode = this.mapView?.view().mode;
+    const relief = terrain && mode !== undefined && hasRelief(mode);
+    return pickGround(ray, relief ? this.mapView : null);
   }
 
   public updateCanvasBoundingRect() {
@@ -167,7 +184,11 @@ export class TransformHandler {
   worldToCanvasCoordinates(cell: Cell): { x: number; y: number } {
     const frame = this.tiltedFrame();
     if (frame !== null) {
-      const z = this.mapView?.heightAt(cell.x, cell.y) ?? 0;
+      const mode = this.mapView?.view().mode;
+      const z =
+        mode !== undefined && hasRelief(mode)
+          ? (this.mapView?.heightAt(cell.x, cell.y) ?? 0)
+          : 0;
       const p = worldToPixel(frame, cell.x, cell.y, z);
       if (p !== null) return p;
     }
@@ -317,8 +338,8 @@ export class TransformHandler {
 
   screenCenter(): { screenX: number; screenY: number } {
     if (this.tiltedFrame() !== null) {
-      // A tilted view's ground bounding box is lopsided; its true centre is
-      // the camera focus.
+      // A tilted or turned view's ground bounding box is lopsided; its true
+      // centre is the camera focus.
       const focus = this.focusPoint();
       return { screenX: Math.floor(focus.x), screenY: Math.floor(focus.y) };
     }

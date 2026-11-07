@@ -2,8 +2,8 @@ import { Config } from "@openfront/engine-lib/configuration/Config";
 /**
  * Every pass added or changed since the shared camera block arrived compiles,
  * links and draws in a real WebGL2 context (headless Chrome), with the camera
- * block bound as the renderer binds it in each view mode: flat, tilt and
- * terrain3d. Skipped when no Chrome or Edge is installed.
+ * block bound as the renderer binds it in each view mode: flat, tilt,
+ * terrain3d and isometric. Skipped when no Chrome or Edge is installed.
  *
  * Also checked without a browser: no vertex shader still takes the old
  * `uniform mat3 uCamera`, and every map-space one includes the camera.
@@ -17,6 +17,7 @@ import { CAMERA_INCLUDE } from "../../../../src/client/render/gl/camera/CameraBl
 import { BlockadePass } from "../../../../src/client/render/gl/passes/BlockadePass";
 import { BorderStampPass } from "../../../../src/client/render/gl/passes/BorderStampPass";
 import { DefenseCoveragePass } from "../../../../src/client/render/gl/passes/DefenseCoveragePass";
+import { FxPass } from "../../../../src/client/render/gl/passes/fx-pass";
 import { TextProgram } from "../../../../src/client/render/gl/passes/name-pass/TextProgram";
 import { RailroadPass } from "../../../../src/client/render/gl/passes/RailroadPass";
 import { ReloadBarPass } from "../../../../src/client/render/gl/passes/ReloadBarPass";
@@ -156,6 +157,12 @@ const PASSES: PassCase[] = [
     build: (gl) => new UnitPass(gl, header(), tex, tex, settings, config),
     camera: true,
   },
+  // graphics-civ: effect sprites stand upright in the isometric view
+  {
+    name: "FxPass",
+    build: (gl) => new FxPass(gl, header(), settings, config),
+    camera: true,
+  },
   // gfx-overlay: territory fill with relief, anti-aliased border lines and
   // haloed name labels
   {
@@ -232,7 +239,7 @@ describe("vertex shaders use the shared camera", () => {
       if (NO_CAMERA.has(rel)) continue;
       expect(src.includes(CAMERA_INCLUDE), rel).toBe(true);
       expect(src, rel).toMatch(
-        /(groundToClip|anchoredToClip|billboardToClip|worldToClip)\(/,
+        /(groundToClip|anchoredToClip|billboardToClip|uprightToClip|worldToClip)\(/,
       );
     }
   });
@@ -280,9 +287,9 @@ describe.skipIf(chrome === null)(
       for (const p of PASSES) expect(camera.has(p.name), p.name).toBe(p.camera);
     });
 
-    it("draws without a GL error in flat, tilt and terrain3d", () => {
+    it("draws without a GL error in flat, tilt, terrain3d and isometric", () => {
       for (const r of results) {
-        for (const mode of ["flat", "tilt", "terrain3d"]) {
+        for (const mode of ["flat", "tilt", "terrain3d", "isometric"]) {
           expect(
             { pass: r.pass, index: r.index, mode, error: r.drawErrors[mode] },
             r.pass,

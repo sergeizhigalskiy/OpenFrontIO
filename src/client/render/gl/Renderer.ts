@@ -32,6 +32,8 @@ import type {
 } from "../types";
 import { Camera } from "./Camera";
 import { CameraUniforms } from "./camera/CameraUniforms";
+import { hasRelief } from "./camera/MapViewSource";
+import { ViewRotation } from "./camera/ViewRotation";
 import { GLUnavailableError, initGL } from "./initGL";
 import { BarPass } from "./passes/BarPass";
 import { BlockadeMarker, BlockadePass } from "./passes/BlockadePass";
@@ -137,6 +139,11 @@ export class GPURenderer {
   private cameraUniforms: CameraUniforms;
   /** Chunked LOD terrain mesh, drawn by full-map passes in 3D mode. */
   private mapSurface: MapSurface;
+  /**
+   * The isometric view's quarter turns. MapRenderer owns the one that
+   * survives context loss and hands it over (setViewRotation).
+   */
+  private viewRotation = new ViewRotation();
 
   // Passes
   private terrainPass: TerrainPass;
@@ -725,17 +732,25 @@ export class GPURenderer {
     this.camera.setCameraState(x, y, z);
   }
 
-  /** World height of the drawn surface at (x, y); 0 unless 3D terrain is on. */
+  /** Use this rotation state for the isometric view (MapRenderer's). */
+  setViewRotation(rotation: ViewRotation): void {
+    this.viewRotation = rotation;
+  }
+
+  /**
+   * World height of the drawn surface at (x, y); 0 unless the view draws the
+   * 3D terrain (terrain3d, isometric).
+   */
   terrainHeightAt(x: number, y: number): number {
     const view = this.settings.mapView;
-    if (view.mode !== "terrain3d") return 0;
+    if (!hasRelief(view.mode)) return 0;
     return this.heightField.levelAt(x, y) * view.heightScale;
   }
 
-  /** Upper bound of terrainHeightAt (0 unless 3D terrain is on). */
+  /** Upper bound of terrainHeightAt (0 unless the 3D terrain is drawn). */
   terrainMaxHeight(): number {
     const view = this.settings.mapView;
-    if (view.mode !== "terrain3d") return 0;
+    if (!hasRelief(view.mode)) return 0;
     return this.heightField.peakLevel * view.heightScale;
   }
 
@@ -1405,31 +1420,33 @@ export class GPURenderer {
 
   /**
    * Fill and bind the camera block for this frame. Every pass draws through
-   * it, so the view mode (flat / tilt / 3D) is decided here once.
+   * it, so the view mode (flat / tilt / 3D / isometric) is decided here once.
    */
   private bindCamera(): void {
     const view = this.settings.mapView;
-    const tilted = view.mode !== "flat";
-    const terrain3d = view.mode === "terrain3d";
-    this.camera.setProjection(tilted ? view.tiltDeg : 0, view.fovDeg);
+    const relief = hasRelief(view.mode);
+    const isometric = view.mode === "isometric";
+    const yaw = this.viewRotation.update(performance.now());
+    this.camera.setProjection(view, yaw);
     const frame = this.camera.getFrame();
-    if (terrain3d) {
+    if (relief) {
       this.mapSurface.update(frame, {
         maxHeight: this.terrainMaxHeight(),
         targetPx: view.lodTargetPx,
       });
     }
-    this.mapSurface.setActive(terrain3d);
+    this.mapSurface.setActive(relief);
     this.cameraUniforms.bind(
       frame,
       {
         mapW: this.mapW,
         mapH: this.mapH,
         // The height map's R channel is height units / 255.
-        heightScale: terrain3d
+        heightScale: relief
           ? (255 / HEIGHT_UNITS_PER_LEVEL) * view.heightScale
           : 0,
-        billboard: terrain3d,
+        billboard: relief,
+        upright: isometric,
       },
       this.heightField.tex,
     );

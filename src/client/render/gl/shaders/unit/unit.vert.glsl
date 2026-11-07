@@ -49,7 +49,9 @@ void main() {
   vec2 worldPos = center + (aPos - 0.5) * halfSize * 2.0;
   vWorldPos = worldPos;
 
-  gl_Position = anchoredToClip(center, worldPos - center);
+  // Upright in the isometric view, so the top-down art stays square on
+  // screen; flat on the ground otherwise.
+  gl_Position = uprightToClip(center, worldPos - center);
 
   vQuadPos = aPos;
 

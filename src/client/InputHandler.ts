@@ -312,6 +312,14 @@ export class CenterCameraEvent implements GameEvent {
   constructor() {}
 }
 
+/**
+ * Turn the isometric view a quarter turn: +1 turns the camera left (the map
+ * counter-clockwise on screen), -1 right.
+ */
+export class RotateViewEvent implements GameEvent {
+  constructor(public readonly direction: 1 | -1) {}
+}
+
 export class AutoUpgradeEvent implements GameEvent {
   constructor(
     public readonly x: number,
@@ -530,6 +538,12 @@ export class InputHandler {
     });
     this.addKeybindAndEvent(this.keybinds.centerCamera, () => {
       this.eventBus.emit(new CenterCameraEvent());
+    });
+    this.addKeybindAndEvent(this.keybinds.rotateViewLeft, () => {
+      this.eventBus.emit(new RotateViewEvent(1));
+    });
+    this.addKeybindAndEvent(this.keybinds.rotateViewRight, () => {
+      this.eventBus.emit(new RotateViewEvent(-1));
     });
     this.addKeybindAndEvent(this.keybinds.selectAllWarships, () => {
       this.eventBus.emit(new SelectAllWarshipsEvent());

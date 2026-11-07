@@ -136,6 +136,116 @@ describe("tilted camera", () => {
   });
 });
 
+describe("isometric camera", () => {
+  const iso = (yawDeg: number, over: Partial<CameraPose> = {}) =>
+    computeCameraFrame({
+      ...BASE,
+      tiltDeg: 60,
+      yawDeg,
+      orthographic: true,
+      ...over,
+    });
+
+  it("is orthographic: a tile is the same size anywhere on screen", () => {
+    const frame = iso(45);
+    expect(frame.perspective).toBe(false);
+    const size = (x: number, y: number) => {
+      const a = worldToPixel(frame, x, y)!;
+      const b = worldToPixel(frame, x + 1, y + 1)!;
+      return [b.x - a.x, b.y - a.y];
+    };
+    const [w0, h0] = size(500, 300);
+    const [w1, h1] = size(100, 600);
+    expect(w1).toBeCloseTo(w0, 4);
+    expect(h1).toBeCloseTo(h0, 4);
+  });
+
+  it("puts the focus at the centre and keeps the zoom across the screen", () => {
+    for (const yaw of [45, 135, 225, 315]) {
+      const frame = iso(yaw);
+      const c = projectToNdc(frame, BASE.centerX, BASE.centerY)!;
+      expect(c.x).toBeCloseTo(0, 6);
+      expect(c.y).toBeCloseTo(0, 6);
+      // Along screen-right a ground step of one tile spans `zoom` pixels.
+      const r = frame.right;
+      const a = worldToPixel(frame, BASE.centerX, BASE.centerY)!;
+      const b = worldToPixel(frame, BASE.centerX + r[0], BASE.centerY + r[1])!;
+      expect(Math.hypot(b.x - a.x, b.y - a.y)).toBeCloseTo(BASE.zoom, 4);
+    }
+  });
+
+  it("turns the ground direction given by the yaw up the screen", () => {
+    // Yaw 45: north-east is straight up, south-east straight right.
+    const frame = iso(45);
+    const a = worldToPixel(frame, 500, 300)!;
+    const ne = worldToPixel(frame, 510, 290)!;
+    const se = worldToPixel(frame, 510, 310)!;
+    expect(ne.x - a.x).toBeCloseTo(0, 4);
+    expect(ne.y).toBeLessThan(a.y);
+    expect(se.y - a.y).toBeCloseTo(0, 4);
+    expect(se.x).toBeGreaterThan(a.x);
+    // 2:1 dimetric at 30 degrees of elevation: depth is halved.
+    expect((a.y - ne.y) / (se.x - a.x)).toBeCloseTo(0.5, 6);
+  });
+
+  it("raises heights straight up the screen", () => {
+    const frame = iso(135);
+    const ground = worldToPixel(frame, 420, 260, 0)!;
+    const raised = worldToPixel(frame, 420, 260, 4)!;
+    expect(raised.x).toBeCloseTo(ground.x, 4);
+    expect(raised.y).toBeLessThan(ground.y);
+    // cos(30 degrees of elevation) of the height, in pixels.
+    expect(ground.y - raised.y).toBeCloseTo(
+      4 * BASE.zoom * Math.cos(Math.PI / 6),
+      3,
+    );
+  });
+
+  it("casts parallel rays that pick what they project", () => {
+    for (const yaw of [45, 135, 225, 315, 80]) {
+      const frame = iso(yaw);
+      const r1 = ndcToRay(frame, -0.7, 0.4);
+      const r2 = ndcToRay(frame, 0.3, -0.8);
+      for (let i = 0; i < 3; i++) expect(r1.dir[i]).toBeCloseTo(r2.dir[i], 9);
+      for (const [x, y, z] of [
+        [500, 300, 0],
+        [180, 90, 0],
+        [777.7, 444.4, 0],
+        [420.5, 333.25, 3],
+      ]) {
+        const p = worldToPixel(frame, x, y, z)!;
+        const [nx, ny] = [
+          (p.x / BASE.viewW) * 2 - 1,
+          1 - (p.y / BASE.viewH) * 2,
+        ];
+        const hit = intersectRayPlane(ndcToRay(frame, nx, ny), z)!;
+        expect(hit.x).toBeCloseTo(x, 3);
+        expect(hit.y).toBeCloseTo(y, 3);
+        expect(hit.t).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("keeps the largest maps inside the clip depth range", () => {
+    const frame = iso(225, { centerX: 0, centerY: 0 });
+    for (const [x, y] of [
+      [0, 0],
+      [8000, 4000],
+      [-4000, 6000],
+    ]) {
+      const [, , cz, cw] = transformPoint(frame.viewProj, x, y, 40);
+      expect(Math.abs(cz / cw)).toBeLessThan(1);
+    }
+  });
+
+  it("leaves yaw 0 without tilt as the classic flat matrix", () => {
+    const flat = computeCameraFrame(BASE);
+    const zero = computeCameraFrame({ ...BASE, yawDeg: 0 });
+    for (let i = 0; i < 16; i++)
+      expect(zero.viewProj[i]).toBe(flat.viewProj[i]);
+  });
+});
+
 describe("rays", () => {
   it("sends the centre ray to the focus point", () => {
     const frame = tilted();

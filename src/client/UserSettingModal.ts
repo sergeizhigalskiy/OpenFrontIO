@@ -1809,6 +1809,26 @@ export class UserSettingModal extends BaseModal {
       ></setting-keybind>
 
       <setting-keybind
+        action="rotateViewLeft"
+        label=${translateText("user_setting.rotate_view_left")}
+        description=${translateText("user_setting.rotate_view_left_desc")}
+        defaultKey=${this.defaultKeybinds.rotateViewLeft}
+        .value=${this.getKeyValue("rotateViewLeft")}
+        .display=${this.getKeyChar("rotateViewLeft")}
+        @change=${this.handleKeybindChange}
+      ></setting-keybind>
+
+      <setting-keybind
+        action="rotateViewRight"
+        label=${translateText("user_setting.rotate_view_right")}
+        description=${translateText("user_setting.rotate_view_right_desc")}
+        defaultKey=${this.defaultKeybinds.rotateViewRight}
+        .value=${this.getKeyValue("rotateViewRight")}
+        .display=${this.getKeyChar("rotateViewRight")}
+        @change=${this.handleKeybindChange}
+      ></setting-keybind>
+
+      <setting-keybind
         action="moveUp"
         label=${translateText("user_setting.move_up")}
         description=${translateText("user_setting.move_up_desc")}

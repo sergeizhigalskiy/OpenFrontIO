@@ -30,9 +30,10 @@ function makeHandler(
     ({ left: 0, top: 0, width: W, height: H, right: W, bottom: H }) as DOMRect;
   const handler = new TransformHandler(game, eventBus, el);
   handler.override(20, -30, 2.5);
-  const view = { mode, tiltDeg: 30, fovDeg: 40 };
+  const view = { mode, tiltDeg: 30, fovDeg: 40, isoElevationDeg: 30 };
   const source: MapViewSource = {
     view: () => view,
+    yawDeg: () => 45,
     heightAt,
     maxHeight: () => maxHeight,
   };
