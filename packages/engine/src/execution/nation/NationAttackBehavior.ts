@@ -27,6 +27,7 @@ import {
 } from "@openfront/engine-lib/Util";
 import { CHEAPEST_TROOP_RATIO } from "../../configuration/EngineConfig";
 import { Attack, Game, Player, Unit } from "../../game/Game";
+import { callToWarTargetFor, isShielded } from "../../game/ProtectedStateLink";
 import {
   canBuildTransportShip,
   targetTransportTile,
@@ -328,6 +329,10 @@ export class NationAttackBehavior extends AiAttackBehavior {
     if (this.retaliatesAtOnce() && this.retakeRailCut()) return;
     // Impossible boats to an island ruin; its other plans go on.
     this.boatToIslandRuin();
+    // A patron the Protected State called to war attacks the target next,
+    // ahead of free land, but never ahead of answering a player that is
+    // attacking us (ProtectedStateExecution).
+    if (!attacked && this.answerCallToWar()) return;
     // Horde Night and the plague put their threat next (a no-op otherwise),
     // but never ahead of answering a player that is attacking us.
     if (
@@ -388,9 +393,13 @@ export class NationAttackBehavior extends AiAttackBehavior {
       (o) => this.player?.isFriendly(o) === true,
     );
     // City-states are left to attackCityState: the other strategies would
-    // take them on without weighing their garrison.
+    // take them on without weighing their garrison. A patron never takes on
+    // the Protected State (ProtectedStateLink.ts).
     const borderingEnemies = borderingPlayers.filter(
-      (o) => this.player?.isFriendly(o) === false && !o.isCityState(),
+      (o) =>
+        this.player?.isFriendly(o) === false &&
+        !o.isCityState() &&
+        !isShielded(this.game, o, this.player),
     );
 
     // Attack TerraNullius but not nuked territory (direct border or across a river)
@@ -849,7 +858,8 @@ export class NationAttackBehavior extends AiAttackBehavior {
       cut !== null &&
       (this.game.ticks() - cut.tick > NATION_SALIENT_MEMORY_TICKS ||
         !cut.target.isAlive() ||
-        this.player.isFriendly(cut.target))
+        this.player.isFriendly(cut.target) ||
+        isShielded(this.game, cut.target, this.player))
     ) {
       cut = null;
     }
@@ -882,6 +892,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
         !owner.isPlayer() ||
         owner.type() === PlayerType.Bot ||
         this.player.isFriendly(owner) ||
+        isShielded(this.game, owner, this.player) ||
         !this.answers(owner)
       ) {
         continue;
@@ -1801,9 +1812,22 @@ export class NationAttackBehavior extends AiAttackBehavior {
     return true;
   }
 
-  // Bot attacks don't count as threats
+  // Bot attacks don't count as threats, and a patron never answers the
+  // Protected State's (ProtectedStateLink.ts)
   protected override ignoresAttacksFrom(attacker: Player): boolean {
-    return attacker.type() === PlayerType.Bot;
+    return (
+      attacker.type() === PlayerType.Bot ||
+      isShielded(this.game, attacker, this.player)
+    );
+  }
+
+  // The Protected State called us, its patron, to war: attack the target,
+  // sized and aimed like any attack. False when there is no call or the
+  // attack doesn't go ahead (not reachable, or not worth it now).
+  private answerCallToWar(): boolean {
+    const target = callToWarTargetFor(this.game, this.player);
+    if (target === null) return false;
+    return this.sendAttack(target);
   }
 
   /**
@@ -1979,6 +2003,7 @@ export class NationAttackBehavior extends AiAttackBehavior {
 
   // A beachhead boat is cheap enough to risk past a warship, one at a time
   protected override sendBoatAttack(target: Player): boolean {
+    if (isShielded(this.game, target, this.player)) return false;
     if (!this.landsBeachheads()) return super.sendBoatAttack(target);
     const route = this.boatRoute(target);
     if (route === null) return false;

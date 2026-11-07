@@ -3,6 +3,7 @@ import { customElement } from "lit/decorators.js";
 import { type StatsRow, StatsTable } from "../../components/StatsTable";
 import { GoToPlayerEvent } from "../../TransformHandler";
 import type { GameView } from "../../view";
+import { leaderboardName } from "../ProtectedStateBadge";
 import { type ColumnDef, columnValues } from "./lib/StatsColumns";
 
 @customElement("player-stats")
@@ -22,7 +23,7 @@ export class PlayerStats extends StatsTable {
       .filter((player) => player.isAlive())
       .map((player) => ({
         key: player.id(),
-        name: player.name(),
+        name: leaderboardName(game, player),
         clanTag: player.clanTag(),
         values: columnValues(player, game, columns),
         emphasized:

@@ -1257,6 +1257,11 @@ export class GPURenderer {
     this.namePass.setHiddenTroops(hidden);
   }
 
+  /** An emoji badge over these players' names (smallID to emoji). */
+  setNameBadges(badges: ReadonlyMap<number, string>): void {
+    this.namePass.setBadges(badges);
+  }
+
   /** The blockaded ports to ring. */
   updateBlockades(ports: BlockadeMarker[]): void {
     this.blockadePass.update(ports);

@@ -24,6 +24,7 @@ import {
 import { assertNever, boundingBoxTiles } from "@openfront/engine-lib/Util";
 import { z } from "zod";
 import { Game, Player, Unit } from "../../game/Game";
+import { isShielded } from "../../game/ProtectedStateLink";
 import type {
   SnapshotReader,
   SnapshotWriter,
@@ -192,6 +193,8 @@ export class NationNukeBehavior {
     if (
       nukeTarget.type() === PlayerType.Bot || // Don't nuke tribes (as opposed to nations and humans)
       this.player.isOnSameTeam(nukeTarget) ||
+      // A patron never nukes the Protected State (ProtectedStateLink.ts)
+      isShielded(this.game, nukeTarget, this.player) ||
       this.attackBehavior.shouldAttack(nukeTarget) === false
     ) {
       return;

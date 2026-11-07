@@ -28,6 +28,7 @@ import {
   ExclusiveMode,
   exclusiveModesOn,
 } from "@openfront/engine-lib/game/ModeExclusions";
+import { protectedStateTextParams } from "@openfront/engine-lib/game/ProtectedState";
 import { UserMeResponse } from "@openfront/shared/ApiSchemas";
 import { assetUrl } from "@openfront/shared/AssetUrls";
 import { generateID } from "@openfront/shared/SharedUtil";
@@ -181,6 +182,7 @@ const DEFAULT_OPTIONS = {
   hordeNight: false,
   hordeNightSurvivalMinutes: undefined as number | undefined,
   plague: false,
+  protectedState: false,
 } as const;
 
 // A map earns achievements only if it has nations to conquer — the same rule
@@ -285,6 +287,7 @@ export class SinglePlayerModal extends BaseModal {
   @state() private hordeNightSurvivalMinutes: number | undefined =
     DEFAULT_OPTIONS.hordeNightSurvivalMinutes;
   @state() private plague: boolean = DEFAULT_OPTIONS.plague;
+  @state() private protectedState: boolean = DEFAULT_OPTIONS.protectedState;
   // Drives the Start Game button's busy state. Without it the click produces
   // nothing visible until every await in startGame() settles, which reads as
   // a hang rather than as loading whenever the network is slow or absent.
@@ -694,6 +697,12 @@ export class SinglePlayerModal extends BaseModal {
                     ruleKey: "plague.rules",
                   },
                   {
+                    labelKey: "game_settings.protected_state",
+                    checked: this.protectedState,
+                    ruleKey: "protected_state.rules",
+                    textParams: protectedStateTextParams(),
+                  },
+                  {
                     labelKey: "game_settings.seasons",
                     checked: this.seasons,
                   },
@@ -790,6 +799,7 @@ export class SinglePlayerModal extends BaseModal {
       this.overtime !== DEFAULT_OPTIONS.overtime ||
       this.hordeNight !== DEFAULT_OPTIONS.hordeNight ||
       this.plague !== DEFAULT_OPTIONS.plague ||
+      this.protectedState !== DEFAULT_OPTIONS.protectedState ||
       this.disabledUnits.length > 0
     );
   }
@@ -933,6 +943,7 @@ export class SinglePlayerModal extends BaseModal {
     this.hordeNight = DEFAULT_OPTIONS.hordeNight;
     this.hordeNightSurvivalMinutes = DEFAULT_OPTIONS.hordeNightSurvivalMinutes;
     this.plague = DEFAULT_OPTIONS.plague;
+    this.protectedState = DEFAULT_OPTIONS.protectedState;
   }
 
   protected onOpen(args?: Record<string, unknown>): void {
@@ -988,6 +999,7 @@ export class SinglePlayerModal extends BaseModal {
       hordeNight: this.hordeNight,
       hordeNightSurvivalMinutes: this.hordeNightSurvivalMinutes,
       plague: this.plague,
+      protectedState: this.protectedState,
     };
   }
 
@@ -1026,6 +1038,7 @@ export class SinglePlayerModal extends BaseModal {
     this.hordeNight = config.hordeNight ?? false;
     this.hordeNightSurvivalMinutes = config.hordeNightSurvivalMinutes;
     this.plague = config.plague ?? false;
+    this.protectedState = config.protectedState ?? false;
 
     await this.loadNationCount();
     if (config.nations !== undefined) {
@@ -1168,11 +1181,21 @@ export class SinglePlayerModal extends BaseModal {
       this.plague = false;
       off.push("plague");
     }
+    if (mode !== "protectedState" && this.protectedState) {
+      this.protectedState = false;
+      off.push("protectedState");
+    }
     for (const other of off) {
       showToast(
         translateText("game_settings.mode_turned_off", {
-          other: translateText(EXCLUSIVE_MODE_LABEL_KEYS[other]),
-          mode: translateText(EXCLUSIVE_MODE_LABEL_KEYS[mode]),
+          other: translateText(
+            EXCLUSIVE_MODE_LABEL_KEYS[other],
+            protectedStateTextParams(),
+          ),
+          mode: translateText(
+            EXCLUSIVE_MODE_LABEL_KEYS[mode],
+            protectedStateTextParams(),
+          ),
         }),
         "red",
       );
@@ -1186,11 +1209,18 @@ export class SinglePlayerModal extends BaseModal {
       bossRaid: this.bossRaidOn() ? { boss: BOSS_RAID_NATION_BOSS } : null,
       hordeNight: { enabled: this.hordeNight },
       plague: this.plague,
+      protectedState: this.protectedState,
     });
     if (on.length < 2) return null;
     return translateText("game_settings.modes_conflict", {
-      mode: translateText(EXCLUSIVE_MODE_LABEL_KEYS[on[0]]),
-      other: translateText(EXCLUSIVE_MODE_LABEL_KEYS[on[1]]),
+      mode: translateText(
+        EXCLUSIVE_MODE_LABEL_KEYS[on[0]],
+        protectedStateTextParams(),
+      ),
+      other: translateText(
+        EXCLUSIVE_MODE_LABEL_KEYS[on[1]],
+        protectedStateTextParams(),
+      ),
     });
   }
 
@@ -1261,6 +1291,10 @@ export class SinglePlayerModal extends BaseModal {
       case "game_settings.plague":
         this.plague = checked;
         if (checked) this.turnOffOtherExclusiveModes("plague");
+        break;
+      case "game_settings.protected_state":
+        this.protectedState = checked;
+        if (checked) this.turnOffOtherExclusiveModes("protectedState");
         break;
       case "game_settings.horde_night":
         this.hordeNight = checked;
@@ -1660,6 +1694,7 @@ export class SinglePlayerModal extends BaseModal {
                 }
               : {}),
             ...(this.plague ? { plague: true } : {}),
+            ...(this.protectedState ? { protectedState: true } : {}),
           },
           lobbyCreatedAt: Date.now(), // ms; server should be authoritative in MP
         },

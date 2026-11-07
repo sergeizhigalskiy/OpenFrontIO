@@ -6,6 +6,7 @@ import {
 } from "@openfront/engine-api/game/GameTypes";
 import { GAME_ID_REGEX, GameConfig } from "@openfront/engine-api/Schemas";
 import { modeWinRuleKey } from "@openfront/engine-lib/game/ModeExclusions";
+import { protectedStateTextParams } from "@openfront/engine-lib/game/ProtectedState";
 import { assetUrl } from "@openfront/shared/AssetUrls";
 import { EventBus } from "@openfront/shared/EventBus";
 import {
@@ -737,7 +738,8 @@ export class JoinLobbyModal extends BaseModal {
     );
     const mapInfo = maps.find((m) => m.type === c.gameMap);
     const showDetails = hasMapDetails(mapInfo);
-    // Boss Raid, Horde Night and the plague state their win rule.
+    // Boss Raid, Horde Night, the plague and the Protected State state their
+    // win rule.
     const ruleKey = modeWinRuleKey(c);
 
     // object-contain, not object-cover: the preview is here to be studied
@@ -755,7 +757,7 @@ export class JoinLobbyModal extends BaseModal {
         ruleKey === null
           ? ""
           : html`<div class="text-xs text-white/60 -mt-2 mb-3" data-mode-rule>
-              ${translateText(ruleKey)}
+              ${translateText(ruleKey, protectedStateTextParams())}
             </div>`
       }
       <div class="flex flex-col sm:flex-row gap-4 mb-6">

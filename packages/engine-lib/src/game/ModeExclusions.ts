@@ -1,5 +1,6 @@
 import { GameMode } from "@openfront/engine-api/game/GameTypes";
 import { GameConfig } from "@openfront/engine-api/Schemas";
+import { PROTECTED_STATE_MODE_NAME } from "./ProtectedState";
 
 /**
  * Lobby modes that each set the sides or the win rule their own way, so at
@@ -11,29 +12,47 @@ import { GameConfig } from "@openfront/engine-api/Schemas";
  *   replaces the win check.
  * - The plague (Plague.ts) adds its own win and loss, which Horde Night's
  *   check would skip and Boss Raid's would contradict.
+ * - The Protected State (ProtectedState.ts) has the strongest nations guard
+ *   one small nation, which Boss Raid's and Horde Night's sides would split
+ *   and the plague's survival rules would override.
  *
  * The lobby modals turn the others off when one is switched on, and the
  * server refuses a config that has two (create_game, the admin bot's
  * create_game and update_game_config).
  */
-export type ExclusiveMode = "bossRaid" | "hordeNight" | "plague";
+export type ExclusiveMode =
+  | "bossRaid"
+  | "hordeNight"
+  | "plague"
+  | "protectedState";
 
 type ModeConfig = Partial<
-  Pick<GameConfig, "gameMode" | "bossRaid" | "hordeNight" | "plague">
+  Pick<
+    GameConfig,
+    "gameMode" | "bossRaid" | "hordeNight" | "plague" | "protectedState"
+  >
 >;
 
-/** Translation keys of the modes' names, as the lobby labels them. */
+/**
+ * Translation keys of the modes' names, as the lobby labels them. The
+ * Protected State's takes its name as `{mode}` (protectedStateTextParams).
+ */
 export const EXCLUSIVE_MODE_LABEL_KEYS: Record<ExclusiveMode, string> = {
   bossRaid: "game_mode.boss_raid",
   hordeNight: "horde_night.title",
   plague: "game_settings.plague",
+  protectedState: "game_settings.protected_state",
 };
 
-/** Translation keys of each mode's one-line win rule, as the lobby shows it. */
+/**
+ * Translation keys of each mode's one-line win rule, as the lobby shows it.
+ * The Protected State's takes `{mode}` too.
+ */
 export const EXCLUSIVE_MODE_RULE_KEYS: Record<ExclusiveMode, string> = {
   bossRaid: "boss_raid.rules",
   hordeNight: "horde_night.rules",
   plague: "plague.rules",
+  protectedState: "protected_state.rules",
 };
 
 /** The win rule of the exclusive mode `config` turns on, or null. */
@@ -46,6 +65,7 @@ const MODE_NAMES: Record<ExclusiveMode, string> = {
   bossRaid: "Boss Raid",
   hordeNight: "Horde Night",
   plague: "the zombie plague",
+  protectedState: PROTECTED_STATE_MODE_NAME,
 };
 
 /** The exclusive modes `config` turns on, in a fixed order. */
@@ -61,6 +81,7 @@ export function exclusiveModesOn(config: ModeConfig): ExclusiveMode[] {
   }
   if (config.hordeNight?.enabled === true) on.push("hordeNight");
   if (config.plague === true) on.push("plague");
+  if (config.protectedState === true) on.push("protectedState");
   return on;
 }
 

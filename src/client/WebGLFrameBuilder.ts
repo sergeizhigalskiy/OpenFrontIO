@@ -22,6 +22,7 @@ import {
 } from "@openfront/shared/CosmeticSchemas";
 import { colord } from "colord";
 import { getCachedCosmetics } from "./Cosmetics";
+import { nameBadges } from "./hud/ProtectedStateBadge";
 import { buildTerrainRowSpans } from "./render/frame/derive/TerrainRowSpans";
 import { infectedPulseColor } from "./render/frame/InfectedPulse";
 import { uploadFrameData } from "./render/frame/Upload";
@@ -201,6 +202,8 @@ export class WebGLFrameBuilder {
   private lastTideVersion = -1;
   /** The fog-hidden troop labels last sent to the renderer (see syncWeather). */
   private lastFogHiddenKey = "";
+  /** The name badges last sent to the renderer (see syncNameBadges). */
+  private lastNameBadgesKey = "";
   /** The blockaded ports last sent to the renderer (see syncBlockades). */
   private lastBlockadesKey = "";
   private lastBlockadeScanTick = -Infinity;
@@ -298,6 +301,7 @@ export class WebGLFrameBuilder {
     this.syncSpawnOverlay(gameView);
     this.syncRuins(gameView);
     this.syncCataclysm(gameView);
+    this.syncNameBadges(gameView);
     this.syncWeather(gameView);
     this.syncBlockades(gameView);
     this.syncSmallPlayerGlow(gameView);
@@ -570,6 +574,19 @@ export class WebGLFrameBuilder {
     if (key === this.lastFogHiddenKey) return;
     this.lastFogHiddenKey = key;
     this.view.setFogHiddenTroops(hidden);
+  }
+
+  /**
+   * The badges over player names: the Protected State's shield
+   * (hud/ProtectedStateBadge.ts). Re-sent only when they change.
+   */
+  private syncNameBadges(gameView: GameView): void {
+    const badges = nameBadges(gameView);
+    let key = "";
+    for (const [id, badge] of badges) key += `${id}:${badge},`;
+    if (key === this.lastNameBadgesKey) return;
+    this.lastNameBadgesKey = key;
+    this.view.setNameBadges(badges);
   }
 
   /**

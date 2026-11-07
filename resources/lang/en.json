@@ -960,6 +960,8 @@
     "plague_cured_you": "You wiped out the Infected! +{gold} gold and +{percent}% troop growth for 2 minutes",
     "plague_outbreak": "Outbreak! The Infected rise with {troops} troops",
     "port_blockaded": "{name}'s warships are blockading your port: it sends half its trade ships",
+    "protected_state_call_to_war": "{nation} called its patrons to war against {target}",
+    "protected_state_named": "{nation} is the {mode}",
     "rail_cut": "{name} cut one of your rail lines",
     "received_gold_from_captured_ship": "Received {gold} gold from ship captured from {name}",
     "received_gold_from_conquest": "Conquered {name}, received {gold} gold",
@@ -1093,6 +1095,7 @@
     "options": "Options",
     "overtime": "Overtime after (minutes)",
     "plague": "Zombie plague",
+    "protected_state": "{mode}",
     "random_spawn": "Random spawn",
     "rising_tide": "Rising tide",
     "ruins": "Ruins",
@@ -2259,6 +2262,11 @@
     "xp_plus": "+{xp}",
     "xp_progress": "{current} / {next} XP",
     "xp_total": "+{xp} XP"
+  },
+  "protected_state": {
+    "badge_title": "{mode}",
+    "patrons": "Patrons",
+    "rules": "One small nation becomes the {mode}. The three strongest nations guard it with troop convoys and answer its calls to war, and it pays them tribute. Win the usual way."
   },
   "public_game_modifier": {
     "compact_map": "Compact Map",

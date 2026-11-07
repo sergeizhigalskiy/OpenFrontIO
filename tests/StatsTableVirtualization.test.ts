@@ -2,6 +2,7 @@
 import { PlayerStats } from "../src/client/hud/layers/PlayerStats";
 import { UserSettings } from "../src/client/UserSettings";
 import type { GameView, PlayerView } from "../src/client/view";
+import { CataclysmView } from "../src/client/view/CataclysmView";
 
 function player(id: string, tiles: number): PlayerView {
   return {
@@ -31,6 +32,7 @@ function gameWith(players: PlayerView[], me: PlayerView | null): GameView {
     ticks: () => 600,
     numLandTiles: () => 100,
     numTilesWithFallout: () => 0,
+    cataclysm: () => new CataclysmView(),
   } as unknown as GameView;
 }
 

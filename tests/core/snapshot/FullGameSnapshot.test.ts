@@ -139,6 +139,10 @@ const CATACLYSM_EXECS = new Set(["Volcano", "RisingTide"]);
 // (tests/core/executions/HordeNight.test.ts and Plague.test.ts).
 const SURVIVAL_MODE_EXECS = new Set(["HordeBand", "HordeNight", "Plague"]);
 
+// The Protected State lobby mode, off in this game: its own round trip covers
+// it (tests/core/executions/ProtectedState.test.ts).
+const LOBBY_MODE_EXECS = new Set(["ProtectedState"]);
+
 describe.each(VARIANTS)("full game snapshots: %s", (_, overrides) => {
   const start = scriptedGameStart(overrides);
   let reference: Reference;
@@ -215,7 +219,8 @@ describe.each(VARIANTS)("full game snapshots: %s", (_, overrides) => {
           !reference.execTypes.has(name) &&
           !neverStored.has(name) &&
           !CATACLYSM_EXECS.has(name) &&
-          !SURVIVAL_MODE_EXECS.has(name),
+          !SURVIVAL_MODE_EXECS.has(name) &&
+          !LOBBY_MODE_EXECS.has(name),
       );
       expect(missing).toEqual([]);
     },

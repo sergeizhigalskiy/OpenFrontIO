@@ -77,6 +77,26 @@ export function planConvoyRoute(
 }
 
 /**
+ * The fewest tiles a convoy from `sender` to `recipient` would cover: from
+ * the tile it would leave from to the recipient's border tile nearest that
+ * (manhattan, as a convoy steps). 0 when either has no land.
+ */
+export function convoyStraightDistance(
+  game: Game,
+  sender: Player,
+  recipient: Player,
+): number {
+  const anchor = anchorTile(game, recipient);
+  if (anchor === null) return 0;
+  const isLandTile = (t: TileRef) => game.isLand(t) && !game.isImpassable(t);
+  const start = nearestTile(game, sender.borderTiles(), anchor, isLandTile);
+  if (start === null) return 0;
+  const end = nearestTile(game, recipient.borderTiles(), start, isLandTile);
+  if (end === null) return 0;
+  return game.manhattanDist(start, end);
+}
+
+/**
  * What a convoy along `tiles` meets, by the rules ConvoyExecution applies:
  * it delivers on the first recipient tile (or the last tile), each hostile
  * land tile before that ambushes it, and each hostile defense post or warship

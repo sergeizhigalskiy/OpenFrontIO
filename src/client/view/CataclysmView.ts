@@ -3,6 +3,7 @@ import { UnitType } from "@openfront/engine-api/game/GameTypes";
 import type {
   CataclysmUpdate,
   HordeUpdate,
+  ProtectedStateUpdate,
   RisingTideUpdate,
 } from "@openfront/engine-api/game/GameUpdates";
 import {
@@ -13,9 +14,9 @@ import { TELEGRAPH_ENEMY } from "../render/frame/derive/NukeTelegraphs";
 import type { DeadUnitFx, NukeTelegraphData } from "../render/types";
 
 /**
- * The client's copy of the volcano, rising tide and Horde Night state, folded
- * from GameUpdateType.Cataclysm updates (each one carries the whole state of
- * its kind). Empty while those modes are off.
+ * The client's copy of the volcano, rising tide, Horde Night and Protected
+ * State state, folded from GameUpdateType.Cataclysm updates (each one carries
+ * the whole state of its kind). Empty while those modes are off.
  */
 export class CataclysmView {
   volcanoSites: readonly TileRef[] = [];
@@ -33,6 +34,8 @@ export class CataclysmView {
   tideVersion = 0;
   /** The latest Horde Night state; null while the mode is off. */
   horde: HordeUpdate | null = null;
+  /** The latest Protected State state; null while the mode is off. */
+  protectedState: ProtectedStateUpdate | null = null;
 
   apply(updates: readonly CataclysmUpdate[] | undefined): void {
     this.eruptedSites = [];
@@ -46,10 +49,23 @@ export class CataclysmView {
       } else if (u.kind === "tide") {
         this.tide = u;
         this.tideVersion++;
-      } else {
+      } else if (u.kind === "horde") {
         this.horde = u;
+      } else {
+        this.protectedState = u;
       }
     }
+  }
+
+  /** The Protected State's smallID, or 0 when there is none. */
+  protectedStateID(): number {
+    return this.protectedState?.state ?? 0;
+  }
+
+  /** The Protected State's patrons' smallIDs, strongest first. */
+  patronIDs(): readonly number[] {
+    const u = this.protectedState;
+    return u === null || u.state === 0 ? [] : u.patrons;
   }
 
   /** A defending human's land when the first Horde Night wave landed. */

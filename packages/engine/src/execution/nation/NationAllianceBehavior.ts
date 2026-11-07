@@ -14,6 +14,7 @@ import {
 import { assertNever } from "@openfront/engine-lib/Util";
 import { z } from "zod";
 import { Game, Player } from "../../game/Game";
+import { isShielded } from "../../game/ProtectedStateLink";
 import type {
   SnapshotReader,
   SnapshotWriter,
@@ -425,6 +426,9 @@ export class NationAllianceBehavior {
     borderingEnemies: Player[],
   ): boolean {
     if (!this.player.isAlliedWith(otherPlayer)) return false;
+    // A patron never breaks its alliance with the Protected State
+    // (ProtectedStateLink.ts).
+    if (isShielded(this.game, otherPlayer, this.player)) return false;
 
     const difficulty = this.game.config().difficultyFor(this.player);
 

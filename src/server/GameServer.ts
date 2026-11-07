@@ -457,8 +457,8 @@ export class GameServer {
       }
 
       case "update_game_config": {
-        // Boss Raid, Horde Night and the plague each set the sides or the
-        // win rule, so a lobby may have at most one of them.
+        // Boss Raid, Horde Night, the plague and the Protected State each
+        // set the sides or the win rule, so a lobby may have at most one.
         const modeError = exclusiveModeError(
           previewGameConfigPatch(this.gameConfig, stamped.config),
         );

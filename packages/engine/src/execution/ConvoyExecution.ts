@@ -48,6 +48,9 @@ import {
  *   own cap; the rest is lost, and the sender is told.
  * - If the recipient dies or stops being friendly with the sender, it
  *   disbands and the sender gets the rest back, up to the same cap.
+ * - A patron's convoy to the Protected State (ProtectedStateExecution) needs
+ *   no friendship, so only the recipient's death disbands it, and it leaves
+ *   the relation and the emojis alone.
  * - While it travels its troops still count as the sender's for troop growth
  *   (Config.troopIncreaseRate).
  */
@@ -95,12 +98,14 @@ export class ConvoyExecution implements Execution {
   /**
    * @param minTroopsForRelation delivering at least this many troops improves
    *   the recipient's relation with the sender (see DonateTroopsExecution).
+   * @param patronage a patron's convoy to the Protected State.
    */
   constructor(
     private convoy: Unit,
     private recipient: Player,
     path: readonly TileRef[],
     private minTroopsForRelation: number,
+    private patronage = false,
   ) {
     this.sender = convoy.owner();
     this.path = [...path];
@@ -121,7 +126,10 @@ export class ConvoyExecution implements Execution {
       return;
     }
 
-    if (!this.recipient.isAlive() || !this.sender.isFriendly(this.recipient)) {
+    if (
+      !this.recipient.isAlive() ||
+      (!this.patronage && !this.sender.isFriendly(this.recipient))
+    ) {
       this.disband();
       return;
     }
@@ -179,6 +187,7 @@ export class ConvoyExecution implements Execution {
 
     this.recipient.receiveTroopDonation(this.sender, delivered);
     this.refund(troops - delivered);
+    if (this.patronage) return;
 
     // Prevent players from just buying a good relation by sending 1% troops.
     // Instead, a minimum is needed, and it's random.
@@ -310,6 +319,7 @@ export class ConvoyExecution implements Execution {
       pathIndex: this.pathIndex,
       sentTroops: this.sentTroops,
       minTroopsForRelation: this.minTroopsForRelation,
+      patronage: this.patronage,
     });
   }
 
@@ -324,6 +334,7 @@ export class ConvoyExecution implements Execution {
     this.pathIndex = s.pathIndex;
     this.sentTroops = s.sentTroops;
     this.minTroopsForRelation = s.minTroopsForRelation;
+    this.patronage = s.patronage;
   }
 }
 
@@ -338,12 +349,18 @@ const ConvoyStateSchema = z.object({
   pathIndex: zInt(),
   sentTroops: zNum(),
   minTroopsForRelation: zNum(),
+  patronage: z.boolean(),
 });
 type ConvoyState = z.infer<typeof ConvoyStateSchema>;
 
 export const ConvoyExecutionSnapshot = execSnapshotType({
   name: "Convoy",
-  version: 1,
+  version: 2,
   schema: ConvoyStateSchema,
+  // v2: patrons' convoys to the Protected State. Every older one was a
+  // donation.
+  migrations: {
+    1: (d) => ({ ...(d as Record<string, unknown>), patronage: false }),
+  },
   cls: () => ConvoyExecution,
 });

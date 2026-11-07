@@ -383,6 +383,10 @@ export const GameConfigSchema = z.object({
   // stacked on other teams (engine-lib/game/TeamAssignment.ts). Not a lobby
   // setting: the engine fills it in when it creates the game.
   stackedTeams: z.array(z.string().max(64)).max(1000).optional(),
+  // Protected State: one small nation the strongest nations guard and that
+  // pays them tribute (see engine-lib/game/ProtectedState.ts). Off when
+  // absent. Last, so the wire layout only grows at the end.
+  protectedState: z.boolean().optional(),
 });
 
 // What a host sends in update_game_config. maxPlayers is the private-lobby

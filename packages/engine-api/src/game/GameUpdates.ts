@@ -442,12 +442,26 @@ export interface GamePausedUpdate {
 }
 
 /**
- * Volcanoes, rising tide and Horde Night (see engine-lib/game/Volcanoes.ts,
- * RisingTide.ts and HordeNight.ts). Each update carries the whole state of
- * its `kind`, sent when it changes and again on a view resync, so a view
- * keeps the latest one.
+ * Volcanoes, rising tide, Horde Night and the Protected State (see
+ * engine-lib/game/Volcanoes.ts, RisingTide.ts, HordeNight.ts and
+ * ProtectedState.ts). Each update carries the whole state of its `kind`, sent
+ * when it changes and again on a view resync, so a view keeps the latest one.
  */
-export type CataclysmUpdate = VolcanoUpdate | RisingTideUpdate | HordeUpdate;
+export type CataclysmUpdate =
+  | VolcanoUpdate
+  | RisingTideUpdate
+  | HordeUpdate
+  | ProtectedStateUpdate;
+
+/** Who the Protected State and its patrons are (engine-lib ProtectedState.ts). */
+export interface ProtectedStateUpdate {
+  type: GameUpdateType.Cataclysm;
+  kind: "protectedState";
+  /** The Protected State's smallID; 0 before it is picked and once it falls. */
+  state: number;
+  /** Its patrons' smallIDs, strongest first. */
+  patrons: number[];
+}
 
 export interface HordeUpdate {
   type: GameUpdateType.Cataclysm;

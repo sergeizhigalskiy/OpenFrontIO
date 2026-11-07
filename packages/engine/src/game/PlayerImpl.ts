@@ -83,6 +83,7 @@ import {
 } from "./Game";
 import { GameImpl } from "./GameImpl";
 import { diffPlayerUpdate, packAttackTroopDeltas } from "./GameUpdateUtils";
+import { isShielded } from "./ProtectedStateLink";
 import {
   bumpTraversalGeneration,
   tileTraversalScratch,
@@ -2019,6 +2020,8 @@ export class PlayerImpl implements Player {
     player: Player,
     treatAFKFriendly: boolean = false,
   ): boolean {
+    // Protected State: its patrons never attack it (ProtectedStateLink.ts).
+    if (isShielded(this.mg, player, this)) return false;
     if (this.type() !== PlayerType.Human) {
       // Only human attackers respect PVP immunity
       return !this.isFriendly(player, treatAFKFriendly);

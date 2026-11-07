@@ -9,6 +9,7 @@ import {
   GameConfig,
 } from "@openfront/engine-api/Schemas";
 import { HORDE_NIGHT_DEFAULT_SURVIVAL_MINUTES } from "@openfront/engine-lib/game/HordeNight";
+import { protectedStateTextParams } from "@openfront/engine-lib/game/ProtectedState";
 import { html, TemplateResult } from "lit";
 import { renderDuration, translateText } from "../../client/Utils";
 
@@ -167,6 +168,14 @@ export function notableLobbySettings(
   if (c.plague)
     items.push({
       label: translateText("game_settings.plague"),
+      value: enabled,
+    });
+  if (c.protectedState)
+    items.push({
+      label: translateText(
+        "game_settings.protected_state",
+        protectedStateTextParams(),
+      ),
       value: enabled,
     });
   // Seasons and weather are on by default: only turning them off is notable.

@@ -44,6 +44,7 @@ import type {
   UnitState,
 } from "../render/types";
 import type { GameView } from "../view";
+import { CataclysmView } from "../view/CataclysmView";
 import { playerTypeFromEnum } from "../view/EntityState";
 import type { ReplayFrame } from "./codec/ReplayTypes";
 
@@ -304,6 +305,8 @@ export class ReplayGameView {
   private readonly pending = new Map<number, unknown[]>();
   /** The live weather cells, from the latest frame that carried them. */
   private weather: WeatherCell[] = [];
+  /** Always empty (see cataclysm()). */
+  private readonly noModes = new CataclysmView();
 
   constructor(
     players: readonly PlayerStatic[],
@@ -414,6 +417,13 @@ export class ReplayGameView {
   /** Replays draw no ruins (world features) yet, so none show on hover. */
   ruins(): readonly number[] {
     return [];
+  }
+  /**
+   * Replays drop the mode state (FrameNormalizer), so it stays empty: no
+   * Protected State badge, for one.
+   */
+  cataclysm(): CataclysmView {
+    return this.noModes;
   }
   unit(id: number): ReplayUnitView | undefined {
     const state = this.frame?.units.get(id);

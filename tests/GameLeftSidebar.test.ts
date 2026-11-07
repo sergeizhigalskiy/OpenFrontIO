@@ -6,6 +6,7 @@ import type { PlayerStats } from "../src/client/hud/layers/PlayerStats";
 import type { TeamStats } from "../src/client/hud/layers/TeamStats";
 import { UserSettings } from "../src/client/UserSettings";
 import type { GameView, PlayerView } from "../src/client/view";
+import { CataclysmView } from "../src/client/view/CataclysmView";
 
 function ffaGame(): GameView {
   const player = {
@@ -36,6 +37,7 @@ function ffaGame(): GameView {
     ticks: () => 600,
     numTilesWithFallout: () => 0,
     playerViews: () => [player],
+    cataclysm: () => new CataclysmView(),
   } as unknown as GameView;
 }
 

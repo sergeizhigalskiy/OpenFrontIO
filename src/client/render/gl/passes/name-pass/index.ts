@@ -127,6 +127,8 @@ export class NamePass {
   private mouseWorldY = -1e9;
   // Fog: smallIDs whose troop count shows as FOG_TROOP_TEXT.
   private hiddenTroops: ReadonlySet<number> = new Set();
+  // Badges: smallID to the emoji atlas index shown while no emoji is.
+  private badgeEmoji = new Map<number, number>();
 
   constructor(
     gl: WebGL2RenderingContext,
@@ -556,6 +558,9 @@ export class NamePass {
           }
         }
       }
+      if (newEmoji === -1) {
+        newEmoji = this.badgeEmoji.get(slot.static.smallID) ?? -1;
+      }
       if (newEmoji !== slot.emojiAtlasIdx) {
         slot.emojiAtlasIdx = newEmoji;
         dirty = true;
@@ -761,6 +766,20 @@ export class NamePass {
   /** Fog: players (smallIDs) whose label hides its troop count. */
   setHiddenTroops(hidden: ReadonlySet<number>): void {
     this.hiddenTroops = hidden;
+  }
+
+  /**
+   * An emoji over these players' names (smallID to emoji) whenever they show
+   * no emoji of their own, such as the Protected State's shield. Emojis the
+   * atlas lacks are skipped.
+   */
+  setBadges(badges: ReadonlyMap<number, string>): void {
+    const next = new Map<number, number>();
+    for (const [smallID, emoji] of badges) {
+      const idx = this.emojiCharToIndex.get(emoji);
+      if (idx !== undefined) next.set(smallID, idx);
+    }
+    this.badgeEmoji = next;
   }
 
   /**

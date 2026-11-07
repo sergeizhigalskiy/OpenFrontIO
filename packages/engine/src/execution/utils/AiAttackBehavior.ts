@@ -20,6 +20,7 @@ import {
 import { assertNever } from "@openfront/engine-lib/Util";
 import { z } from "zod";
 import { Attack, Game, Player, Unit } from "../../game/Game";
+import { isShielded } from "../../game/ProtectedStateLink";
 import {
   canBuildTransportShip,
   targetTransportTile,
@@ -219,6 +220,10 @@ export abstract class AiAttackBehavior {
     opponent?: Player,
     focusTile: TileRef | null = null,
   ): boolean {
+    // A patron never attacks the Protected State (ProtectedStateLink.ts).
+    if (target.isPlayer() && isShielded(this.game, target, this.player)) {
+      return false;
+    }
     const troops = this.calculateAttackTroops(target, sendTroops, opponent);
     if (troops === null) {
       return false;
@@ -262,6 +267,7 @@ export abstract class AiAttackBehavior {
   }
 
   protected sendBoatAttack(target: Player): boolean {
+    if (isShielded(this.game, target, this.player)) return false;
     const route = this.boatRoute(target);
     if (route === null || route.blocker !== null || route.stormy === true) {
       return false;

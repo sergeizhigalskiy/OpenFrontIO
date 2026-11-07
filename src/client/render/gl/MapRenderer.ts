@@ -400,6 +400,11 @@ export class MapRenderer {
     this.renderer?.setFogHiddenTroops(hidden);
   }
 
+  /** An emoji badge over these players' names (smallID to emoji). */
+  setNameBadges(badges: ReadonlyMap<number, string>): void {
+    this.renderer?.setNameBadges(badges);
+  }
+
   /** The blockaded ports to ring (see BlockadePass). */
   updateBlockades(ports: BlockadeMarker[]): void {
     this.renderer?.updateBlockades(ports);

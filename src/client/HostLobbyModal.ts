@@ -27,6 +27,7 @@ import {
   ExclusiveMode,
   exclusiveModesOn,
 } from "@openfront/engine-lib/game/ModeExclusions";
+import { protectedStateTextParams } from "@openfront/engine-lib/game/ProtectedState";
 import { GameEnv } from "@openfront/shared/configuration/Env";
 import { EventBus } from "@openfront/shared/EventBus";
 import {
@@ -153,6 +154,7 @@ export class HostLobbyModal extends BaseModal {
   @state() private hordeNight: boolean = false;
   @state() private hordeNightSurvivalMinutes: number | undefined = undefined;
   @state() private plague: boolean = false;
+  @state() private protectedState: boolean = false;
   // On by default (the sim's default too).
   @state() private seasons: boolean = true;
   @state() private weather: boolean = true;
@@ -802,6 +804,12 @@ export class HostLobbyModal extends BaseModal {
                     ruleKey: "plague.rules",
                   },
                   {
+                    labelKey: "game_settings.protected_state",
+                    checked: this.protectedState,
+                    ruleKey: "protected_state.rules",
+                    textParams: protectedStateTextParams(),
+                  },
+                  {
                     labelKey: "game_settings.seasons",
                     checked: this.seasons,
                   },
@@ -1160,6 +1168,7 @@ export class HostLobbyModal extends BaseModal {
     this.hordeNight = false;
     this.hordeNightSurvivalMinutes = undefined;
     this.plague = false;
+    this.protectedState = false;
     this.seasons = true;
     this.weather = true;
     this.publiclyListed = false;
@@ -1269,11 +1278,21 @@ export class HostLobbyModal extends BaseModal {
       this.plague = false;
       off.push("plague");
     }
+    if (mode !== "protectedState" && this.protectedState) {
+      this.protectedState = false;
+      off.push("protectedState");
+    }
     for (const other of off) {
       showToast(
         translateText("game_settings.mode_turned_off", {
-          other: translateText(EXCLUSIVE_MODE_LABEL_KEYS[other]),
-          mode: translateText(EXCLUSIVE_MODE_LABEL_KEYS[mode]),
+          other: translateText(
+            EXCLUSIVE_MODE_LABEL_KEYS[other],
+            protectedStateTextParams(),
+          ),
+          mode: translateText(
+            EXCLUSIVE_MODE_LABEL_KEYS[mode],
+            protectedStateTextParams(),
+          ),
         }),
         "red",
       );
@@ -1287,11 +1306,18 @@ export class HostLobbyModal extends BaseModal {
       bossRaid: this.bossRaidOn() ? { boss: BOSS_RAID_NATION_BOSS } : null,
       hordeNight: { enabled: this.hordeNight },
       plague: this.plague,
+      protectedState: this.protectedState,
     });
     if (on.length < 2) return null;
     return translateText("game_settings.modes_conflict", {
-      mode: translateText(EXCLUSIVE_MODE_LABEL_KEYS[on[0]]),
-      other: translateText(EXCLUSIVE_MODE_LABEL_KEYS[on[1]]),
+      mode: translateText(
+        EXCLUSIVE_MODE_LABEL_KEYS[on[0]],
+        protectedStateTextParams(),
+      ),
+      other: translateText(
+        EXCLUSIVE_MODE_LABEL_KEYS[on[1]],
+        protectedStateTextParams(),
+      ),
     });
   }
 
@@ -1366,6 +1392,11 @@ export class HostLobbyModal extends BaseModal {
       case "game_settings.plague":
         this.plague = checked;
         if (checked) this.turnOffOtherExclusiveModes("plague");
+        void this.putGameConfig();
+        break;
+      case "game_settings.protected_state":
+        this.protectedState = checked;
+        if (checked) this.turnOffOtherExclusiveModes("protectedState");
         void this.putGameConfig();
         break;
       // Horde Night: donations on, so friends can reinforce whoever is hit
@@ -1859,6 +1890,7 @@ export class HostLobbyModal extends BaseModal {
       hordeNight: this.hordeNight,
       hordeNightSurvivalMinutes: this.hordeNightSurvivalMinutes,
       plague: this.plague,
+      protectedState: this.protectedState,
       spawnImmunity: this.spawnImmunity,
       spawnImmunityDurationMinutes: this.spawnImmunityDurationMinutes,
       playerLimit: this.playerLimit,
@@ -1908,6 +1940,7 @@ export class HostLobbyModal extends BaseModal {
     this.hordeNight = config.hordeNight ?? false;
     this.hordeNightSurvivalMinutes = config.hordeNightSurvivalMinutes;
     this.plague = config.plague ?? false;
+    this.protectedState = config.protectedState ?? false;
 
     if (config.spawnImmunity !== undefined) {
       this.spawnImmunity = config.spawnImmunity;
@@ -2086,6 +2119,7 @@ export class HostLobbyModal extends BaseModal {
             volcanoes: this.volcanoes,
             risingTide: this.risingTide,
             plague: this.plague,
+            protectedState: this.protectedState,
             seasons: this.seasons,
             weather: this.weather,
           } satisfies GameConfigPatch,

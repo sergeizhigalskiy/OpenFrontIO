@@ -1,6 +1,8 @@
 import { AllPlayers, Nukes } from "@openfront/engine-api/game/GameTypes";
+import { PROTECTED_STATE_BADGE } from "@openfront/engine-lib/game/ProtectedState";
 import { assetUrl } from "@openfront/shared/AssetUrls";
 import { GameView, PlayerView } from "../view";
+import { isProtectedState } from "./ProtectedStateBadge";
 const allianceRequestBlackIcon = assetUrl(
   "images/AllianceRequestBlackIcon.svg",
 );
@@ -24,6 +26,7 @@ const TARGET_ICON_ID = "target" as const;
 const EMOJI_ICON_ID = "emoji" as const;
 const EMBARGO_ICON_ID = "embargo" as const;
 const NUKE_ICON_ID = "nuke" as const;
+const PROTECTED_STATE_ICON_ID = "protected-state" as const;
 
 export const IMAGE_ICON_KIND = "image" as const;
 export const EMOJI_ICON_KIND = "emoji" as const;
@@ -73,6 +76,15 @@ export function getPlayerIcons(
       id: CROWN_ICON_ID,
       kind: IMAGE_ICON_KIND,
       src: crownUrl ? assetUrl(crownUrl) : crownIcon,
+    });
+  }
+
+  // The Protected State's badge (ProtectedStateBadge.ts)
+  if (isProtectedState(game, player)) {
+    icons.push({
+      id: PROTECTED_STATE_ICON_ID,
+      kind: EMOJI_ICON_KIND,
+      text: PROTECTED_STATE_BADGE,
     });
   }
 

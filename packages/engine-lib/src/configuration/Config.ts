@@ -267,6 +267,11 @@ export class Config implements AttackRules {
     return this._gameConfig.plague ?? false;
   }
 
+  /** Protected State mode (see game/ProtectedState.ts), off by default. */
+  protectedState(): boolean {
+    return this._gameConfig.protectedState ?? false;
+  }
+
   /** Seasons (see game/Seasons.ts). On unless the game config turns it off. */
   seasonsEnabled(): boolean {
     return this._gameConfig.seasons ?? true;

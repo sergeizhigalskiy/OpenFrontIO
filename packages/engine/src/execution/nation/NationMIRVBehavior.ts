@@ -15,6 +15,7 @@ import {
 import { assertNever } from "@openfront/engine-lib/Util";
 import { z } from "zod";
 import { Game, Player, Unit } from "../../game/Game";
+import { isShielded } from "../../game/ProtectedStateLink";
 import type {
   SnapshotReader,
   SnapshotWriter,
@@ -294,6 +295,8 @@ export class NationMIRVBehavior {
 
   private isWorthMirving(target: Player): boolean {
     return (
+      // A patron never MIRVs the Protected State (ProtectedStateLink.ts)
+      !isShielded(this.game, target, this.player) &&
       !this.wasRecentlyMirved(target) &&
       mirvGetsThrough(this.game, this.player, target)
     );

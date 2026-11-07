@@ -9,6 +9,10 @@ import {
 } from "@openfront/engine-api/game/GameTypes";
 import { Emoji, flattenedEmojiTable } from "@openfront/engine-api/Schemas";
 import { renderNumber, renderTroops } from "@openfront/engine-lib/Format";
+import {
+  PROTECTED_STATE_BADGE,
+  protectedStateTextParams,
+} from "@openfront/engine-lib/game/ProtectedState";
 import type { UserMeResponse } from "@openfront/shared/ApiSchemas";
 import { assetUrl } from "@openfront/shared/AssetUrls";
 import { EventBus } from "@openfront/shared/EventBus";
@@ -44,6 +48,7 @@ import { UIState } from "../../UIState";
 import { UserSettings } from "../../UserSettings";
 import { renderDuration, showToast, translateText } from "../../Utils";
 import { GameView, PlayerView } from "../../view";
+import { isProtectedState, patronsOf } from "../ProtectedStateBadge";
 import { ChatModal } from "./ChatModal";
 import { EmojiTable } from "./EmojiTable";
 import "./PlayerModerationModal";
@@ -874,6 +879,60 @@ export class PlayerPanel extends LitElement implements Controller {
     `;
   }
 
+  // The Protected State's patrons, strongest first (ProtectedStateBadge.ts).
+  // Nothing for anyone else.
+  private renderPatrons(other: PlayerView) {
+    if (!isProtectedState(this.g, other)) return html``;
+    const patrons = patronsOf(this.g, other);
+    return html`
+      <div class="select-none mt-3">
+        <div class="flex items-center justify-between mb-2">
+          <div
+            id="patrons-title"
+            class="text-[15px] font-medium text-zinc-200"
+            title=${translateText(
+              "protected_state.badge_title",
+              protectedStateTextParams(),
+            )}
+          >
+            <span aria-hidden="true">${PROTECTED_STATE_BADGE}</span>
+            ${translateText("protected_state.patrons")}
+          </div>
+          <span
+            aria-labelledby="patrons-title"
+            class="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-[10px]
+                 text-[12px] text-zinc-100 bg-white/10 border border-white/20"
+          >
+            ${patrons.length}
+          </span>
+        </div>
+        <ul
+          class="rounded-lg bg-zinc-800/70 ring-1 ring-zinc-700/60 p-2 flex flex-wrap gap-1.5"
+          role="list"
+          aria-labelledby="patrons-title"
+          translate="no"
+          data-patrons
+        >
+          ${
+            patrons.length === 0
+              ? html`<li class="text-zinc-400 text-[14px] px-1">
+                  ${translateText("common.none")}
+                </li>`
+              : patrons.map(
+                  (p) =>
+                    html`<li
+                      class="max-w-full inline-flex items-center rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-[14px] text-zinc-100"
+                      title=${p.displayName()}
+                    >
+                      <span class="truncate">${p.displayName()}</span>
+                    </li>`,
+                )
+          }
+        </ul>
+      </div>
+    `;
+  }
+
   private renderAllianceExpiry() {
     if (this.allianceExpiryText === null) return html``;
     return html`
@@ -1237,6 +1296,9 @@ export class PlayerPanel extends LitElement implements Controller {
 
                     <!-- Alliances list -->
                     ${this.renderAlliances(other)}
+
+                    <!-- Protected State: its patrons -->
+                    ${this.renderPatrons(other)}
 
                     <!-- Alliance time remaining -->
                     ${this.renderAllianceExpiry()}

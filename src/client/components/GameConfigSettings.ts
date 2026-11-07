@@ -193,6 +193,8 @@ export interface ToggleOptionConfig {
   minuteChoices?: { options: readonly number[]; selected: number };
   // A translation key: the mode's win rule, shown on the card while checked.
   ruleKey?: string;
+  // Parameters for the label and the rule (the Protected State's {mode}).
+  textParams?: Record<string, string>;
 }
 
 export interface BossRaidSettings {
@@ -483,7 +485,7 @@ export class GameConfigSettings extends LitElement {
         @click=${() => this.handleOptionToggle(toggle)}
       >
         <span class="${CARD_LABEL_CLASS} ${stateTextClass(toggle.checked)}">
-          ${translateText(toggle.labelKey)}
+          ${translateText(toggle.labelKey, toggle.textParams)}
         </span>
         ${
           toggle.checked && choices !== undefined
@@ -513,7 +515,7 @@ export class GameConfigSettings extends LitElement {
         ${
           toggle.checked && toggle.ruleKey !== undefined
             ? html`<span class="text-[11px] text-white/60" data-mode-rule
-                >${translateText(toggle.ruleKey)}</span
+                >${translateText(toggle.ruleKey, toggle.textParams)}</span
               >`
             : nothing
         }

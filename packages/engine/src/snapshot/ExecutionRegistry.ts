@@ -31,6 +31,7 @@ import { PauseExecutionSnapshot } from "../execution/PauseExecution";
 import { PlagueExecutionSnapshot } from "../execution/PlagueExecution";
 import { PlayerExecutionSnapshot } from "../execution/PlayerExecution";
 import { PortExecutionSnapshot } from "../execution/PortExecution";
+import { ProtectedStateExecutionSnapshot } from "../execution/ProtectedStateExecution";
 import { QuickChatExecutionSnapshot } from "../execution/QuickChatExecution";
 import { RecomputeRailClusterExecutionSnapshot } from "../execution/RecomputeRailClusterExecution";
 import { RetreatExecutionSnapshot } from "../execution/RetreatExecution";
@@ -100,6 +101,7 @@ export const EXECUTION_SNAPSHOT_TYPES = [
   PlagueExecutionSnapshot,
   PlayerExecutionSnapshot,
   PortExecutionSnapshot,
+  ProtectedStateExecutionSnapshot,
   QuickChatExecutionSnapshot,
   RecomputeRailClusterExecutionSnapshot,
   RetreatExecutionSnapshot,

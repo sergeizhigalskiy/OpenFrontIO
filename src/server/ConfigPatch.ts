@@ -36,6 +36,7 @@ const COPIED_KEYS = [
   "risingTide",
   "hordeNight",
   "plague",
+  "protectedState",
   "seasons",
   "weather",
   "anonymizeNames",

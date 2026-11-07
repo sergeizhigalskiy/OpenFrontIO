@@ -52,6 +52,18 @@ describe("HostLobbyModal game modes", () => {
     expect(modal.hordeNight).toBe(true);
   });
 
+  it("the Protected State is off by default, pushed when on, and exclusive", () => {
+    const modal = modalWithStubbedPush();
+    expect(modal.protectedState).toBe(false);
+    toggle(modal, "game_settings.plague", true);
+    toggle(modal, "game_settings.protected_state", true);
+    expect(modal.protectedState).toBe(true);
+    expect(modal.plague).toBe(false);
+    expect(modal.putGameConfig).toHaveBeenCalledTimes(2);
+    toggle(modal, "game_settings.horde_night", true);
+    expect(modal.protectedState).toBe(false);
+  });
+
   it("keeps the Boss's timer between 15 and 60 minutes", () => {
     const modal = modalWithStubbedPush();
     const timer = (minutes: number) =>
