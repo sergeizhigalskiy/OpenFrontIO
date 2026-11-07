@@ -25,6 +25,7 @@ import {
   type CameraFrame,
 } from "./camera/CameraMath";
 import { viewPose, type MapViewParams } from "./camera/MapViewSource";
+import type { CameraOrbit } from "./camera/ViewOrbit";
 import { renderDpr } from "./utils/Dpr";
 
 const MIN_ZOOM = 0.2;
@@ -47,9 +48,8 @@ export class Camera {
     mode: "flat",
     tiltDeg: 0,
     fovDeg: 40,
-    isoElevationDeg: 30,
   };
-  private yawDeg = 0;
+  private orbit: CameraOrbit = { yawDeg: 0, elevationDeg: 30 };
   private frame: CameraFrame = createCameraFrame();
   private frameDirty = true;
   /** True until fitMap() has been called with valid canvas dimensions. */
@@ -171,25 +171,23 @@ export class Camera {
 
   /**
    * Set the view mode's projection (camera/MapViewSource.ts viewPose): the
-   * mode, its tilt, field of view and isometric elevation, and the
-   * isometric view's current yaw.
+   * mode, its tilt and field of view, and the isometric camera's orbit.
    */
-  setProjection(view: MapViewParams, yawDeg: number): void {
+  setProjection(view: MapViewParams, orbit: CameraOrbit): void {
     const v = this.view;
     if (
       view.mode === v.mode &&
       view.tiltDeg === v.tiltDeg &&
       view.fovDeg === v.fovDeg &&
-      view.isoElevationDeg === v.isoElevationDeg &&
-      yawDeg === this.yawDeg
+      orbit.yawDeg === this.orbit.yawDeg &&
+      orbit.elevationDeg === this.orbit.elevationDeg
     ) {
       return;
     }
     v.mode = view.mode;
     v.tiltDeg = view.tiltDeg;
     v.fovDeg = view.fovDeg;
-    v.isoElevationDeg = view.isoElevationDeg;
-    this.yawDeg = yawDeg;
+    this.orbit = { yawDeg: orbit.yawDeg, elevationDeg: orbit.elevationDeg };
     this.frameDirty = true;
   }
 
@@ -199,7 +197,7 @@ export class Camera {
       computeCameraFrame(
         viewPose(
           this.view,
-          this.yawDeg,
+          this.orbit,
           this.offsetX,
           this.offsetY,
           this.zoom,

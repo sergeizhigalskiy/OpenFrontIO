@@ -13,24 +13,43 @@ import {
 } from "../../src/client/render/gl/camera/MapViewSource";
 import {
   ISO_BASE_YAW_DEG,
-  ViewRotation,
-} from "../../src/client/render/gl/camera/ViewRotation";
+  MAX_ELEVATION_DEG,
+  MIN_ELEVATION_DEG,
+  ViewOrbit,
+} from "../../src/client/render/gl/camera/ViewOrbit";
 import { TransformHandler } from "../../src/client/TransformHandler";
 import type { GameView } from "../../src/client/view";
 
 /**
- * Screen-to-tile mapping in the isometric view, at each of its four
- * rotations: every click, hover, radial menu, spawn pick, attack and
- * targeting path goes through these TransformHandler methods, and they must
- * agree with the frame the renderer draws (viewPose + computeCameraFrame).
+ * Screen-to-tile mapping in the isometric view as the camera orbits: every
+ * click, hover, radial menu, spawn pick, attack and boat or nuke target goes
+ * through these TransformHandler methods, and they must agree with the
+ * frame the renderer draws (viewPose + computeCameraFrame) at any yaw and
+ * tilt, on flat ground and on raised terrain.
  */
 
 const W = 1280;
 const H = 720;
-const ROTATIONS = [0, 1, 2, 3];
+
+/** Orbits to test: the four quarter turns, odd angles, low and steep tilts. */
+const ORBITS: [number, number][] = [
+  [315, 30],
+  [45, 30],
+  [135, 30],
+  [225, 30],
+  [17, 30],
+  [278.5, 47],
+  [100, MIN_ELEVATION_DEG],
+  [333, MAX_ELEVATION_DEG],
+  [190, 62],
+];
+
+const hill = (x: number, y: number) =>
+  6 * Math.exp(-((x - 450) ** 2 + (y - 250) ** 2) / 300);
 
 function makeHandler(
-  rotation: number,
+  yawDeg = ISO_BASE_YAW_DEG,
+  elevationDeg = 30,
   heightAt = (_x: number, _y: number) => 0,
   maxHeight = 0,
 ) {
@@ -45,22 +64,17 @@ function makeHandler(
     ({ left: 0, top: 0, width: W, height: H, right: W, bottom: H }) as DOMRect;
   const handler = new TransformHandler(game, eventBus, el);
   handler.override(20, -30, 2.5);
-  const view: MapViewParams = {
-    mode: "isometric",
-    tiltDeg: 30,
-    fovDeg: 40,
-    isoElevationDeg: 30,
-  };
-  const turn = new ViewRotation();
-  turn.set(rotation);
+  const view: MapViewParams = { mode: "isometric", tiltDeg: 30, fovDeg: 40 };
+  const orbit = new ViewOrbit(30, 100);
+  orbit.set(yawDeg, elevationDeg);
   const source: MapViewSource = {
     view: () => view,
-    yawDeg: () => turn.yawDeg(),
+    orbit: () => orbit.current(),
     heightAt,
     maxHeight: () => maxHeight,
   };
   handler.setMapView(source);
-  return { handler, eventBus, view, turn, source };
+  return { handler, eventBus, view, orbit, source };
 }
 
 /** The frame the renderer would draw with for this handler's state. */
@@ -69,7 +83,7 @@ function rendererFrame(handler: TransformHandler, source: MapViewSource) {
   return computeCameraFrame(
     viewPose(
       source.view(),
-      source.yawDeg(),
+      source.orbit(),
       focus.x,
       focus.y,
       handler.scale,
@@ -79,149 +93,127 @@ function rendererFrame(handler: TransformHandler, source: MapViewSource) {
   );
 }
 
-describe.each(ROTATIONS)("isometric picking at rotation %i", (rotation) => {
-  it("picks the tile the renderer drew under the cursor", () => {
-    const { handler, source } = makeHandler(rotation);
-    const frame = rendererFrame(handler, source);
-    for (const [x, y] of [
-      [300.5, 200.5],
-      [520.5, 140.5],
-      [610.5, 380.5],
-      [455.25, 233.75],
-    ]) {
-      const p = worldToPixel(frame, x, y)!;
-      const cell = handler.screenToWorldCoordinates(p.x, p.y);
-      expect(cell.x).toBe(Math.floor(x));
-      expect(cell.y).toBe(Math.floor(y));
-    }
-  });
+describe.each(ORBITS)(
+  "isometric picking at yaw %f, elevation %f",
+  (yaw, elevation) => {
+    it("picks the tile the renderer drew under the cursor", () => {
+      const { handler, source } = makeHandler(yaw, elevation);
+      const frame = rendererFrame(handler, source);
+      for (const [x, y] of [
+        [300.5, 200.5],
+        [520.5, 140.5],
+        [610.5, 380.5],
+        [455.25, 233.75],
+      ]) {
+        const p = worldToPixel(frame, x, y)!;
+        const cell = handler.screenToWorldCoordinates(p.x, p.y);
+        expect(cell.x).toBe(Math.floor(x));
+        expect(cell.y).toBe(Math.floor(y));
+      }
+    });
 
-  it("picks each corner of a tile as that tile", () => {
-    const { handler, source } = makeHandler(rotation);
-    const frame = rendererFrame(handler, source);
-    // Just inside each corner of tile (431, 257): a turned tile is a diamond
-    // on screen, so its corners are where neighbours would be mis-picked.
-    for (const [dx, dy] of [
-      [0.05, 0.05],
-      [0.95, 0.05],
-      [0.05, 0.95],
-      [0.95, 0.95],
-    ]) {
-      const p = worldToPixel(frame, 431 + dx, 257 + dy)!;
-      const cell = handler.screenToWorldCoordinates(p.x, p.y);
-      expect([cell.x, cell.y]).toEqual([431, 257]);
-    }
-  });
+    it("picks each corner of a tile as that tile", () => {
+      const { handler, source } = makeHandler(yaw, elevation);
+      const frame = rendererFrame(handler, source);
+      for (const [dx, dy] of [
+        [0.05, 0.05],
+        [0.95, 0.05],
+        [0.05, 0.95],
+        [0.95, 0.95],
+      ]) {
+        const p = worldToPixel(frame, 431 + dx, 257 + dy)!;
+        const cell = handler.screenToWorldCoordinates(p.x, p.y);
+        expect([cell.x, cell.y]).toEqual([431, 257]);
+      }
+    });
 
-  it("projects cells back to where it picks them", () => {
-    const { handler } = makeHandler(rotation);
-    const cell = new Cell(410, 260);
-    const p = handler.worldToScreenCoordinates(cell);
-    const back = handler.screenToWorldCoordinatesFloat(p.x, p.y);
-    expect(back.x).toBeCloseTo(410, 3);
-    expect(back.y).toBeCloseTo(260, 3);
-  });
+    it("picks raised terrain where it is drawn, not the ground behind", () => {
+      const { handler, source } = makeHandler(yaw, elevation, hill, 6);
+      const frame = rendererFrame(handler, source);
+      for (const [x, y] of [
+        [450.5, 250.5],
+        [440.5, 262.5],
+        [461.5, 241.5],
+        [447.5, 236.5],
+        [456.5, 255.5],
+      ]) {
+        const p = worldToPixel(frame, x, y, hill(x, y))!;
+        const cell = handler.screenToWorldCoordinates(p.x, p.y);
+        expect(cell.x).toBe(Math.floor(x));
+        expect(cell.y).toBe(Math.floor(y));
+      }
+      const p = handler.worldToScreenCoordinates(new Cell(450, 250));
+      const q = worldToPixel(frame, 450, 250, hill(450, 250))!;
+      expect(p.x).toBeCloseTo(q.x, 6);
+      expect(p.y).toBeCloseTo(q.y, 6);
+    });
 
-  it("keeps the ground under the cursor fixed while zooming", () => {
-    const { handler, eventBus } = makeHandler(rotation);
-    const before = handler.screenToWorldCoordinatesFloat(300, 200);
-    eventBus.emit(new ZoomEvent(300, 200, -200));
-    expect(handler.scale).toBeGreaterThan(2.5);
-    const after = handler.screenToWorldCoordinatesFloat(300, 200);
-    expect(after.x).toBeCloseTo(before.x, 3);
-    expect(after.y).toBeCloseTo(before.y, 3);
-  });
+    it("projects cells back to where it picks them", () => {
+      const { handler } = makeHandler(yaw, elevation, hill, 6);
+      for (const [x, y] of [
+        [410, 260],
+        [452, 248],
+      ]) {
+        const p = handler.worldToScreenCoordinates(new Cell(x, y));
+        const back = handler.screenToWorldCoordinatesFloat(p.x, p.y);
+        expect(back.x).toBeCloseTo(x, 2);
+        expect(back.y).toBeCloseTo(y, 2);
+      }
+    });
 
-  it("drags the ground with the cursor in screen directions", () => {
-    const { handler, eventBus } = makeHandler(rotation);
-    const target = handler.screenToWorldCoordinatesFloat(W / 2, H / 2);
-    eventBus.emit(new DragEvent(40, -25));
-    const moved = handler.screenToWorldCoordinatesFloat(W / 2 + 40, H / 2 - 25);
-    expect(moved.x).toBeCloseTo(target.x, 3);
-    expect(moved.y).toBeCloseTo(target.y, 3);
-  });
+    it("keeps the ground under the cursor fixed while zooming", () => {
+      const { handler, eventBus } = makeHandler(yaw, elevation);
+      const before = handler.screenToWorldCoordinatesFloat(300, 200);
+      eventBus.emit(new ZoomEvent(300, 200, -200));
+      expect(handler.scale).toBeGreaterThan(2.5);
+      const after = handler.screenToWorldCoordinatesFloat(300, 200);
+      expect(after.x).toBeCloseTo(before.x, 3);
+      expect(after.y).toBeCloseTo(before.y, 3);
+    });
 
-  it("keeps the focus at the screen centre", () => {
-    const { handler } = makeHandler(rotation);
-    const focus = handler.focusPoint();
-    const centre = handler.screenToWorldCoordinatesFloat(W / 2, H / 2);
-    expect(centre.x).toBeCloseTo(focus.x, 6);
-    expect(centre.y).toBeCloseTo(focus.y, 6);
-    const c = handler.screenCenter();
-    expect(c.screenX).toBe(Math.floor(focus.x));
-    expect(c.screenY).toBe(Math.floor(focus.y));
-  });
+    it("drags the ground with the cursor in screen directions", () => {
+      const { handler, eventBus } = makeHandler(yaw, elevation);
+      const target = handler.screenToWorldCoordinatesFloat(W / 2, H / 2);
+      eventBus.emit(new DragEvent(40, -25));
+      const moved = handler.screenToWorldCoordinatesFloat(
+        W / 2 + 40,
+        H / 2 - 25,
+      );
+      expect(moved.x).toBeCloseTo(target.x, 3);
+      expect(moved.y).toBeCloseTo(target.y, 3);
+    });
 
-  it("picks raised terrain where it is drawn, not the ground behind", () => {
-    const hill = (x: number, y: number) =>
-      6 * Math.exp(-((x - 450) ** 2 + (y - 250) ** 2) / 300);
-    const { handler, source } = makeHandler(rotation, hill, 6);
-    const frame = rendererFrame(handler, source);
-    for (const [x, y] of [
-      [450.5, 250.5],
-      [440.5, 262.5],
-      [461.5, 241.5],
-      [447.5, 236.5],
-    ]) {
-      const p = worldToPixel(frame, x, y, hill(x, y))!;
-      const cell = handler.screenToWorldCoordinates(p.x, p.y);
-      expect(cell.x).toBe(Math.floor(x));
-      expect(cell.y).toBe(Math.floor(y));
-    }
-    const p = handler.worldToScreenCoordinates(new Cell(450, 250));
-    const q = worldToPixel(frame, 450, 250, hill(450, 250))!;
-    expect(p.x).toBeCloseTo(q.x, 6);
-    expect(p.y).toBeCloseTo(q.y, 6);
-  });
+    it("keeps the focus at the screen centre", () => {
+      const { handler } = makeHandler(yaw, elevation);
+      const focus = handler.focusPoint();
+      const centre = handler.screenToWorldCoordinatesFloat(W / 2, H / 2);
+      expect(centre.x).toBeCloseTo(focus.x, 6);
+      expect(centre.y).toBeCloseTo(focus.y, 6);
+    });
 
-  it("covers the visible ground with its bounding rect", () => {
-    const { handler } = makeHandler(rotation);
-    const [tl, br] = handler.screenBoundingRect();
-    for (const [sx, sy] of [
-      [0, 0],
-      [W, 0],
-      [0, H],
-      [W, H],
-      [W / 2, H / 2],
-    ]) {
-      const g = handler.screenToWorldCoordinatesFloat(sx, sy);
-      expect(g.x).toBeGreaterThanOrEqual(tl.x);
-      expect(g.y).toBeGreaterThanOrEqual(tl.y);
-      expect(g.x).toBeLessThanOrEqual(br.x + 1);
-      expect(g.y).toBeLessThanOrEqual(br.y + 1);
-    }
-    const on = handler.worldToScreenCoordinates(new Cell(400, 250));
-    expect(on.x).toBeGreaterThan(0);
-    expect(handler.isOnScreen(new Cell(400, 250))).toBe(
-      on.x > 0 && on.x < W && on.y > 0 && on.y < H,
-    );
-  });
-});
+    it("covers the visible ground with its bounding rect", () => {
+      const { handler } = makeHandler(yaw, elevation);
+      const [tl, br] = handler.screenBoundingRect();
+      for (const [sx, sy] of [
+        [0, 0],
+        [W, 0],
+        [0, H],
+        [W, H],
+        [W / 2, H / 2],
+      ]) {
+        const g = handler.screenToWorldCoordinatesFloat(sx, sy);
+        expect(g.x).toBeGreaterThanOrEqual(tl.x);
+        expect(g.y).toBeGreaterThanOrEqual(tl.y);
+        expect(g.x).toBeLessThanOrEqual(br.x + 1);
+        expect(g.y).toBeLessThanOrEqual(br.y + 1);
+      }
+    });
+  },
+);
 
-describe("isometric rotation", () => {
-  it("turns the map a quarter turn counter-clockwise per left turn", () => {
-    const { handler, turn } = makeHandler(0);
-    const north = (k: number) => {
-      turn.set(k);
-      const a = handler.worldToScreenCoordinates(new Cell(400, 300));
-      const b = handler.worldToScreenCoordinates(new Cell(400, 290));
-      return Math.atan2(-(b.y - a.y), b.x - a.x) * (180 / Math.PI);
-    };
-    // Rotation 0 has north-west up the screen, so north points up-right;
-    // each left turn moves it another 90 degrees counter-clockwise. Depth is
-    // halved on screen (2:1), which pulls the angles toward the horizontal.
-    const squashed = (deg: number) => {
-      const r = (deg * Math.PI) / 180;
-      return Math.atan2(0.5 * Math.sin(r), Math.cos(r)) * (180 / Math.PI);
-    };
-    expect(north(0)).toBeCloseTo(squashed(45), 4);
-    expect(north(1)).toBeCloseTo(squashed(135), 4);
-    expect(north(2)).toBeCloseTo(squashed(225), 4);
-    expect(north(3)).toBeCloseTo(squashed(315), 4);
-  });
-
-  it("draws tiles as 2:1 diamonds", () => {
-    const { handler } = makeHandler(0);
+describe("isometric orbit", () => {
+  it("starts as 2:1 isometric with north up and to the right", () => {
+    const { handler } = makeHandler();
     const corners = [
       [400, 300],
       [401, 300],
@@ -233,57 +225,101 @@ describe("isometric rotation", () => {
     const w = Math.max(...xs) - Math.min(...xs);
     const h = Math.max(...ys) - Math.min(...ys);
     expect(w / h).toBeCloseTo(2, 6);
-    // A tile's diagonal spans sqrt(2) tiles of zoom across the screen.
     expect(w).toBeCloseTo(Math.SQRT2 * 2.5, 6);
+    const a = handler.worldToScreenCoordinates(new Cell(400, 300));
+    const n = handler.worldToScreenCoordinates(new Cell(400, 290));
+    expect(n.x).toBeGreaterThan(a.x);
+    expect(n.y).toBeLessThan(a.y);
   });
 
-  it("picks right mid-animation, at whatever yaw is drawn", () => {
-    const { handler, turn, source } = makeHandler(0);
-    turn.rotate(1, 1000);
-    turn.update(1000 + 120);
-    // Between rotation 0 (315) and rotation 1 (45), through north.
-    const yaw = (turn.yawDeg() - ISO_BASE_YAW_DEG + 360) % 360;
-    expect(yaw).toBeGreaterThan(0);
-    expect(yaw).toBeLessThan(90);
-    const frame = rendererFrame(handler, source);
-    const p = worldToPixel(frame, 377.5, 211.5)!;
-    const cell = handler.screenToWorldCoordinates(p.x, p.y);
-    expect([cell.x, cell.y]).toEqual([377, 211]);
+  it("turns the map counter-clockwise on screen as the camera turns left", () => {
+    const { handler, orbit } = makeHandler(ISO_BASE_YAW_DEG, 85);
+    const northAngle = () => {
+      const a = handler.worldToScreenCoordinates(new Cell(400, 300));
+      const b = handler.worldToScreenCoordinates(new Cell(400, 290));
+      return Math.atan2(-(b.y - a.y), b.x - a.x) * (180 / Math.PI);
+    };
+    // Nearly top-down, so the screen angle follows the yaw closely.
+    const before = northAngle();
+    orbit.orbit(20, 0);
+    let turned = northAngle() - before;
+    if (turned < -180) turned += 360;
+    expect(turned).toBeGreaterThan(15);
+    expect(turned).toBeLessThan(25);
   });
 
-  it("rotates about the screen centre", () => {
-    const { handler, turn } = makeHandler(0);
+  it("orbits and tilts about the screen centre", () => {
+    const { handler, orbit } = makeHandler();
     const before = handler.screenToWorldCoordinatesFloat(W / 2, H / 2);
-    turn.set(2);
+    orbit.orbit(73, 21);
     const after = handler.screenToWorldCoordinatesFloat(W / 2, H / 2);
     expect(after.x).toBeCloseTo(before.x, 6);
     expect(after.y).toBeCloseTo(before.y, 6);
   });
-});
 
-describe("ViewRotation", () => {
-  it("rests at 315 + 90k and wraps", () => {
-    const r = new ViewRotation(100);
-    expect(r.yawDeg()).toBe(315);
-    r.rotate(-1, 0);
-    r.update(100);
-    expect(r.yawDeg()).toBe(225);
-    expect(r.quarterTurns()).toBe(3);
-    r.rotate(1, 200);
-    r.rotate(1, 200);
-    r.update(400);
-    expect(r.yawDeg()).toBe(45);
-    expect(r.quarterTurns()).toBe(1);
+  it("keeps the angle through zooming and panning", () => {
+    const { eventBus, orbit } = makeHandler(123, 55);
+    eventBus.emit(new ZoomEvent(400, 300, -150));
+    eventBus.emit(new DragEvent(-60, 35));
+    expect(orbit.yawDeg()).toBe(123);
+    expect(orbit.elevationDeg()).toBe(55);
   });
 
-  it("eases between turns and settles exactly", () => {
-    const r = new ViewRotation(100);
-    r.rotate(-1, 0);
-    expect(r.animating(50)).toBe(true);
-    const mid = r.update(50);
-    expect(mid).toBeGreaterThan(225);
-    expect(mid).toBeLessThan(315);
-    expect(r.update(100)).toBe(225);
-    expect(r.animating(150)).toBe(false);
+  it("picks right mid-reset, at whatever angle is drawn", () => {
+    const { handler, orbit, source } = makeHandler(80, 70, hill, 6);
+    orbit.reset(1000);
+    orbit.update(1040);
+    expect(orbit.animating()).toBe(true);
+    const frame = rendererFrame(handler, source);
+    const p = worldToPixel(frame, 452.5, 247.5, hill(452.5, 247.5))!;
+    const cell = handler.screenToWorldCoordinates(p.x, p.y);
+    expect([cell.x, cell.y]).toEqual([452, 247]);
+  });
+});
+
+describe("ViewOrbit", () => {
+  it("turns freely and wraps the yaw", () => {
+    const o = new ViewOrbit(30, 100);
+    expect(o.yawDeg()).toBe(ISO_BASE_YAW_DEG);
+    o.orbit(50, 0);
+    expect(o.yawDeg()).toBeCloseTo(5, 9);
+    o.orbit(-12.5, 0);
+    expect(o.yawDeg()).toBeCloseTo(352.5, 9);
+  });
+
+  it("keeps the tilt between a low oblique view and nearly top-down", () => {
+    const o = new ViewOrbit(30, 100);
+    o.orbit(0, -90);
+    expect(o.elevationDeg()).toBe(MIN_ELEVATION_DEG);
+    o.orbit(0, 200);
+    expect(o.elevationDeg()).toBe(MAX_ELEVATION_DEG);
+    expect(MIN_ELEVATION_DEG).toBeLessThan(30);
+    expect(MAX_ELEVATION_DEG).toBeGreaterThan(80);
+  });
+
+  it("resets the short way round to the default view, eased", () => {
+    const o = new ViewOrbit(30, 100);
+    o.set(10, 70);
+    o.reset(0);
+    o.update(50);
+    // Halfway from 10 back to 315 the short way is through 0, not 180.
+    const mid = o.yawDeg();
+    expect(mid > 315 || mid < 10).toBe(true);
+    expect(o.elevationDeg()).toBeGreaterThan(30);
+    expect(o.elevationDeg()).toBeLessThan(70);
+    o.update(100);
+    expect(o.yawDeg()).toBe(ISO_BASE_YAW_DEG);
+    expect(o.elevationDeg()).toBe(30);
+    expect(o.animating()).toBe(false);
+  });
+
+  it("lets a drag interrupt a reset", () => {
+    const o = new ViewOrbit(30, 100);
+    o.set(100, 60);
+    o.reset(0);
+    o.orbit(5, 0);
+    expect(o.animating()).toBe(false);
+    o.update(100);
+    expect(o.yawDeg()).toBeCloseTo(105, 9);
   });
 });

@@ -5,16 +5,17 @@
 // the ground take the same light and meet the same coast as the ground.
 //
 // Uniforms the pass fills from TerrainLighting (passes/TerrainPass.ts):
-//   uShadow, uRelief       the relief bake (terrain/ReliefBake.ts)
-//   uShadowW, uShadowFlat  which baked sun to read (terrain/SceneLight.ts)
+//   uShadowA, uShadowB, uRelief  the relief bake (terrain/ReliefBake.ts)
+//   uShadowWA, uShadowWB         which baked suns to blend (SceneLight.ts)
 //   uLightDir              toward the sun
 //   uHeightTiles           world tiles of height per uHeightMap unit
 //   uClimate               R: signed coast distance (terrain/ClimateData.ts)
-uniform sampler2D uShadow;
+uniform sampler2D uShadowA;
+uniform sampler2D uShadowB;
 uniform sampler2D uRelief;
 uniform sampler2D uClimate;
-uniform vec4 uShadowW;
-uniform float uShadowFlat;
+uniform vec4 uShadowWA;
+uniform vec4 uShadowWB;
 uniform vec3 uLightDir;
 uniform float uHeightTiles;
 
@@ -40,8 +41,8 @@ vec3 reliefNormal(vec2 p, float k, vec2 invSize) {
 
 // Baked sun visibility (1 = in sun) for the current sun.
 float sunVisibility(vec2 uv) {
-  float iso = dot(texture(uShadow, uv), uShadowW);
-  return iso + texture(uRelief, uv).g * uShadowFlat;
+  return dot(texture(uShadowA, uv), uShadowWA) +
+    dot(texture(uShadowB, uv), uShadowWB);
 }
 
 // Sky openness (1 = open ground, lower in valleys).

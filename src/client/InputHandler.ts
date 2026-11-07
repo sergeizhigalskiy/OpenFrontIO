@@ -313,12 +313,28 @@ export class CenterCameraEvent implements GameEvent {
 }
 
 /**
- * Turn the isometric view a quarter turn: +1 turns the camera left (the map
- * counter-clockwise on screen), -1 right.
+ * Orbit the isometric camera: turn it by `yawDeg` (positive turns the camera
+ * left, the map counter-clockwise on screen) and tilt it by `elevationDeg`
+ * (positive toward top-down).
  */
-export class RotateViewEvent implements GameEvent {
-  constructor(public readonly direction: 1 | -1) {}
+export class OrbitViewEvent implements GameEvent {
+  constructor(
+    public readonly yawDeg: number,
+    public readonly elevationDeg: number,
+  ) {}
 }
+
+/** Ease the isometric camera back to its default angle. */
+export class ResetViewEvent implements GameEvent {}
+
+/** Camera turn per pixel of an orbit drag, degrees. */
+export const ORBIT_DRAG_YAW_DEG_PER_PX = 0.35;
+/** Camera tilt per pixel of an orbit drag, degrees. */
+export const ORBIT_DRAG_TILT_DEG_PER_PX = 0.25;
+/** Camera turn while a rotate key is held, degrees per second. */
+export const ORBIT_KEY_YAW_DEG_PER_S = 90;
+/** Camera tilt while a tilt key is held, degrees per second. */
+export const ORBIT_KEY_TILT_DEG_PER_S = 40;
 
 export class AutoUpgradeEvent implements GameEvent {
   constructor(
@@ -408,6 +424,10 @@ export class InputHandler {
   private activeKeys = new Set<string>();
   private zoomKeysHeldBeforeControl = new Set<string>();
   private shiftHeld = false;
+  /** Time of the last held-key movement step, ms. */
+  private lastMoveTickMs = 0;
+  /** The pointer drag in progress orbits the camera (orbit modifier held). */
+  private orbitDrag = false;
   private keybinds: Record<string, string> = {};
   private keybindAndEvent: Array<[string, KeybindEntry]> = [];
   private coordinateGridEnabled = false;
@@ -539,12 +559,13 @@ export class InputHandler {
     this.addKeybindAndEvent(this.keybinds.centerCamera, () => {
       this.eventBus.emit(new CenterCameraEvent());
     });
-    this.addKeybindAndEvent(this.keybinds.rotateViewLeft, () => {
-      this.eventBus.emit(new RotateViewEvent(1));
-    });
-    this.addKeybindAndEvent(this.keybinds.rotateViewRight, () => {
-      this.eventBus.emit(new RotateViewEvent(-1));
-    });
+    this.addKeybindAndEvent(
+      this.keybinds.resetView,
+      () => {
+        this.eventBus.emit(new ResetViewEvent());
+      },
+      (e: KeyboardEvent) => !e.repeat,
+    );
     this.addKeybindAndEvent(this.keybinds.selectAllWarships, () => {
       this.eventBus.emit(new SelectAllWarshipsEvent());
     });
@@ -797,9 +818,31 @@ export class InputHandler {
     );
     this.pointers.clear();
 
+    this.lastMoveTickMs = performance.now();
     this.moveInterval = setInterval(() => {
       let deltaX = 0;
       let deltaY = 0;
+      const nowMs = performance.now();
+      const dt = Math.min(
+        0.1,
+        Math.max(0, (nowMs - this.lastMoveTickMs) / 1000),
+      );
+      this.lastMoveTickMs = nowMs;
+
+      // Held orbit keys turn and tilt the isometric camera smoothly.
+      let orbitYaw = 0;
+      let orbitTilt = 0;
+      if (this.isContinuousActionActive(this.keybinds.rotateViewLeft))
+        orbitYaw += ORBIT_KEY_YAW_DEG_PER_S * dt;
+      if (this.isContinuousActionActive(this.keybinds.rotateViewRight))
+        orbitYaw -= ORBIT_KEY_YAW_DEG_PER_S * dt;
+      if (this.isContinuousActionActive(this.keybinds.tiltViewUp))
+        orbitTilt += ORBIT_KEY_TILT_DEG_PER_S * dt;
+      if (this.isContinuousActionActive(this.keybinds.tiltViewDown))
+        orbitTilt -= ORBIT_KEY_TILT_DEG_PER_S * dt;
+      if (orbitYaw !== 0 || orbitTilt !== 0) {
+        this.eventBus.emit(new OrbitViewEvent(orbitYaw, orbitTilt));
+      }
 
       // Skip movement if selection box drag is active or a non-Shift warship selector is held
       if (
@@ -1011,6 +1054,7 @@ export class InputHandler {
               this.keybinds.buildMenuModifier,
               this.keybinds.buildScrollModifier,
               this.keybinds.altKey,
+              this.keybinds.orbitModifier,
             ].includes(e.code))
         ) {
           this.activeKeys.add(e.code);
@@ -1142,6 +1186,7 @@ export class InputHandler {
 
     this.pointerDown = true;
     this.pointers.set(event.pointerId, event);
+    if (this.pointers.size === 1) this.orbitDrag = false;
 
     if (this.pointers.size === 1) {
       this.lastPointerX = event.clientX;
@@ -1338,6 +1383,13 @@ export class InputHandler {
       if (!this.selectionBoxActive) {
         this.suppressNextTap = true;
       }
+    }
+
+    // An orbit drag ends without clicking or opening anything.
+    if (this.orbitDrag) {
+      this.orbitDrag = false;
+      this.suppressNextTap = false;
+      return;
     }
 
     // Complete selection box if it was active
@@ -1539,8 +1591,8 @@ export class InputHandler {
     this.pointers.set(event.pointerId, event);
 
     if (this.pointers.size === 1) {
-      const deltaX = event.clientX - this.lastPointerX;
-      const deltaY = event.clientY - this.lastPointerY;
+      let deltaX = event.clientX - this.lastPointerX;
+      let deltaY = event.clientY - this.lastPointerY;
       const moveDist =
         Math.abs(event.clientX - this.lastPointerDownX) +
         Math.abs(event.clientY - this.lastPointerDownY);
@@ -1569,6 +1621,32 @@ export class InputHandler {
       } else if (this.touchPlacementDragState === "candidate") {
         // Keep a hold that began on the preview stable until the long-press
         // threshold is reached; ordinary touches elsewhere still pan.
+      } else if (
+        this.orbitDrag ||
+        (event.pointerType !== "touch" &&
+          this.activeKeys.has(this.keybinds.orbitModifier) &&
+          moveDist >= this.DRAG_THRESHOLD_PX)
+      ) {
+        // Orbit modifier + drag turns (sideways) and tilts (up and down) the
+        // isometric camera instead of panning. A click with the modifier
+        // keeps whatever the modifier's click does (the emoji menu).
+        if (!this.orbitDrag) {
+          this.orbitDrag = true;
+          // Count the motion since the press, so the orbit starts at once.
+          deltaX = event.clientX - this.lastPointerDownX;
+          deltaY = event.clientY - this.lastPointerDownY;
+        }
+        this.eventBus.emit(
+          new OrbitViewEvent(
+            deltaX * ORBIT_DRAG_YAW_DEG_PER_PX,
+            -deltaY * ORBIT_DRAG_TILT_DEG_PER_PX,
+          ),
+        );
+      } else if (
+        event.pointerType !== "touch" &&
+        this.activeKeys.has(this.keybinds.orbitModifier)
+      ) {
+        // Modifier held, not yet a drag: wait for the threshold.
       } else if (
         this.selectionBoxActive ||
         this.activeKeys.has(this.keybinds.boxSelectWarships) ||
@@ -1758,6 +1836,10 @@ export class InputHandler {
       this.keybinds.attackRatioDown,
       this.keybinds.attackRatioUp,
       this.keybinds.centerCamera,
+      this.keybinds.rotateViewLeft,
+      this.keybinds.rotateViewRight,
+      this.keybinds.tiltViewUp,
+      this.keybinds.tiltViewDown,
     ];
     return bindings.filter(
       (k): k is string => typeof k === "string" && k !== "" && k !== "Null",

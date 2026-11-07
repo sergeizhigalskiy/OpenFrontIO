@@ -24,7 +24,8 @@ import {
   MouseOverEvent,
   MouseUpEvent,
   RefreshGraphicsEvent,
-  RotateViewEvent,
+  OrbitViewEvent,
+  ResetViewEvent,
   ShowChatMenuEvent,
   ShowEmojiMenuEvent,
   TouchGhostPlacementDragStartEvent,
@@ -1319,10 +1320,11 @@ describe("InputHandler AutoUpgrade", () => {
     });
   });
 
-  describe("Isometric view rotation keys", () => {
+  describe("Isometric camera orbit controls", () => {
     let uiState: UIState;
 
     beforeEach(() => {
+      vi.useFakeTimers();
       inputHandler.destroy();
       testSettings.setKeybinds({});
       uiState = {
@@ -1339,47 +1341,147 @@ describe("InputHandler AutoUpgrade", () => {
       inputHandler.initialize();
     });
 
-    const rotations = (spy: { mock: { calls: unknown[][] } }) =>
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const orbits = (spy: { mock: { calls: unknown[][] } }) =>
       spy.mock.calls
         .map((call: unknown[]) => call[0])
         .filter(
-          (e: unknown): e is RotateViewEvent => e instanceof RotateViewEvent,
-        )
-        .map((e: RotateViewEvent) => e.direction);
+          (e: unknown): e is OrbitViewEvent => e instanceof OrbitViewEvent,
+        );
+    const total = (events: OrbitViewEvent[]) => ({
+      yaw: events.reduce((s, e) => s + e.yawDeg, 0),
+      tilt: events.reduce((s, e) => s + e.elevationDeg, 0),
+    });
+    const hold = (code: string, shiftKey: boolean, ms: number) => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { code, shiftKey }));
+      vi.advanceTimersByTime(ms);
+      window.dispatchEvent(new KeyboardEvent("keyup", { code, shiftKey }));
+    };
+    const emitted = (spy: { mock: { calls: unknown[][] } }) =>
+      spy.mock.calls.map((c: unknown[]) => c[0]);
 
-    test("Shift+Q turns the view left and Shift+E right", () => {
+    test("holding Shift+Q turns the camera left, Shift+E right, smoothly", () => {
       const spy = vi.spyOn(eventBus, "emit");
-      window.dispatchEvent(
-        new KeyboardEvent("keyup", { code: "KeyQ", shiftKey: true }),
-      );
-      window.dispatchEvent(
-        new KeyboardEvent("keyup", { code: "KeyE", shiftKey: true }),
-      );
-      expect(rotations(spy)).toEqual([1, -1]);
+      hold("KeyQ", true, 500);
+      const left = total(orbits(spy));
+      expect(orbits(spy).length).toBeGreaterThan(5);
+      expect(left.yaw).toBeGreaterThan(20);
+      expect(left.tilt).toBe(0);
+      spy.mockClear();
+      hold("KeyE", true, 500);
+      expect(total(orbits(spy)).yaw).toBeLessThan(-20);
     });
 
-    test("plain Q and E still zoom and never rotate", () => {
+    test("PageUp tilts toward top-down, PageDown toward the horizon", () => {
       const spy = vi.spyOn(eventBus, "emit");
-      window.dispatchEvent(
-        new KeyboardEvent("keyup", { code: "KeyQ", shiftKey: false }),
-      );
-      window.dispatchEvent(
-        new KeyboardEvent("keyup", { code: "KeyE", shiftKey: false }),
-      );
-      expect(rotations(spy)).toEqual([]);
+      hold("PageUp", false, 400);
+      expect(total(orbits(spy)).tilt).toBeGreaterThan(5);
+      spy.mockClear();
+      hold("PageDown", false, 400);
+      expect(total(orbits(spy)).tilt).toBeLessThan(-5);
     });
 
-    test("the rotate keys are free: no other default action uses them", () => {
+    test("plain Q and E still zoom and never orbit", () => {
+      const spy = vi.spyOn(eventBus, "emit");
+      hold("KeyQ", false, 200);
+      hold("KeyE", false, 200);
+      expect(orbits(spy)).toEqual([]);
+      expect(emitted(spy).some((e) => e instanceof ZoomEvent)).toBe(true);
+    });
+
+    test("V resets the view", () => {
+      const spy = vi.spyOn(eventBus, "emit");
+      window.dispatchEvent(new KeyboardEvent("keyup", { code: "KeyV" }));
+      expect(emitted(spy).some((e) => e instanceof ResetViewEvent)).toBe(true);
+    });
+
+    test("Alt+drag orbits instead of panning and opens no menu", () => {
+      const spy = vi.spyOn(eventBus, "emit");
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { code: "AltLeft", altKey: true }),
+      );
+      dispatchDomPointer(mockCanvas, "pointerdown", 100, 100);
+      dispatchDomPointer(window, "pointermove", 140, 100);
+      dispatchDomPointer(window, "pointermove", 160, 80);
+      dispatchDomPointer(window, "pointerup", 160, 80);
+      window.dispatchEvent(new KeyboardEvent("keyup", { code: "AltLeft" }));
+      const events = emitted(spy);
+      const o = total(orbits(spy));
+      // Dragged right: the camera turns left; dragged up: it rises.
+      expect(o.yaw).toBeGreaterThan(10);
+      expect(o.tilt).toBeGreaterThan(0);
+      expect(events.some((e) => e instanceof DragEvent)).toBe(false);
+      expect(events.some((e) => e instanceof ShowEmojiMenuEvent)).toBe(false);
+      expect(events.some((e) => e instanceof MouseUpEvent)).toBe(false);
+      expect(events.some((e) => e instanceof ContextMenuEvent)).toBe(false);
+    });
+
+    test("an Alt+click without a drag still opens the emoji menu", () => {
+      const spy = vi.spyOn(eventBus, "emit");
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { code: "AltLeft", altKey: true }),
+      );
+      dispatchDomPointer(mockCanvas, "pointerdown", 100, 100);
+      dispatchDomPointer(window, "pointerup", 102, 101);
+      window.dispatchEvent(new KeyboardEvent("keyup", { code: "AltLeft" }));
+      expect(emitted(spy).some((e) => e instanceof ShowEmojiMenuEvent)).toBe(
+        true,
+      );
+      expect(orbits(spy)).toEqual([]);
+    });
+
+    test("a plain drag still pans, and Shift+click still spearheads", () => {
+      const spy = vi.spyOn(eventBus, "emit");
+      dispatchDomPointer(mockCanvas, "pointerdown", 100, 100);
+      dispatchDomPointer(window, "pointermove", 140, 100);
+      dispatchDomPointer(window, "pointerup", 140, 100);
+      expect(emitted(spy).some((e) => e instanceof DragEvent)).toBe(true);
+      expect(orbits(spy)).toEqual([]);
+      spy.mockClear();
+      const init = {
+        button: 0,
+        clientX: 300,
+        clientY: 300,
+        pointerId: 7,
+        shiftKey: true,
+      };
+      inputHandler["onPointerDown"](
+        new MockPointerEvent("pointerdown", init) as unknown as PointerEvent,
+      );
+      inputHandler.onPointerUp(
+        new MockPointerEvent("pointerup", init) as unknown as PointerEvent,
+      );
+      const click = emitted(spy).find((e) => e instanceof MouseUpEvent) as
+        | MouseUpEvent
+        | undefined;
+      expect(click?.shiftKey).toBe(true);
+      expect(orbits(spy)).toEqual([]);
+    });
+
+    test("the orbit keys are free: no other default action uses them", () => {
       const defaults = new UserSettings().keybinds(false);
-      for (const [action, key] of Object.entries(defaults)) {
-        if (action === "rotateViewLeft" || action === "rotateViewRight") {
-          continue;
+      const orbitKeys = [
+        "rotateViewLeft",
+        "rotateViewRight",
+        "tiltViewUp",
+        "tiltViewDown",
+        "resetView",
+      ];
+      for (const action of orbitKeys) {
+        for (const [other, key] of Object.entries(defaults)) {
+          if (other === action) continue;
+          expect(key, action + " vs " + other).not.toBe(defaults[action]);
         }
-        expect(key, action).not.toBe(defaults.rotateViewLeft);
-        expect(key, action).not.toBe(defaults.rotateViewRight);
       }
       expect(defaults.rotateViewLeft).toBe("Shift+KeyQ");
       expect(defaults.rotateViewRight).toBe("Shift+KeyE");
+      expect(defaults.tiltViewUp).toBe("PageUp");
+      expect(defaults.tiltViewDown).toBe("PageDown");
+      expect(defaults.resetView).toBe("KeyV");
+      expect(defaults.orbitModifier).toBe("AltLeft");
     });
   });
 

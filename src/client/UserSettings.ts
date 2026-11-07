@@ -52,10 +52,15 @@ export function getDefaultKeybinds(isMac: boolean): Record<string, string> {
     swapDirection: "KeyU",
     zoomOut: "KeyQ",
     zoomIn: "KeyE",
-    // Q and E zoom, so the isometric view's quarter turns take them with
-    // Shift (a plain Q or E still zooms; a shifted one never does).
+    // The isometric camera's orbit. Q and E zoom, so turning takes them
+    // with Shift (a plain Q or E still zooms; a shifted one never does).
+    // Hold to turn or tilt smoothly; or hold orbitModifier and drag.
     rotateViewLeft: "Shift+KeyQ",
     rotateViewRight: "Shift+KeyE",
+    tiltViewUp: "PageUp",
+    tiltViewDown: "PageDown",
+    resetView: "KeyV",
+    orbitModifier: "AltLeft",
     zoomOutMinus: "Minus",
     zoomOutNumpad: "NumpadSubtract",
     zoomInEqual: "Equal",

@@ -1,8 +1,8 @@
 /**
  * MapViewSource — what screen-to-tile picking needs to know about the view:
- * the live view mode, the isometric view's turn and, in the 3D modes, the
- * terrain height under a point. MapRenderer provides one; TransformHandler
- * consumes it.
+ * the live view mode, the isometric camera's orbit (yaw and elevation) and,
+ * in the 3D modes, the terrain height under a point. MapRenderer provides
+ * one; TransformHandler consumes it.
  *
  * viewPose() is the one place a view mode becomes a camera pose. The
  * renderer and the picking code both call it, so what is drawn and what is
@@ -18,6 +18,7 @@ import {
   type CameraPose,
   type Ray,
 } from "./CameraMath";
+import type { CameraOrbit } from "./ViewOrbit";
 
 /** The view settings a camera pose depends on (the mapView slice). */
 export interface MapViewParams {
@@ -26,19 +27,17 @@ export interface MapViewParams {
   tiltDeg: number;
   /** Vertical field of view, degrees (tilt and terrain3d). */
   fovDeg: number;
-  /** Isometric camera elevation above the ground, degrees. */
-  isoElevationDeg: number;
 }
 
 export interface MapViewSource {
   /** Live view settings (the renderer's mapView slice). */
   view(): MapViewParams;
   /**
-   * The isometric view's current turn: compass azimuth of the ground
-   * direction pointing up the screen, degrees (315 + 90·k at rest, in
-   * between while a rotation animates). Ignored by the other modes.
+   * The isometric camera's orbit (camera/ViewOrbit.ts): its yaw, the compass
+   * azimuth of the ground direction pointing up the screen, and its
+   * elevation. Ignored by the other modes.
    */
-  yawDeg(): number;
+  orbit(): CameraOrbit;
   /** Terrain height in world tiles at (x, y); 0 when the ground is flat. */
   heightAt(x: number, y: number): number;
   /** Upper bound of heightAt anywhere on the map (0 when flat). */
@@ -52,11 +51,11 @@ export function hasRelief(mode: MapViewMode): boolean {
 
 /**
  * The camera pose for a view mode: flat top-down, the tilted perspective
- * camera (tilt, terrain3d), or the turned orthographic isometric camera.
+ * camera (tilt, terrain3d), or the orbiting orthographic isometric camera.
  */
 export function viewPose(
   view: MapViewParams,
-  yawDeg: number,
+  orbit: CameraOrbit,
   centerX: number,
   centerY: number,
   zoom: number,
@@ -73,8 +72,8 @@ export function viewPose(
     fovDeg: view.fovDeg,
   };
   if (view.mode === "isometric") {
-    pose.tiltDeg = 90 - view.isoElevationDeg;
-    pose.yawDeg = yawDeg;
+    pose.tiltDeg = 90 - orbit.elevationDeg;
+    pose.yawDeg = orbit.yawDeg;
     pose.orthographic = true;
   } else if (view.mode !== "flat") {
     pose.tiltDeg = view.tiltDeg;
@@ -174,7 +173,7 @@ export function pickTilted(
   const frame = computeCameraFrame(
     viewPose(
       view,
-      source.yawDeg(),
+      source.orbit(),
       camera.x,
       camera.y,
       camera.zoom,

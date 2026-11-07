@@ -106,11 +106,21 @@ day/night-mode wiring).
 - Input events all flow through `InputHandler` (binds to a transparent
   `inputOverlay` div above the GL canvas) → EventBus → controllers / HUD.
   The WebGL canvas itself has `pointer-events: none`.
-- The view mode (`settings.mapView.mode`: `flat`, `tilt`, `terrain3d`) turns
-  the camera into a 3D view-projection (`gl/camera/CameraMath.ts`).
-  `TransformHandler` builds the same frame from the same pose for picking,
-  zoom and pan (`setMapView(view.mapView)`), and ray-casts the terrain in 3D
-  mode, so clicks land on the tile that is drawn under the cursor.
+- The view mode (`settings.mapView.mode`: `flat`, `tilt`, `terrain3d`,
+  `isometric`, the default) turns the camera into a 3D view-projection
+  (`gl/camera/CameraMath.ts`). `viewPose` (`gl/camera/MapViewSource.ts`) is
+  the one place a mode becomes a pose; the isometric camera is orthographic
+  and orbits freely (`gl/camera/ViewOrbit.ts`: yaw any angle, elevation 20 to
+  85 degrees). `TransformHandler` builds the same frame from the same pose
+  and orbit for picking, zoom and pan (`setMapView(view.mapView)`), and
+  ray-casts the terrain in the relief modes, so clicks land on the tile that
+  is drawn under the cursor at any angle.
+- Terrain light: `gl/terrain/ReliefHeights.ts` (displaced heights),
+  `ReliefBake.ts` (shadows toward eight sun azimuths, sky openness),
+  `SceneLight.ts` (the sun stays at the screen's top-left),
+  `ClimateData.ts` (smooth coast, moisture, cold), `DetailTextures.ts`
+  (procedural ground layers). Shaders that sit on the ground and must match
+  its light or coast `#include "terrain-light"` after the camera include.
 
 ## The shared camera (placing geometry on the map)
 

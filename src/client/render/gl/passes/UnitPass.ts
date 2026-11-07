@@ -66,6 +66,7 @@ import {
   WARSHIP_EFFECT_BLOCK,
 } from "../utils/ColorUtils";
 import { createProgram, shaderSrc } from "../utils/GlUtils";
+import { ContactShadow, type ShadowLight } from "./ContactShadow";
 
 const unitAtlasUrl = assetUrl("atlases/unit-atlas.png");
 /** The convoy sprite, after the trains (see UNIT_ORDER). */
@@ -272,6 +273,9 @@ export class UnitPass {
   private friendlyOwners = new Set<number>();
   private structures: Map<number, UnitState> = new Map();
 
+  private contactShadow: ContactShadow;
+  private shadowLight: ShadowLight = null;
+
   constructor(
     gl: WebGL2RenderingContext,
     header: RendererConfig,
@@ -390,6 +394,7 @@ export class UnitPass {
       FLOATS_PER_INSTANCE,
     );
     this.groundVao = createUnitVao(gl, this.quadBuf, groundGlBuf);
+    this.contactShadow = new ContactShadow(gl);
 
     // --- Missile instance buffer + VAO ---
     const missileGlBuf = gl.createBuffer()!;
@@ -592,6 +597,14 @@ export class UnitPass {
     this.structures = structs;
   }
 
+  /**
+   * Cast contact shadows under ground units from this sun (isometric view),
+   * or none (null).
+   */
+  setShadowLight(light: ShadowLight): void {
+    this.shadowLight = light;
+  }
+
   /** Bind shared program state + uniforms (call before drawGround/drawMissiles). */
   private bindProgram(cameraMatrix: Float32Array): void {
     const gl = this.gl;
@@ -636,6 +649,16 @@ export class UnitPass {
   /** Draw ground/sea units (boats, trains). Render below structures. */
   drawGround(cameraMatrix: Float32Array): void {
     if (this.groundCount === 0) return;
+    if (this.shadowLight !== null) {
+      // Ships and trains sit on the water and the ground, not over them.
+      this.contactShadow.draw(
+        this.groundVao,
+        this.groundCount,
+        this.settings.unit.unitSize * 0.3,
+        0.22,
+        this.shadowLight,
+      );
+    }
     this.bindProgram(cameraMatrix);
     const gl = this.gl;
     gl.bindVertexArray(this.groundVao);
@@ -687,5 +710,6 @@ export class UnitPass {
     gl.deleteVertexArray(this.groundVao);
     gl.deleteVertexArray(this.missileVao);
     gl.deleteTexture(this.atlasTex);
+    this.contactShadow.dispose();
   }
 }

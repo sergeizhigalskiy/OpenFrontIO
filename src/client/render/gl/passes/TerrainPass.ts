@@ -54,6 +54,18 @@ const PALETTE_UNIFORMS = [
   ["uMountain", "mountain"],
 ] as const;
 
+/** Most world-feature sites drawn into the ground (MAX_SITES). */
+export const MAX_TERRAIN_SITES = 32;
+
+/** A world-feature site drawn into the ground. */
+export interface TerrainSite {
+  x: number;
+  y: number;
+  kind: "ruin" | "volcano";
+  /** A volcano about to erupt: its crater and flanks glow. */
+  rumbling?: boolean;
+}
+
 /** QUALITY define per terrain quality setting. */
 export const QUALITY_LEVEL: Record<TerrainQuality, number> = {
   low: 0,
@@ -69,12 +81,12 @@ export interface TerrainLighting {
   heightTiles: number;
   /** Unit vector toward the sun. */
   lightDir: readonly [number, number, number];
-  /** Weights of the shadow texture's channels (isometric azimuths). */
-  shadowWeights: readonly [number, number, number, number];
-  /** Weight of the relief texture's flat-view shadow channel. */
-  shadowFlat: number;
+  /** Weights of the shadow textures' channels (SceneLight.ts). */
+  shadowWeightsA: readonly [number, number, number, number];
+  shadowWeightsB: readonly [number, number, number, number];
   /** The relief bake's textures; null reads as open ground in full sun. */
-  shadowTex: WebGLTexture | null;
+  shadowTexA: WebGLTexture | null;
+  shadowTexB: WebGLTexture | null;
   reliefTex: WebGLTexture | null;
   /** Winter snow over the snow band, 0-1. */
   winter: number;
@@ -87,9 +99,10 @@ export const FLAT_LIGHTING: TerrainLighting = {
   shadeStrength: 0,
   heightTiles: 0,
   lightDir: [0, 0, 1],
-  shadowWeights: [0, 0, 0, 0],
-  shadowFlat: 1,
-  shadowTex: null,
+  shadowWeightsA: [1, 0, 0, 0],
+  shadowWeightsB: [0, 0, 0, 0],
+  shadowTexA: null,
+  shadowTexB: null,
   reliefTex: null,
   winter: 0,
   snowRows: 0,
@@ -99,12 +112,14 @@ interface TerrainUniforms {
   shadeStrength: WebGLUniformLocation | null;
   heightTiles: WebGLUniformLocation | null;
   lightDir: WebGLUniformLocation | null;
-  shadowW: WebGLUniformLocation | null;
-  shadowFlat: WebGLUniformLocation | null;
+  shadowWA: WebGLUniformLocation | null;
+  shadowWB: WebGLUniformLocation | null;
   winter: WebGLUniformLocation | null;
   snowRows: WebGLUniformLocation | null;
   time: WebGLUniformLocation | null;
   hasFeatures: WebGLUniformLocation | null;
+  sites: WebGLUniformLocation | null;
+  siteCount: WebGLUniformLocation | null;
   palette: (WebGLUniformLocation | null)[];
 }
 
@@ -123,6 +138,9 @@ export class TerrainPass {
   private paletteDirty = true;
   private quality: TerrainQuality;
   private readonly startTime = performance.now();
+  /** Site uniforms (x, y, kind, rumbling) and how many are set. */
+  private siteData = new Float32Array(MAX_TERRAIN_SITES * 4);
+  private siteCount = 0;
 
   constructor(
     private gl: WebGL2RenderingContext,
@@ -162,6 +180,7 @@ export class TerrainPass {
       MAP_W: this.mapW,
       MAP_H: this.mapH,
       QUALITY: QUALITY_LEVEL[this.quality],
+      MAX_SITES: MAX_TERRAIN_SITES,
     };
     const p = createProgram(
       gl,
@@ -174,12 +193,14 @@ export class TerrainPass {
       shadeStrength: at("uShadeStrength"),
       heightTiles: at("uHeightTiles"),
       lightDir: at("uLightDir"),
-      shadowW: at("uShadowW"),
-      shadowFlat: at("uShadowFlat"),
+      shadowWA: at("uShadowWA"),
+      shadowWB: at("uShadowWB"),
       winter: at("uWinter"),
       snowRows: at("uSnowRows"),
       time: at("uTime"),
       hasFeatures: at("uHasFeatures"),
+      sites: at("uSites"),
+      siteCount: at("uSiteCount"),
       palette: PALETTE_UNIFORMS.map(([name]) => at(name)),
     };
     gl.useProgram(p);
@@ -188,7 +209,8 @@ export class TerrainPass {
     gl.uniform1i(at("uFeatures"), 2);
     gl.uniform1i(at("uNoise"), 3);
     gl.uniform1i(at("uClimate"), 4);
-    gl.uniform1i(at("uShadow"), 5);
+    gl.uniform1i(at("uShadowA"), 5);
+    gl.uniform1i(at("uShadowB"), 8);
     gl.uniform1i(at("uRelief"), 6);
     gl.uniform1i(at("uDetail"), 7);
     this.program = p;
@@ -201,6 +223,25 @@ export class TerrainPass {
     this.quality = quality;
     this.gl.deleteProgram(this.program);
     this.buildProgram();
+  }
+
+  /**
+   * The world-feature sites to draw into the ground (ruins, volcanoes); up
+   * to MAX_TERRAIN_SITES, volcanoes first.
+   */
+  setSites(sites: readonly TerrainSite[]): void {
+    const ordered = [...sites].sort(
+      (a, b) => (a.kind === "volcano" ? 0 : 1) - (b.kind === "volcano" ? 0 : 1),
+    );
+    const n = Math.min(MAX_TERRAIN_SITES, ordered.length);
+    for (let i = 0; i < n; i++) {
+      const s = ordered[i];
+      this.siteData[i * 4] = s.x;
+      this.siteData[i * 4 + 1] = s.y;
+      this.siteData[i * 4 + 2] = s.kind === "volcano" ? 1 : 0;
+      this.siteData[i * 4 + 3] = s.rumbling === true ? 1 : 0;
+    }
+    this.siteCount = n;
   }
 
   /** The climate field (signed coast distance etc.), for overlay passes. */
@@ -268,14 +309,17 @@ export class TerrainPass {
     gl.uniform1f(u.heightTiles, light.heightTiles);
     const [lx, ly, lz] = light.lightDir;
     gl.uniform3f(u.lightDir, lx, ly, lz);
-    const [w0, w1, w2, w3] = light.shadowWeights;
-    gl.uniform4f(u.shadowW, w0, w1, w2, w3);
-    gl.uniform1f(u.shadowFlat, light.shadowFlat);
+    const [a0, a1, a2, a3] = light.shadowWeightsA;
+    gl.uniform4f(u.shadowWA, a0, a1, a2, a3);
+    const [b0, b1, b2, b3] = light.shadowWeightsB;
+    gl.uniform4f(u.shadowWB, b0, b1, b2, b3);
     gl.uniform1f(u.winter, light.winter);
     gl.uniform1f(u.snowRows, light.snowRows);
     const seconds = (performance.now() - this.startTime) / 1000;
     gl.uniform1f(u.time, seconds % TIME_PERIOD_S);
     gl.uniform1i(u.hasFeatures, this.featureTex !== null ? 1 : 0);
+    gl.uniform1i(u.siteCount, this.siteCount);
+    if (this.siteCount > 0) gl.uniform4fv(u.sites, this.siteData);
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.terrainBytesTex);
@@ -290,7 +334,9 @@ export class TerrainPass {
     gl.activeTexture(gl.TEXTURE4);
     gl.bindTexture(gl.TEXTURE_2D, this.climate.tex);
     gl.activeTexture(gl.TEXTURE5);
-    gl.bindTexture(gl.TEXTURE_2D, light.shadowTex ?? this.whiteTex);
+    gl.bindTexture(gl.TEXTURE_2D, light.shadowTexA ?? this.whiteTex);
+    gl.activeTexture(gl.TEXTURE8);
+    gl.bindTexture(gl.TEXTURE_2D, light.shadowTexB ?? this.whiteTex);
     gl.activeTexture(gl.TEXTURE6);
     gl.bindTexture(gl.TEXTURE_2D, light.reliefTex ?? this.whiteTex);
     gl.activeTexture(gl.TEXTURE7);

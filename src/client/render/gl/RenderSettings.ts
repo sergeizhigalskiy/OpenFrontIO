@@ -95,15 +95,16 @@ export interface RenderSettings {
      * toward the horizon over the flat map; "terrain3d" = the tilted camera
      * over a height mesh, with upright labels; "isometric" = an orthographic
      * camera turned 45 degrees and tilted, over the height mesh, rotatable
-     * in quarter turns (camera/ViewRotation.ts).
+     * freely (camera/ViewOrbit.ts).
      */
     mode: MapViewMode;
     /** Camera tilt away from straight down, degrees (tilt and terrain3d). */
     tiltDeg: number;
     /**
-     * Isometric camera elevation above the ground, degrees. 30 is 2:1
-     * dimetric (a tile is a diamond twice as wide as tall); 35.26 would be
-     * true isometric.
+     * Isometric camera elevation above the ground in the default view (the
+     * reset target), degrees. 30 is 2:1 dimetric (a tile is a diamond twice
+     * as wide as tall); 35.26 would be true isometric. The player tilts
+     * between ViewOrbit's limits.
      */
     isoElevationDeg: number;
     /** Vertical field of view, degrees. */

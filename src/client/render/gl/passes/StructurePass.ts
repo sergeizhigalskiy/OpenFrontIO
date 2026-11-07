@@ -33,6 +33,7 @@ import {
   STRUCTURES_EFFECT_BLOCK,
 } from "../utils/ColorUtils";
 import { createProgram, shaderSrc } from "../utils/GlUtils";
+import { ContactShadow, type ShadowLight } from "./ContactShadow";
 
 import { assetUrl } from "@openfront/shared/AssetUrls";
 import structureFragSrc from "../shaders/structure/structure.frag.glsl?raw";
@@ -132,6 +133,9 @@ export class StructurePass {
   private ghost: GhostPreviewData | null = null;
   /** Scratch buffer for the single ghost instance (avoids allocation). */
   private ghostBuf = new Float32Array(FLOATS_PER_INSTANCE);
+
+  private contactShadow: ContactShadow;
+  private shadowLight: ShadowLight = null;
 
   constructor(
     gl: WebGL2RenderingContext,
@@ -253,6 +257,8 @@ export class StructurePass {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.ghostInstanceBuf);
     gl.bufferData(gl.ARRAY_BUFFER, BYTES_PER_INSTANCE, gl.DYNAMIC_DRAW);
 
+    this.contactShadow = new ContactShadow(gl);
+
     // --- VAO ---
     this.vao = gl.createVertexArray()!;
     gl.bindVertexArray(this.vao);
@@ -368,15 +374,42 @@ export class StructurePass {
     this.affiliationTex = tex;
   }
 
+  /**
+   * Cast contact shadows under structure icons from this sun (isometric
+   * view), or none (null).
+   */
+  setShadowLight(light: ShadowLight): void {
+    this.shadowLight = light;
+  }
+
   draw(cameraMatrix: Float32Array, zoom: number): void {
     const hasGhost =
       this.ghost !== null && this.typeToAtlasCol.has(this.ghost.ghostType);
     if (this.instanceCount === 0 && !hasGhost) return;
 
     const gl = this.gl;
+    const ss = this.settings.structure;
+    if (
+      this.shadowLight !== null &&
+      this.instanceCount > 0 &&
+      zoom > ss.dotsZoomThreshold
+    ) {
+      // The icon's half size, as structure.vert sizes it (shape scale 1).
+      const iconScale =
+        zoom >= ss.iconGrowZoom
+          ? zoom / ss.iconGrowZoom
+          : Math.min(1, zoom / ss.iconScaleFactorZoomedOut);
+      const half = (ss.iconSize * iconScale * 0.5) / zoom;
+      this.contactShadow.draw(
+        this.vao,
+        this.instanceCount,
+        half * 0.95,
+        0.3,
+        this.shadowLight,
+      );
+    }
     gl.useProgram(this.program);
 
-    const ss = this.settings.structure;
     gl.uniform1f(this.uLocalPlayerID, this.localPlayerID);
     gl.uniform1f(this.uZoom, zoom);
     gl.uniform1f(this.uIconSize, ss.iconSize);
@@ -495,5 +528,6 @@ export class StructurePass {
     if (this.ghostInstanceBuf) gl.deleteBuffer(this.ghostInstanceBuf);
     gl.deleteVertexArray(this.vao);
     gl.deleteTexture(this.atlasTex);
+    this.contactShadow.dispose();
   }
 }

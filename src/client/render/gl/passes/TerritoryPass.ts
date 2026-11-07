@@ -49,8 +49,8 @@ export class TerritoryPass {
   private uAltFillAlpha: WebGLUniformLocation;
   private uShadeStrength: WebGLUniformLocation;
   private uLight: {
-    shadowW: WebGLUniformLocation | null;
-    shadowFlat: WebGLUniformLocation | null;
+    shadowWA: WebGLUniformLocation | null;
+    shadowWB: WebGLUniformLocation | null;
     lightDir: WebGLUniformLocation | null;
     heightTiles: WebGLUniformLocation | null;
   };
@@ -201,8 +201,8 @@ export class TerritoryPass {
       "uShadeStrength",
     )!;
     this.uLight = {
-      shadowW: gl.getUniformLocation(this.program, "uShadowW"),
-      shadowFlat: gl.getUniformLocation(this.program, "uShadowFlat"),
+      shadowWA: gl.getUniformLocation(this.program, "uShadowWA"),
+      shadowWB: gl.getUniformLocation(this.program, "uShadowWB"),
       lightDir: gl.getUniformLocation(this.program, "uLightDir"),
       heightTiles: gl.getUniformLocation(this.program, "uHeightTiles"),
     };
@@ -218,7 +218,8 @@ export class TerritoryPass {
     gl.uniform1i(gl.getUniformLocation(this.program, "uDefenseCoverageTex"), 7);
     gl.uniform1i(gl.getUniformLocation(this.program, "uClimate"), 8);
     gl.uniform1i(gl.getUniformLocation(this.program, "uAffiliation"), 9);
-    gl.uniform1i(gl.getUniformLocation(this.program, "uShadow"), 10);
+    gl.uniform1i(gl.getUniformLocation(this.program, "uShadowA"), 10);
+    gl.uniform1i(gl.getUniformLocation(this.program, "uShadowB"), 12);
     gl.uniform1i(gl.getUniformLocation(this.program, "uRelief"), 11);
 
     this.vao = createMapQuad(gl, mapW, mapH);
@@ -485,17 +486,21 @@ export class TerritoryPass {
     );
     if (
       light !== null &&
-      light.shadowTex !== null &&
+      light.shadowTexA !== null &&
+      light.shadowTexB !== null &&
       light.reliefTex !== null
     ) {
-      const [w0, w1, w2, w3] = light.shadowWeights;
-      gl.uniform4f(this.uLight.shadowW, w0, w1, w2, w3);
-      gl.uniform1f(this.uLight.shadowFlat, light.shadowFlat);
+      const [a0, a1, a2, a3] = light.shadowWeightsA;
+      gl.uniform4f(this.uLight.shadowWA, a0, a1, a2, a3);
+      const [b0, b1, b2, b3] = light.shadowWeightsB;
+      gl.uniform4f(this.uLight.shadowWB, b0, b1, b2, b3);
       const [lx, ly, lz] = light.lightDir;
       gl.uniform3f(this.uLight.lightDir, lx, ly, lz);
       gl.uniform1f(this.uLight.heightTiles, light.heightTiles);
       gl.activeTexture(gl.TEXTURE10);
-      gl.bindTexture(gl.TEXTURE_2D, light.shadowTex);
+      gl.bindTexture(gl.TEXTURE_2D, light.shadowTexA);
+      gl.activeTexture(gl.TEXTURE12);
+      gl.bindTexture(gl.TEXTURE_2D, light.shadowTexB);
       gl.activeTexture(gl.TEXTURE11);
       gl.bindTexture(gl.TEXTURE_2D, light.reliefTex);
     }

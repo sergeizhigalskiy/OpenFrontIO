@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ISO_BASE_YAW_DEG } from "../../../../src/client/render/gl/camera/ViewRotation";
+import { ISO_BASE_YAW_DEG } from "../../../../src/client/render/gl/camera/ViewOrbit";
 import {
   buildClimateField,
   COAST_SDF_RANGE,
@@ -14,7 +14,8 @@ import {
   ridgedNoise,
 } from "../../../../src/client/render/gl/terrain/ReliefHeights";
 import {
-  ISO_SUN_AZIMUTHS,
+  ISO_DEFAULT_SUN_DEG,
+  SHADOW_AZIMUTHS,
   shadowWeights,
   sunAzimuthDeg,
 } from "../../../../src/client/render/gl/terrain/SceneLight";
@@ -237,29 +238,34 @@ describe("climate field: the smooth coast", () => {
 });
 
 describe("scene light", () => {
-  it("keeps the sun at the top-left of the screen in every rotation", () => {
-    for (let k = 0; k < 4; k++) {
-      const yaw = (ISO_BASE_YAW_DEG + 90 * k) % 360;
+  it("keeps the sun at the top-left of the screen at any orbit", () => {
+    for (const yaw of [ISO_BASE_YAW_DEG, 45, 135, 225, 17, 278.5]) {
       const sun = sunAzimuthDeg("isometric", yaw, 315);
-      expect(sun).toBe(ISO_SUN_AZIMUTHS[k]);
       // 45 degrees counter-clockwise of up the screen.
-      expect((((yaw - sun) % 360) + 360) % 360).toBe(45);
+      expect((((yaw - sun) % 360) + 360) % 360).toBeCloseTo(45, 9);
     }
+    expect(sunAzimuthDeg("isometric", ISO_BASE_YAW_DEG, 0)).toBe(
+      ISO_DEFAULT_SUN_DEG,
+    );
     // The other views keep the configured sun.
     expect(sunAzimuthDeg("flat", 100, 315)).toBe(315);
     expect(sunAzimuthDeg("terrain3d", 100, 300)).toBe(300);
   });
 
-  it("reads one baked shadow at rest and blends two mid-turn", () => {
-    for (let k = 0; k < 4; k++) {
-      const w = shadowWeights("isometric", ISO_SUN_AZIMUTHS[k]);
-      expect(w.flat).toBe(0);
-      expect(w.iso[k]).toBeCloseTo(1, 9);
-      expect(w.iso.reduce((a, b) => a + b, 0)).toBeCloseTo(1, 9);
-    }
-    const mid = shadowWeights("isometric", ISO_SUN_AZIMUTHS[3] + 45);
-    expect(mid.iso[3]).toBeCloseTo(0.5, 9);
-    expect(mid.iso[0]).toBeCloseTo(0.5, 9);
-    expect(shadowWeights("flat", 315)).toEqual({ iso: [0, 0, 0, 0], flat: 1 });
+  it("reads one baked shadow on a baked azimuth, two in between", () => {
+    SHADOW_AZIMUTHS.forEach((az, k) => {
+      const w = shadowWeights(az);
+      const all = [...w.a, ...w.b];
+      expect(all[k]).toBeCloseTo(1, 9);
+      expect(all.reduce((x, y) => x + y, 0)).toBeCloseTo(1, 9);
+    });
+    // The default view's sun is baked exactly.
+    expect(SHADOW_AZIMUTHS).toContain(ISO_DEFAULT_SUN_DEG);
+    const mid = shadowWeights(337.5);
+    expect(mid.b[3]).toBeCloseTo(0.5, 9);
+    expect(mid.a[0]).toBeCloseTo(0.5, 9);
+    const odd = shadowWeights(100);
+    expect(odd.a[2]).toBeCloseTo(1 - 10 / 45, 9);
+    expect(odd.a[3]).toBeCloseTo(10 / 45, 9);
   });
 });

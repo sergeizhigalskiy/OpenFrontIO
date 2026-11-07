@@ -1,16 +1,16 @@
 /**
  * ReliefBake — soft sun shadows and ambient occlusion cast from the relief
- * heights, baked on the GPU into two map-sized RGBA8 textures:
+ * heights, baked on the GPU into three map-sized RGBA8 textures:
  *
- *   shadowTex  RGBA: sun visibility toward the four isometric sun azimuths
- *              (SceneLight.ts ISO_SUN_AZIMUTHS), one per rotation
- *   reliefTex  R: sky openness (ambient occlusion), G: sun visibility toward
- *              the other views' azimuth
+ *   shadowTexA  RGBA: sun visibility toward azimuths 0, 45, 90, 135
+ *   shadowTexB  RGBA: sun visibility toward azimuths 180, 225, 270, 315
+ *   reliefTex   R: sky openness (ambient occlusion)
  *
- * Both LINEAR-filtered, so a fetch gives a soft value between tiles. The sun
- * is fixed per channel, so the bake only re-runs when the heights change
- * (a flood: just the changed area plus the reach of a shadow) or when the
- * height scale or the sun moves (the whole map).
+ * All LINEAR-filtered, so a fetch gives a soft value between tiles. The
+ * shader blends the two azimuths either side of the sun (SceneLight.ts), so
+ * the camera orbits freely without a re-bake. The bake re-runs only when
+ * the heights change (a flood: just the changed area plus the reach of a
+ * shadow) or the height scale or sun altitude is tuned (the whole map).
  */
 
 import type { TerrainRect } from "../../types";
@@ -22,7 +22,6 @@ import {
   createTexture2D,
 } from "../utils/GlUtils";
 import { HEIGHT_UNITS_PER_LEVEL } from "./Relief";
-import { ISO_SUN_AZIMUTHS } from "./SceneLight";
 
 /** How far a shadow can fall, tiles (MAX_REACH in the shader). */
 const SHADOW_REACH = 72;
@@ -33,19 +32,16 @@ export interface BakeParams {
   heightScale: number;
   /** Sun altitude above the horizon, degrees. */
   sunAltitudeDeg: number;
-  /** The non-isometric views' sun azimuth, degrees. */
-  flatAzimuthDeg: number;
 }
 
 export class ReliefBake {
-  readonly shadowTex: WebGLTexture;
+  readonly shadowTexA: WebGLTexture;
+  readonly shadowTexB: WebGLTexture;
   readonly reliefTex: WebGLTexture;
   private fbo: WebGLFramebuffer;
   private program: WebGLProgram;
   private vao: WebGLVertexArrayObject;
   private uHeightTiles: WebGLUniformLocation | null;
-  private uSunAz: WebGLUniformLocation | null;
-  private uSunAzFlat: WebGLUniformLocation | null;
   private uSunAlt: WebGLUniformLocation | null;
   private bakedKey = "";
 
@@ -64,7 +60,8 @@ export class ReliefBake {
         data: null,
         filter: gl.LINEAR,
       });
-    this.shadowTex = target();
+    this.shadowTexA = target();
+    this.shadowTexB = target();
     this.reliefTex = target();
     this.fbo = gl.createFramebuffer()!;
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
@@ -72,12 +69,19 @@ export class ReliefBake {
       gl.FRAMEBUFFER,
       gl.COLOR_ATTACHMENT0,
       gl.TEXTURE_2D,
-      this.shadowTex,
+      this.shadowTexA,
       0,
     );
     gl.framebufferTexture2D(
       gl.FRAMEBUFFER,
       gl.COLOR_ATTACHMENT1,
+      gl.TEXTURE_2D,
+      this.shadowTexB,
+      0,
+    );
+    gl.framebufferTexture2D(
+      gl.FRAMEBUFFER,
+      gl.COLOR_ATTACHMENT2,
       gl.TEXTURE_2D,
       this.reliefTex,
       0,
@@ -92,8 +96,6 @@ export class ReliefBake {
     );
     const p = this.program;
     this.uHeightTiles = gl.getUniformLocation(p, "uHeightTiles");
-    this.uSunAz = gl.getUniformLocation(p, "uSunAz");
-    this.uSunAzFlat = gl.getUniformLocation(p, "uSunAzFlat");
     this.uSunAlt = gl.getUniformLocation(p, "uSunAlt");
     gl.useProgram(p);
     gl.uniform1i(gl.getUniformLocation(p, "uHeight"), 0);
@@ -111,7 +113,7 @@ export class ReliefBake {
     params: BakeParams,
     dirty: TerrainRect | null,
   ): void {
-    const key = `${params.heightScale}|${params.sunAltitudeDeg}|${params.flatAzimuthDeg}`;
+    const key = `${params.heightScale}|${params.sunAltitudeDeg}`;
     if (key !== this.bakedKey) {
       this.bakedKey = key;
       this.bake(heightTex, params, null);
@@ -127,7 +129,11 @@ export class ReliefBake {
   ): void {
     const gl = this.gl;
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
-    gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+    gl.drawBuffers([
+      gl.COLOR_ATTACHMENT0,
+      gl.COLOR_ATTACHMENT1,
+      gl.COLOR_ATTACHMENT2,
+    ]);
     gl.viewport(0, 0, this.mapW, this.mapH);
     gl.disable(gl.BLEND);
     if (rect !== null) {
@@ -144,14 +150,6 @@ export class ReliefBake {
       this.uHeightTiles,
       (255 / HEIGHT_UNITS_PER_LEVEL) * params.heightScale,
     );
-    gl.uniform4f(
-      this.uSunAz,
-      ISO_SUN_AZIMUTHS[0] * DEG,
-      ISO_SUN_AZIMUTHS[1] * DEG,
-      ISO_SUN_AZIMUTHS[2] * DEG,
-      ISO_SUN_AZIMUTHS[3] * DEG,
-    );
-    gl.uniform1f(this.uSunAzFlat, params.flatAzimuthDeg * DEG);
     gl.uniform1f(this.uSunAlt, params.sunAltitudeDeg * DEG);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, heightTex);
@@ -165,7 +163,8 @@ export class ReliefBake {
 
   dispose(): void {
     const gl = this.gl;
-    gl.deleteTexture(this.shadowTex);
+    gl.deleteTexture(this.shadowTexA);
+    gl.deleteTexture(this.shadowTexB);
     gl.deleteTexture(this.reliefTex);
     gl.deleteFramebuffer(this.fbo);
     gl.deleteProgram(this.program);

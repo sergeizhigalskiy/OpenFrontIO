@@ -120,7 +120,7 @@ export class TransformHandler {
     return computeCameraFrame(
       viewPose(
         view,
-        source.yawDeg(),
+        source.orbit(),
         focus.x,
         focus.y,
         this.scale,

@@ -10,12 +10,13 @@ precision highp float;
 uniform sampler2D uHeight;   // R16F relief heights: height units / 255
 uniform vec2 uMapSize;
 uniform float uHeightTiles;  // world tiles of height per unit of uHeight
-uniform vec4 uSunAz;         // sun azimuths, radians, one per output channel
-uniform float uSunAzFlat;    // the sun azimuth of the non-isometric views
 uniform float uSunAlt;       // sun altitude above the horizon, radians
 
-layout(location = 0) out vec4 outShadow; // visibility toward each uSunAz
-layout(location = 1) out vec4 outRelief; // R: sky openness, G: uSunAzFlat
+// Sun visibility toward the eight azimuths every 45 degrees (SceneLight.ts
+// SHADOW_AZIMUTHS): 0-135 in A, 180-315 in B.
+layout(location = 0) out vec4 outShadowA;
+layout(location = 1) out vec4 outShadowB;
+layout(location = 2) out vec4 outRelief; // R: sky openness
 
 // Sun half-width, radians: the shadow edge softens over this.
 const float PENUMBRA = 0.075;
@@ -35,7 +36,7 @@ float sunVisibility(vec2 p, float h0, float az) {
   vec2 d = compass(az);
   float steepest = -1e3;
   float t = 0.55;
-  for (int i = 0; i < 30; i++) {
+  for (int i = 0; i < 26; i++) {
     float h = heightAt(p + d * t);
     steepest = max(steepest, (h - h0) / t);
     t += 0.42 + t * 0.11;
@@ -67,11 +68,18 @@ float skyOpenness(vec2 p, float h0) {
 void main() {
   vec2 p = gl_FragCoord.xy;
   float h0 = heightAt(p);
-  outShadow = vec4(
-    sunVisibility(p, h0, uSunAz.x),
-    sunVisibility(p, h0, uSunAz.y),
-    sunVisibility(p, h0, uSunAz.z),
-    sunVisibility(p, h0, uSunAz.w)
+  const float Q = 0.7853982; // 45 degrees
+  outShadowA = vec4(
+    sunVisibility(p, h0, 0.0),
+    sunVisibility(p, h0, Q),
+    sunVisibility(p, h0, 2.0 * Q),
+    sunVisibility(p, h0, 3.0 * Q)
   );
-  outRelief = vec4(skyOpenness(p, h0), sunVisibility(p, h0, uSunAzFlat), 1.0, 1.0);
+  outShadowB = vec4(
+    sunVisibility(p, h0, 4.0 * Q),
+    sunVisibility(p, h0, 5.0 * Q),
+    sunVisibility(p, h0, 6.0 * Q),
+    sunVisibility(p, h0, 7.0 * Q)
+  );
+  outRelief = vec4(skyOpenness(p, h0), 1.0, 1.0, 1.0);
 }

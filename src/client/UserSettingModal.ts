@@ -308,6 +308,10 @@ export class UserSettingModal extends BaseModal {
       { actions: ["altKey", "emojiMenuModifier"], keyPrefix: "Alt" },
       { actions: ["buildScrollModifier", "altKey"], keyPrefix: "Alt" },
       { actions: ["boxSelectWarships", "shiftKey"], keyPrefix: "Shift" },
+      // Orbit is a modifier-drag; the same key's click keeps its menu.
+      { actions: ["orbitModifier", "emojiMenuModifier"], keyPrefix: "Alt" },
+      { actions: ["orbitModifier", "buildScrollModifier"], keyPrefix: "Alt" },
+      { actions: ["orbitModifier", "altKey"], keyPrefix: "Alt" },
     ];
 
     const isAllowedSharedModifier = ALLOWED_SHARED_MODIFIERS.some(
@@ -1825,6 +1829,46 @@ export class UserSettingModal extends BaseModal {
         defaultKey=${this.defaultKeybinds.rotateViewRight}
         .value=${this.getKeyValue("rotateViewRight")}
         .display=${this.getKeyChar("rotateViewRight")}
+        @change=${this.handleKeybindChange}
+      ></setting-keybind>
+
+      <setting-keybind
+        action="tiltViewUp"
+        label=${translateText("user_setting.tilt_view_up")}
+        description=${translateText("user_setting.tilt_view_up_desc")}
+        defaultKey=${this.defaultKeybinds.tiltViewUp}
+        .value=${this.getKeyValue("tiltViewUp")}
+        .display=${this.getKeyChar("tiltViewUp")}
+        @change=${this.handleKeybindChange}
+      ></setting-keybind>
+
+      <setting-keybind
+        action="tiltViewDown"
+        label=${translateText("user_setting.tilt_view_down")}
+        description=${translateText("user_setting.tilt_view_down_desc")}
+        defaultKey=${this.defaultKeybinds.tiltViewDown}
+        .value=${this.getKeyValue("tiltViewDown")}
+        .display=${this.getKeyChar("tiltViewDown")}
+        @change=${this.handleKeybindChange}
+      ></setting-keybind>
+
+      <setting-keybind
+        action="resetView"
+        label=${translateText("user_setting.reset_view")}
+        description=${translateText("user_setting.reset_view_desc")}
+        defaultKey=${this.defaultKeybinds.resetView}
+        .value=${this.getKeyValue("resetView")}
+        .display=${this.getKeyChar("resetView")}
+        @change=${this.handleKeybindChange}
+      ></setting-keybind>
+
+      <setting-keybind
+        action="orbitModifier"
+        label=${translateText("user_setting.orbit_modifier")}
+        description=${translateText("user_setting.orbit_modifier_desc")}
+        defaultKey=${this.defaultKeybinds.orbitModifier}
+        .value=${this.getKeyValue("orbitModifier")}
+        .display=${this.getKeyChar("orbitModifier")}
         @change=${this.handleKeybindChange}
       ></setting-keybind>
 

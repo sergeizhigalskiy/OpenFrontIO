@@ -34,7 +34,7 @@ import type {
 import { Camera } from "./Camera";
 import { CameraUniforms } from "./camera/CameraUniforms";
 import { hasRelief } from "./camera/MapViewSource";
-import { ViewRotation } from "./camera/ViewRotation";
+import { ViewOrbit } from "./camera/ViewOrbit";
 import { GLUnavailableError, initGL } from "./initGL";
 import { BarPass } from "./passes/BarPass";
 import { BlockadeMarker, BlockadePass } from "./passes/BlockadePass";
@@ -145,15 +145,18 @@ export class GPURenderer {
   private terrainLight!: TerrainLighting;
   /** Winter strength on the snow band, 0-1 (updateWeather). */
   private winter = 0;
+  /** World-feature sites the terrain draws into the ground. */
+  private ruinSites: readonly RuinMarker[] = [];
+  private volcanoSites: readonly VolcanoMarker[] = [];
   /** Camera uniform block every map shader reads (camera/CameraBlock.ts). */
   private cameraUniforms: CameraUniforms;
   /** Chunked LOD terrain mesh, drawn by full-map passes in 3D mode. */
   private mapSurface: MapSurface;
   /**
-   * The isometric view's quarter turns. MapRenderer owns the one that
-   * survives context loss and hands it over (setViewRotation).
+   * The isometric camera's orbit. MapRenderer owns the one that survives
+   * context loss and hands it over (setViewOrbit).
    */
-  private viewRotation = new ViewRotation();
+  private viewOrbit = new ViewOrbit();
 
   // Passes
   private terrainPass: TerrainPass;
@@ -746,9 +749,22 @@ export class GPURenderer {
     this.camera.setCameraState(x, y, z);
   }
 
-  /** Use this rotation state for the isometric view (MapRenderer's). */
-  setViewRotation(rotation: ViewRotation): void {
-    this.viewRotation = rotation;
+  /** Ruins and volcanoes, drawn into the ground under their icons. */
+  private pushTerrainSites(): void {
+    this.terrainPass.setSites([
+      ...this.volcanoSites.map((v) => ({
+        x: v.x,
+        y: v.y,
+        kind: "volcano" as const,
+        rumbling: v.rumbling,
+      })),
+      ...this.ruinSites.map((r) => ({ x: r.x, y: r.y, kind: "ruin" as const })),
+    ]);
+  }
+
+  /** Use this orbit for the isometric camera (MapRenderer's). */
+  setViewOrbit(orbit: ViewOrbit): void {
+    this.viewOrbit = orbit;
   }
 
   /**
@@ -1190,11 +1206,15 @@ export class GPURenderer {
   /** World features: the unclaimed ruins to draw. */
   updateRuins(ruins: RuinMarker[]): void {
     this.ruinsPass.update(ruins);
+    this.ruinSites = ruins;
+    this.pushTerrainSites();
   }
 
   /** Volcanoes: the sites to draw. */
   updateVolcanoes(markers: VolcanoMarker[]): void {
     this.volcanoPass.update(markers);
+    this.volcanoSites = markers;
+    this.pushTerrainSites();
   }
 
   /** Volcanoes: starts the eruption glow at a site. */
@@ -1412,7 +1432,6 @@ export class GPURenderer {
       {
         heightScale: view.heightScale,
         sunAltitudeDeg: view.lightAltitudeDeg,
-        flatAzimuthDeg: view.lightAzimuthDeg,
       },
       this.heightField.takeDirty(),
     );
@@ -1454,8 +1473,11 @@ export class GPURenderer {
     const view = this.settings.mapView;
     const relief = hasRelief(view.mode);
     const isometric = view.mode === "isometric";
-    const yaw = this.viewRotation.update(performance.now());
-    this.camera.setProjection(view, yaw);
+    this.viewOrbit.setDefaultElevation(view.isoElevationDeg);
+    this.viewOrbit.update(performance.now());
+    const orbit = this.viewOrbit.current();
+    const yaw = orbit.yawDeg;
+    this.camera.setProjection(view, orbit);
     const frame = this.camera.getFrame();
     if (relief) {
       this.mapSurface.update(frame, {
@@ -1466,19 +1488,24 @@ export class GPURenderer {
     this.mapSurface.setActive(relief);
     // The sun stays at the top-left of the screen (SceneLight.ts).
     const sunAz = sunAzimuthDeg(view.mode, yaw, view.lightAzimuthDeg);
-    const weights = shadowWeights(view.mode, sunAz);
+    const weights = shadowWeights(sunAz);
     this.terrainLight = {
       shadeStrength: view.hillshade ? view.hillshadeStrength : 0,
       heightTiles: (255 / HEIGHT_UNITS_PER_LEVEL) * view.heightScale,
       lightDir: lightDirection(sunAz, view.lightAltitudeDeg),
-      shadowWeights: weights.iso,
-      shadowFlat: weights.flat,
-      shadowTex: this.reliefBake.shadowTex,
+      shadowWeightsA: weights.a,
+      shadowWeightsB: weights.b,
+      shadowTexA: this.reliefBake.shadowTexA,
+      shadowTexB: this.reliefBake.shadowTexB,
       reliefTex: this.reliefBake.reliefTex,
       winter: this.winter,
       snowRows: (this.mapH * SNOW_NORTH_PERCENT) / 100,
     };
     this.territoryPass.setLighting(this.terrainLight);
+    // Upright sprites stand on the ground in the isometric view.
+    const shadowLight = isometric ? this.terrainLight.lightDir : null;
+    this.unitPass.setShadowLight(shadowLight);
+    this.structurePass.setShadowLight(shadowLight);
     this.cameraUniforms.bind(
       frame,
       {

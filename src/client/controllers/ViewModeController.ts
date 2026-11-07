@@ -5,14 +5,17 @@
  *   affiliation recolor + grid overlay + hides names and land map layers.
  * - ToggleCoordinateGridEvent: persistent coordinate-grid toggle (M keybind);
  *   grid shows but names stay visible.
- * - RotateViewEvent: the isometric view's quarter turns (Shift+Q / Shift+E).
+ * - OrbitViewEvent / ResetViewEvent: the isometric camera's free orbit
+ *   (Shift+Q / Shift+E turn, PageUp / PageDown tilt, Alt+drag both, V
+ *   resets).
  */
 
 import { EventBus } from "@openfront/shared/EventBus";
 import { Controller } from "../Controller";
 import {
   AlternateViewEvent,
-  RotateViewEvent,
+  OrbitViewEvent,
+  ResetViewEvent,
   ToggleCoordinateGridEvent,
 } from "../InputHandler";
 import { MapRenderer } from "../render/gl";
@@ -30,6 +33,9 @@ export class ViewModeController implements Controller {
     this.eventBus.on(ToggleCoordinateGridEvent, (e) =>
       this.view.setGridView(e.enabled),
     );
-    this.eventBus.on(RotateViewEvent, (e) => this.view.rotateView(e.direction));
+    this.eventBus.on(OrbitViewEvent, (e) =>
+      this.view.orbitView(e.yawDeg, e.elevationDeg),
+    );
+    this.eventBus.on(ResetViewEvent, () => this.view.resetView());
   }
 }

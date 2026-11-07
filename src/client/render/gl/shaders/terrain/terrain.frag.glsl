@@ -43,6 +43,10 @@ uniform vec3 uMountain;   // the highest peaks (snow); lower slopes are rock
 uniform float uShadeStrength; // relief lighting, 0 = flat (hillshade off)
 uniform float uWinter;        // 0-1: winter snow on the snow band
 uniform float uSnowRows;      // tile rows of the snow band (from the top)
+// World-feature sites drawn into the ground (TerrainPass.setSites): xy the
+// site tile, z the kind (0 ruin, 1 volcano), w 1 while a volcano rumbles.
+uniform vec4 uSites[MAX_SITES];
+uniform int uSiteCount;
 uniform float uTime;          // seconds, wraps every TIME_PERIOD
 
 in vec2 vTile;
@@ -211,7 +215,7 @@ vec3 shadeWater(vec2 p, float depth, float shore, float sun) {
   float lap = sin(TAU * cyclesPerPeriod(110.0) * t + swell * 6.0);
   float width = max(0.32 + 0.1 * lap, 1.1 * gPx);
   float foam = 1.0 - smoothstep(0.0, width, shore);
-  float band = smoothstep(0.55, 0.0, abs(shore - (0.55 + 0.12 * lap)));
+  float band = (1.0 - smoothstep(0.0, 0.55, abs(shore - (0.55 + 0.12 * lap))));
   foam = max(foam * 0.8, band * 0.45 * (0.6 + 0.4 * crest) * gDetail);
   // White caps on open water, up close.
   foam = max(foam, crest * 0.12 * gDetail * smoothstep(3.0, 10.0, depth));
@@ -273,7 +277,7 @@ Biomes biomesAt(float level, float slope, float moisture, float cold,
   float grass = open * lowland;
   float dry = upland * (1.0 - highland);
   float dirt = upland * highland;
-  float desert = smoothstep(0.24, 0.06, m);
+  float desert = (1.0 - smoothstep(0.06, 0.24, m));
   float beach = (1.0 - smoothstep(0.35, 1.1, coast)) *
     (1.0 - smoothstep(5.0, 11.0, level));
   b.sand = (grass * 0.8 + dry) * beach + dirt * desert * 0.8;
@@ -433,6 +437,67 @@ vec3 waterways(vec2 p, ivec2 tile, vec3 ground, float sun) {
   return mix(c, water, inWater);
 }
 
+// ---------------------------------------------------------------------------
+// World-feature sites
+// ---------------------------------------------------------------------------
+
+float sdBox(vec2 q, vec2 b) {
+  vec2 d = abs(q) - b;
+  return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
+}
+
+float siteHash(vec2 s) {
+  return fract(sin(dot(s, vec2(12.9898, 78.233))) * 43758.5453);
+}
+
+// Ruins and volcanoes in the ground itself, under their map icons: the
+// ruins as pale paving and broken wall footings, a volcano as a dark ash
+// cone (its slope lit like one) with a crater that glows while it rumbles.
+// `glow` is light the lava gives off, added after shading.
+void applySites(vec2 p, inout vec3 albedo, inout vec3 n, out vec3 glow) {
+  glow = vec3(0.0);
+  for (int i = 0; i < MAX_SITES; i++) {
+    if (i >= uSiteCount) break;
+    vec4 site = uSites[i];
+    vec2 d = p - (site.xy + 0.5);
+    float r = length(d);
+    if (site.z < 0.5) {
+      if (r > 3.0) continue;
+      // Ruins: a slab of paving with the footings of two buildings on it.
+      float a = siteHash(site.xy) * 6.2832;
+      vec2 q = mat2(cos(a), -sin(a), sin(a), cos(a)) * d;
+      float paving = 1.0 - smoothstep(1.7, 2.6, r + 0.6 * (noiseAt(p, 3.0).r - 0.5));
+      float walls = min(
+        abs(sdBox(q - vec2(-0.35, 0.1), vec2(0.95, 0.65))),
+        abs(sdBox(q - vec2(0.85, -0.55), vec2(0.45, 0.4)))
+      );
+      float broken = step(0.42, noiseAt(q * 1.7 + site.xy, 2.0).r);
+      float wall = (1.0 - smoothstep(0.08, 0.16, walls)) * broken;
+      vec3 stone = vec3(0.80, 0.76, 0.66);
+      albedo = mix(albedo, stone * (0.86 + 0.2 * noiseAt(p, 1.5).r), paving * 0.5);
+      albedo = mix(albedo, stone * 1.05, wall);
+      continue;
+    }
+    if (r > 8.0) continue;
+    // Volcano: an ash cone. The slope pushes the normal outward.
+    float cone = 1.0 - smoothstep(1.2, 7.5, r);
+    vec2 out2 = d / max(r, 1e-3);
+    float slope = 0.9 * cone * smoothstep(0.8, 1.6, r);
+    n = normalize(n + vec3(out2 * slope, 0.0));
+    vec3 ash = vec3(0.24, 0.22, 0.21) * (0.85 + 0.3 * noiseAt(p, 2.0).r);
+    albedo = mix(albedo, ash, (1.0 - smoothstep(3.0, 7.5, r)));
+    // The crater: a dark bowl inside a rim.
+    float crater = 1.0 - smoothstep(0.8, 1.2, r);
+    albedo = mix(albedo, vec3(0.1, 0.09, 0.09), crater);
+    float pulse = 0.55 + 0.45 * sin(uTime * 3.0 + site.x);
+    float hot = mix(0.35, pulse, site.w);
+    glow += vec3(1.0, 0.38, 0.08) * crater * hot * (0.6 + 0.4 * noiseAt(p, 0.9).r);
+    // Lava seams running down the flanks while it rumbles.
+    float seams = smoothstep(0.86, 0.97, noiseAt(vec2(atan(d.y, d.x) * 3.0, r * 0.25), 1.0).r);
+    glow += vec3(1.0, 0.3, 0.05) * seams * site.w * cone * 0.5;
+  }
+}
+
 vec3 shadeLand(vec2 p, ivec2 tile, vec4 sf, vec4 climate, float sun,
                float sky) {
   // Relief normal: under a tile apart up close, wider when zoomed out so the
@@ -470,6 +535,8 @@ vec3 shadeLand(vec2 p, ivec2 tile, vec4 sf, vec4 climate, float sun,
   // Ground detail bends the light too.
   n = normalize(n + vec3(nAcc.xy / max(acc.a, 1e-4) * 0.55, 0.0));
 #endif
+  vec3 glow = vec3(0.0);
+  if (uSiteCount > 0) applySites(p, albedo, n, glow);
 
   uint packed = uHasFeatures != 0 ? texelFetch(uFeatures, tile, 0).r : 0u;
   float groundShade = 1.0;
@@ -484,6 +551,7 @@ vec3 shadeLand(vec2 p, ivec2 tile, vec4 sf, vec4 climate, float sun,
   light *= mix(0.55, 1.0, smoothstep(0.0, 2.5, wallDistance(sf.b)));
   vec3 c = applyLight(albedo, light);
   c = mix(c, canopy, cover);
+  c += glow;
 
   if ((packed & 0x04u) != 0u) c = waterways(p, tile, c, sun);
   return c;
