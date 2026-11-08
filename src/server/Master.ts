@@ -1,4 +1,5 @@
 import { GameEnv } from "@openfront/shared/configuration/Env";
+import { gamePortBase } from "@openfront/shared/configuration/GamePorts";
 import cluster, { Worker } from "cluster";
 import crypto from "crypto";
 import express from "express";
@@ -283,7 +284,7 @@ export async function startMaster() {
       `Restarted worker ${workerId} (New PID: ${newWorker.process.pid})`,
     );
   });
-  const PORT = 3000;
+  const PORT = gamePortBase(process.env.GAME_PORT_BASE);
   server.listen(PORT, () => {
     log.info(`Master HTTP server listening on port ${PORT}`);
   });

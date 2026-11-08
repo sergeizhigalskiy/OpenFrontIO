@@ -5,6 +5,7 @@ import {
   InstanceLetterSchema,
 } from "@openfront/shared/ClusterConfig";
 import { GameEnv, parseGameEnv } from "@openfront/shared/configuration/Env";
+import { gamePortBase } from "@openfront/shared/configuration/GamePorts";
 import { normalizeShareOrigin } from "@openfront/shared/configuration/ShareOrigin";
 import { generateGameID } from "@openfront/shared/SharedUtil";
 import { JWK } from "jose";
@@ -190,7 +191,7 @@ export class ServerEnv {
     return ServerEnv.workerPortByIndex(ServerEnv.workerIndex(gameID));
   }
   static workerPortByIndex(index: number): number {
-    return 3001 + index;
+    return gamePortBase(process.env.GAME_PORT_BASE) + 1 + index;
   }
   // Mint a game id under this deployment's instance letter.
   static generateGameId(): GameID {

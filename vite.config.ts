@@ -3,6 +3,7 @@ import {
   buildAssetUrl,
 } from "@openfront/shared/AssetPaths";
 import { rewriteAssetsForCdn } from "@openfront/shared/AssetUrls";
+import { gamePortBase } from "@openfront/shared/configuration/GamePorts";
 import { normalizeShareOrigin } from "@openfront/shared/configuration/ShareOrigin";
 import tailwindcss from "@tailwindcss/vite";
 import fs from "fs";
@@ -27,6 +28,9 @@ import {
 // Vite already handles these, but its good practice to define them explicitly
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// The dev game server ports (GamePorts.ts): master, then one per worker.
+const GAME_PORT = gamePortBase(process.env.GAME_PORT_BASE);
 
 const clientForksTests = [
   "tests/client/ApexNavigation.test.ts",
@@ -180,7 +184,7 @@ function randomWorkerCreateProxy(numWorkers: number): Plugin {
         if (req.method !== "POST") return next();
         const path = (req.url ?? "").split("?")[0];
         if (!RANDOM_WORKER_PATHS.includes(path)) return next();
-        const port = 3001 + Math.floor(Math.random() * numWorkers);
+        const port = GAME_PORT + 1 + Math.floor(Math.random() * numWorkers);
         const proxyReq = http.request(
           {
             host: "localhost",
@@ -478,7 +482,7 @@ export default defineConfig(({ mode }) => {
     define: {
       __ASSET_MANIFEST__: JSON.stringify(assetManifest),
       "process.env.WEBSOCKET_URL": JSON.stringify(
-        isProduction ? "" : "localhost:3000",
+        isProduction ? "" : `localhost:${GAME_PORT}`,
       ),
       "process.env.GAME_ENV": JSON.stringify(isProduction ? "prod" : "dev"),
       // Force empty under vitest (mode "test") so the getApiBase localhost-
@@ -528,13 +532,13 @@ export default defineConfig(({ mode }) => {
       open: process.env.SKIP_BROWSER_OPEN !== "true",
       proxy: {
         "/lobbies": {
-          target: "ws://localhost:3000",
+          target: `ws://localhost:${GAME_PORT}`,
           ws: true,
           changeOrigin: true,
         },
         // Worker proxies
         "/w0": {
-          target: "ws://localhost:3001",
+          target: `ws://localhost:${GAME_PORT + 1}`,
           ws: true,
           secure: false,
           changeOrigin: true,
@@ -542,7 +546,7 @@ export default defineConfig(({ mode }) => {
           rewrite: (path) => path.replace(/^\/w0/, ""),
         },
         "/w1": {
-          target: "ws://localhost:3002",
+          target: `ws://localhost:${GAME_PORT + 2}`,
           ws: true,
           secure: false,
           changeOrigin: true,
@@ -551,7 +555,7 @@ export default defineConfig(({ mode }) => {
         },
         // API proxies
         "/api": {
-          target: "http://localhost:3000",
+          target: `http://localhost:${GAME_PORT}`,
           changeOrigin: true,
           secure: false,
         },
