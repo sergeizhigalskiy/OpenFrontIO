@@ -11,11 +11,17 @@ import {
 import { GameMapImpl } from "@openfront/engine-lib/game/GameMapImpl";
 import {
   RISING_TIDE_FIRST_WAVE_TICKS,
+  RISING_TIDE_MIN_ISLAND_FLOOR,
+  RISING_TIDE_MIN_ISLAND_MAX,
   RISING_TIDE_MAX_TILES_PER_WAVE,
   RISING_TIDE_STOP_PERCENT,
   RISING_TIDE_WARNING_TICKS,
   RISING_TIDE_WAVE_INTERVAL_TICKS,
   RISING_TIDE_WAVE_PERCENT,
+  risingTideIslandTiles,
+  risingTideMinIsland,
+  risingTidePlanWave,
+  risingTideScheduledBudget,
   risingTideTroopsLost,
   risingTideWaveBudget,
   risingTideWaveTiles,
@@ -124,6 +130,103 @@ function landTiles(game: Game): TileRef[] {
   });
   return out;
 }
+
+describe("risingTideIslandTiles: no tiny islands left behind", () => {
+  // Row 0 is ocean; the land below has these magnitudes (as in the
+  // risingTideWaveTiles strip). Flooding 5 tiles cuts off tile 10.
+  const MAGNITUDES = [
+    [5, 2, 7, 1, 9, 3],
+    [0, 8, 1, 6, 2, 4],
+    [9, 9, 9, 0, 9, 9],
+  ];
+  function strip(override?: (x: number, y: number) => number | null) {
+    const w = 6;
+    const terrain = new Uint8Array(w * 4).fill(OCEAN);
+    MAGNITUDES.forEach((row, y) =>
+      row.forEach(
+        (m, x) => (terrain[(y + 1) * w + x] = LAND | (override?.(x, y) ?? m)),
+      ),
+    );
+    return new GameMapImpl(w, 4, terrain, 18);
+  }
+
+  test("a tile the wave cuts off floods with it; the big piece stays", () => {
+    const map = strip();
+    const wave = risingTideWaveTiles(map, 5);
+    expect(wave).toEqual([9, 7, 11, 17, 16]);
+    // Tile 10 is left with water on all four sides; the other 13 tiles stay
+    // joined.
+    expect(risingTideIslandTiles(map, wave, 8)).toEqual([10]);
+  });
+
+  test("a piece smaller than the minimum goes under whole", () => {
+    const map = strip();
+    const wave = risingTideWaveTiles(map, 5);
+    const islands = risingTideIslandTiles(map, wave, 14);
+    expect(new Set(islands)).toEqual(
+      new Set([10, 6, 12, 8, 14, 13, 15, 18, 19, 20, 21, 22, 23]),
+    );
+  });
+
+  test("impassable tiles count toward a piece but never flood", () => {
+    // Tile 10 (x4, y0 of the land) made impassable: still cut off, not flooded.
+    const map = strip((x, y) => (x === 4 && y === 0 ? 31 : null));
+    expect(risingTideIslandTiles(map, [9, 7, 11, 17, 16], 8)).toEqual([]);
+  });
+
+  test("land the wave doesn't touch is left alone", () => {
+    const w = 7;
+    // Ocean all round; a one-tile island at x1 and a coast at x4..x6.
+    const terrain = new Uint8Array(w * 3).fill(OCEAN);
+    terrain[w + 1] = LAND | 9;
+    for (let y = 0; y < 3; y++) {
+      for (let x = 4; x < 7; x++) terrain[y * w + x] = LAND | 5;
+    }
+    const map = new GameMapImpl(w, 3, terrain, 10);
+    // The wave takes one coastal tile; the lone island isn't next to it.
+    expect(risingTideIslandTiles(map, [w + 4], 8)).toEqual([]);
+  });
+
+  test("a big piece reached from several sides is measured once and kept", () => {
+    const w = 12;
+    const terrain = new Uint8Array(w * 5).fill(OCEAN);
+    for (let y = 1; y < 4; y++) {
+      for (let x = 1; x < 11; x++) terrain[y * w + x] = LAND | 5;
+    }
+    const map = new GameMapImpl(w, 5, terrain, 30);
+    // Flood the whole top row of the block: the rest touches it many times.
+    const wave = [];
+    for (let x = 1; x < 11; x++) wave.push(w + x);
+    expect(risingTideIslandTiles(map, wave, 8)).toEqual([]);
+  });
+
+  test("a planned wave is the flood plus the islands it cuts off", () => {
+    const map = strip();
+    expect(risingTidePlanWave(map, 5, 8)).toEqual([9, 7, 11, 17, 16, 10]);
+  });
+
+  test("the schedule takes extra island tiles back out of the next wave", () => {
+    // 1000 tiles of land: a normal wave is 40.
+    expect(risingTideScheduledBudget(1000, 1000, 0)).toBe(40);
+    // On schedule after one wave.
+    expect(risingTideScheduledBudget(1000, 960, 1)).toBe(40);
+    // The first wave also flooded 10 tiles of islands: the next floods 30.
+    expect(risingTideScheduledBudget(1000, 950, 1)).toBe(30);
+    // Far ahead: never below half a wave.
+    expect(risingTideScheduledBudget(1000, 900, 1)).toBe(20);
+    // Behind: never more than a normal wave.
+    expect(risingTideScheduledBudget(1000, 990, 1)).toBe(40);
+    // Done at the 40% floor, and the floor still binds.
+    expect(risingTideScheduledBudget(1000, 400, 15)).toBe(0);
+    expect(risingTideScheduledBudget(1000, 410, 14)).toBe(10);
+  });
+
+  test("the minimum scales with the map: 8 tiles up to 400", () => {
+    expect(risingTideMinIsland(18)).toBe(RISING_TIDE_MIN_ISLAND_FLOOR);
+    expect(risingTideMinIsland(651_569)).toBe(130);
+    expect(risingTideMinIsland(5_000_000)).toBe(RISING_TIDE_MIN_ISLAND_MAX);
+  });
+});
 
 describe("RisingTideExecution", () => {
   let game: Game;

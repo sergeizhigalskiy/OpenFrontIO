@@ -11,7 +11,9 @@ import {
   RISING_TIDE_WAVE_INTERVAL_TICKS,
   risingTideTroopsLost,
   risingTideWaveBudget,
-  risingTideWaveTiles,
+  risingTideMinIsland,
+  risingTidePlanWave,
+  risingTideScheduledBudget,
 } from "@openfront/engine-lib/game/RisingTide";
 import { troopsLostWithLand } from "@openfront/engine-lib/game/Volcanoes";
 import { zInt, zTiles } from "@openfront/engine-lib/snapshot/SnapshotType";
@@ -82,8 +84,17 @@ export class RisingTideExecution implements Execution {
     }
     if (this.warningTiles.length === 0) {
       if (ticks < this.nextWaveTick - RISING_TIDE_WARNING_TICKS) return;
-      const budget = risingTideWaveBudget(this.originalLand, mg.numLandTiles());
-      const tiles = risingTideWaveTiles(mg.map(), budget);
+      const budget = risingTideScheduledBudget(
+        this.originalLand,
+        mg.numLandTiles(),
+        this.wave,
+      );
+      // The wave plus any scraps of land it would cut off, within budget.
+      const tiles = risingTidePlanWave(
+        mg.map(),
+        budget,
+        risingTideMinIsland(this.originalLand),
+      );
       if (tiles.length === 0) {
         this.stop();
         return;

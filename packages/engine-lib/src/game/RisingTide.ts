@@ -107,6 +107,135 @@ export function risingTideWaveTiles(map: GameMap, budget: number): TileRef[] {
   return out;
 }
 
+/**
+ * Land a wave would leave as a scrap smaller than this many tiles goes under
+ * with it (risingTideIslandTiles): 2 per 10,000 tiles of the original land
+ * (about 130 on the World map), at least 8 and at most 400.
+ */
+export const RISING_TIDE_MIN_ISLAND_FLOOR = 8;
+export const RISING_TIDE_MIN_ISLAND_PER_10K = 2;
+export const RISING_TIDE_MIN_ISLAND_MAX = 400;
+
+/** The smallest piece of land a wave may leave behind, in tiles. */
+export function risingTideMinIsland(originalLand: number): number {
+  return Math.min(
+    RISING_TIDE_MIN_ISLAND_MAX,
+    Math.max(
+      RISING_TIDE_MIN_ISLAND_FLOOR,
+      Math.floor((originalLand * RISING_TIDE_MIN_ISLAND_PER_10K) / 10000),
+    ),
+  );
+}
+
+/**
+ * The land that would be left as tiny islands once `wave` floods: every
+ * piece of land (4-connected, as units move) touching the wave that has
+ * fewer than `minTiles` tiles with the wave counted as water. A wave floods
+ * these too, so the tide never leaves dots of land behind where it climbed
+ * around a slightly higher tile. Land pieces the wave doesn't touch are left
+ * alone, and impassable tiles never flood (they still count toward a
+ * piece's size). Returns passable tiles in a fixed order (wave order, then
+ * each piece breadth-first): pure integer work, so deterministic.
+ */
+export function risingTideIslandTiles(
+  map: GameMap,
+  wave: readonly TileRef[],
+  minTiles: number,
+): TileRef[] {
+  if (wave.length === 0 || minTiles <= 1) return [];
+  const numTiles = map.width() * map.height();
+  // 1: floods in the wave, 2: in the piece being measured, 3: in a piece big
+  // enough to stay, 4: in a tiny piece that floods.
+  const mark = new Uint8Array(numTiles);
+  for (const t of wave) mark[t] = 1;
+  const out: TileRef[] = [];
+  const piece: TileRef[] = [];
+  const nbuf: TileRef[] = [0, 0, 0, 0];
+  const qbuf: TileRef[] = [0, 0, 0, 0];
+  for (const t of wave) {
+    const n = map.neighbors4(t, nbuf);
+    for (let i = 0; i < n; i++) {
+      const seed = nbuf[i];
+      if (mark[seed] !== 0 || !map.isLand(seed)) continue;
+      // Measure the piece around seed, stopping once it is big enough.
+      piece.length = 0;
+      piece.push(seed);
+      mark[seed] = 2;
+      let big = false;
+      for (let head = 0; head < piece.length && !big; head++) {
+        const m = map.neighbors4(piece[head], qbuf);
+        for (let j = 0; j < m; j++) {
+          const nb = qbuf[j];
+          if (!map.isLand(nb)) continue;
+          const k = mark[nb];
+          if (k === 3) {
+            big = true;
+            break;
+          }
+          if (k !== 0) continue;
+          mark[nb] = 2;
+          piece.push(nb);
+          if (piece.length >= minTiles) {
+            big = true;
+            break;
+          }
+        }
+      }
+      for (const p of piece) {
+        if (big) {
+          mark[p] = 3;
+        } else {
+          mark[p] = 4;
+          if (!map.isImpassable(p)) out.push(p);
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * The tiles the next wave floods: the priority flood (risingTideWaveTiles)
+ * of `budget` tiles plus the tiny islands it would cut off
+ * (risingTideIslandTiles). Those come on top of the budget; the next wave's
+ * budget (risingTideScheduledBudget) takes them back out, so the tide keeps
+ * its schedule.
+ */
+export function risingTidePlanWave(
+  map: GameMap,
+  budget: number,
+  minIsland: number,
+): TileRef[] {
+  const wave = risingTideWaveTiles(map, budget);
+  return wave.concat(risingTideIslandTiles(map, wave, minIsland));
+}
+
+/**
+ * The flood budget for wave number `wavesDone` (0 for the first) that keeps
+ * the tide on its schedule of RISING_TIDE_WAVE_PERCENT of the original land
+ * per wave, even though waves also flood the islands they cut off: a wave
+ * floods what brings the land back to where the schedule has it after this
+ * wave, at least half a normal wave and at most a whole one, within the same
+ * cap and floor as risingTideWaveBudget. 0 means the tide is done.
+ */
+export function risingTideScheduledBudget(
+  originalLand: number,
+  currentLand: number,
+  wavesDone: number,
+): number {
+  const normal = risingTideWaveBudget(originalLand, currentLand);
+  if (normal <= 0) return 0;
+  // A normal wave, capped as in risingTideWaveBudget.
+  const perWave = Math.min(
+    RISING_TIDE_MAX_TILES_PER_WAVE,
+    Math.max(1, Math.floor((originalLand * RISING_TIDE_WAVE_PERCENT) / 100)),
+  );
+  const onSchedule = originalLand - (wavesDone + 1) * perWave;
+  const behind = currentLand - onSchedule;
+  const share = Math.min(perWave, Math.max(Math.ceil(perWave / 2), behind));
+  return Math.min(normal, share);
+}
+
 /** Binary min-heap of tiles keyed by (magnitude, tile index). */
 class TileHeap {
   private keys: number[] = [];
