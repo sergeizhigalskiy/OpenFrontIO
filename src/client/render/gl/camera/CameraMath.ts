@@ -129,7 +129,10 @@ export function computeCameraFrame(
   m.fill(0);
 
   const yaw = (pose.yawDeg ?? 0) * DEG;
-  if (!(pose.tiltDeg > 0) && yaw === 0) {
+  // The isometric camera (orthographic) keeps its own depth mapping even
+  // looking straight down north-up, its default view, so relief and the
+  // overlays draped on it sort the same at every tilt.
+  if (!(pose.tiltDeg > 0) && yaw === 0 && pose.orthographic !== true) {
     // Orthographic top-down: the old mat3, lifted to 4×4.
     out.perspective = false;
     const sx = (2 * zoom) / w;

@@ -216,9 +216,9 @@ describe.each(ORBITS)(
 );
 
 describe("isometric orbit", () => {
-  it("starts looking north from the bottom of the map, 45 degrees up", () => {
+  it("starts looking straight down with north up", () => {
     expect(ISO_BASE_YAW_DEG).toBe(0);
-    expect(DEFAULT_ELEVATION_DEG).toBe(45);
+    expect(DEFAULT_ELEVATION_DEG).toBe(90);
     const { handler } = makeHandler(ISO_BASE_YAW_DEG, DEFAULT_ELEVATION_DEG);
     const corners = [
       [400, 300],
@@ -230,10 +230,9 @@ describe("isometric orbit", () => {
     const ys = corners.map((c) => c.y);
     const w = Math.max(...xs) - Math.min(...xs);
     const h = Math.max(...ys) - Math.min(...ys);
-    // Square to the screen: a tile keeps its width and is foreshortened by
-    // the sine of the elevation.
+    // Straight down: a tile is a square on screen, as in the flat map.
     expect(w).toBeCloseTo(2.5, 6);
-    expect(h / w).toBeCloseTo(Math.SQRT1_2, 6);
+    expect(h).toBeCloseTo(2.5, 6);
     const a = handler.worldToScreenCoordinates(new Cell(400, 300));
     const n = handler.worldToScreenCoordinates(new Cell(400, 290));
     expect(n.x).toBeCloseTo(a.x, 6);
@@ -370,5 +369,35 @@ describe("going to a player (leaderboard, events) with the orbit camera", () => 
     const raised = makeHandler(100, 40, () => 5, 5);
     raised.view.mode = "flat";
     expect(raised.handler.groundFocus(300, 200)).toEqual({ x: 300, y: 200 });
+  });
+});
+
+describe("isometric camera looking straight down", () => {
+  it("keeps the tilted depth mapping, so relief still sorts by height", () => {
+    const pose = {
+      centerX: 500,
+      centerY: 300,
+      zoom: 2,
+      viewW: W,
+      viewH: H,
+      tiltDeg: 0,
+      fovDeg: 40,
+      yawDeg: 0,
+      orthographic: true,
+    };
+    const iso = computeCameraFrame(pose);
+    const flat = computeCameraFrame({ ...pose, orthographic: false });
+    // Same picture in x and y as the flat top-down camera.
+    for (const i of [0, 1, 4, 5, 12, 13]) {
+      expect(iso.viewProj[i]).toBeCloseTo(flat.viewProj[i], 9);
+    }
+    // But depth comes from the orthographic path: higher ground is nearer.
+    const clipZ = (z: number) =>
+      iso.viewProj[2] * 500 +
+      iso.viewProj[6] * 300 +
+      iso.viewProj[10] * z +
+      iso.viewProj[14];
+    expect(clipZ(10)).toBeLessThan(clipZ(0));
+    expect(iso.forward[2]).toBeCloseTo(-1, 9);
   });
 });

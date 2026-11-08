@@ -1,15 +1,14 @@
 /**
  * ViewOrbit — the isometric camera's free orbit: its yaw (turn about the
  * vertical, any angle) and its elevation (tilt, from a low oblique angle to
- * nearly top-down), plus the short eased animation of a reset. Pure state,
+ * straight down), plus the short eased animation of a reset. Pure state,
  * no GL or DOM.
  *
  * The yaw is the compass azimuth of the ground direction pointing up the
- * screen. The default view looks north from the bottom edge of the map:
- * yaw ISO_BASE_YAW_DEG (north up, the map square to the screen) at the
- * default elevation (mapView.isoElevationDeg, 45 degrees), the designer's
- * pick over the old diamond (north-west up, 30 degrees). orbit() turns the
- * camera by a delta: positive
+ * screen. The default view looks straight down with north up: yaw
+ * ISO_BASE_YAW_DEG at the default elevation (mapView.isoElevationDeg, 90
+ * degrees), the designer's pick. The player tilts it from there to see the
+ * relief. orbit() turns the camera by a delta: positive
  * yaw turns it to its left (the map turns counter-clockwise on screen),
  * positive elevation raises it toward top-down.
  *
@@ -20,12 +19,12 @@
 
 /** Yaw of the default view: north points up the screen. */
 export const ISO_BASE_YAW_DEG = 0;
-/** Elevation of the default view: 45 degrees above the ground. */
-export const DEFAULT_ELEVATION_DEG = 45;
+/** Elevation of the default view: straight down. */
+export const DEFAULT_ELEVATION_DEG = 90;
 /** Lowest camera elevation: a low oblique view across the land. */
 export const MIN_ELEVATION_DEG = 20;
-/** Highest camera elevation: nearly straight down. */
-export const MAX_ELEVATION_DEG = 85;
+/** Highest camera elevation: straight down. */
+export const MAX_ELEVATION_DEG = 90;
 /** How long a reset to the default view animates, ms. */
 export const RESET_DURATION_MS = 380;
 
